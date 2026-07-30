@@ -75,6 +75,7 @@ class TcgPrototypeApp:
             "hand": [],
             "player_units": [],
             "enemy_units": [],
+            "combat_lane": [],
             "human_dice": [],
             "order_blockers": [],
             "mulligan_hand": [],
@@ -119,7 +120,9 @@ class TcgPrototypeApp:
 
         self.draw_top_bar()
         self.draw_enemy_area()
+        self.draw_combat_lane()
         self.draw_player_area()
+        self.draw_combat_links()
         self.draw_side_panel()
         self.draw_buttons()
 
@@ -191,6 +194,198 @@ class TcgPrototypeApp:
         self.draw_units(self.engine.human_player.battlefield, True, "player_units", units_rect.x + 12, units_rect.y + 26, units_rect.width - 24)
         self.draw_hand(self.engine.human_player.hand, hand_rect.x + 12, hand_rect.y + 28, hand_rect.width - 24)
 
+    def draw_combat_lane(self) -> None:
+        side_panel_x = self.window_width - self.side_panel_width - 10
+        rect = pygame.Rect(10, 374, side_panel_x - 20, 56)
+        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=6)
+        self.blit_text(self.small_font, "Kampfzuweisung", MUTED_TEXT, rect.x + 12, rect.y + 6)
+
+        if not self.engine.block_assignments:
+            self.blit_text(self.small_font, "Noch keine Angreifer im Kampf.", MUTED_TEXT, rect.x + 12, rect.y + 28)
+            return
+
+        attacker_width = 230 if self.window_width >= 1800 else 190
+        gap = 14
+        x = rect.x + 12
+        y = rect.y + 24
+        max_width = rect.right - 12
+
+        for attacker_id, blocker_ids in self.engine.block_assignments.items():
+            attacker = self.engine.get_unit_by_id(attacker_id)
+            if attacker is None:
+                continue
+            lane_text = attacker.name
+            if blocker_ids:
+                blocker_names = [
+                    self.engine.get_unit_by_id(blocker_id).name
+                    for blocker_id in blocker_ids
+                    if self.engine.get_unit_by_id(blocker_id) is not None
+                ]
+                lane_text += " -> " + ", ".join(blocker_names)
+            else:
+                lane_text += " -> ungeblockt"
+
+            pill_rect = pygame.Rect(x, y, attacker_width, 22)
+            if not blocker_ids:
+                pill_color = (110, 74, 74)
+            elif len(blocker_ids) == 1:
+                pill_color = (78, 110, 82)
+            else:
+                pill_color = (125, 96, 54)
+            if attacker_id == self.engine.selected_attack_target_id:
+                pill_color = tuple(min(255, channel + 30) for channel in pill_color)
+            pygame.draw.rect(self.screen, pill_color, pill_rect, border_radius=11)
+            pygame.draw.rect(self.screen, HIGHLIGHT if attacker_id == self.engine.selected_attack_target_id else CARD_BORDER, pill_rect, 2, border_radius=11)
+            self.blit_text(
+                self.small_font,
+                self.fit_text(self.small_font, lane_text, attacker_width - 16),
+                TEXT_COLOR,
+                pill_rect.x + 8,
+                pill_rect.y + 4,
+            )
+            self.click_targets["combat_lane"].append((pill_rect, attacker_id))
+            x += attacker_width + gap
+            if x + attacker_width > max_width:
+                break
+
+    def draw_combat_links(self) -> None:
+        if not self.engine.block_assignments:
+            return
+
+        enemy_positions = self.get_unit_screen_positions(self.engine.ai_player.battlefield, False, 24, 231, self.main_area_width - 52)
+        player_positions = self.get_unit_screen_positions(self.engine.human_player.battlefield, True, 24, 544, self.main_area_width - 52)
+        lane_positions = self.get_combat_lane_positions()
+
+        for attacker_id, blocker_ids in self.engine.block_assignments.items():
+            lane_rect = lane_positions.get(attacker_id)
+            attacker_rect = enemy_positions.get(attacker_id) or player_positions.get(attacker_id)
+            if lane_rect is None or attacker_rect is None:
+                continue
+
+            attacker_selected = attacker_id == self.engine.selected_attack_target_id
+            line_color = HIGHLIGHT if attacker_selected else (132, 144, 160)
+            self.draw_polyline(
+                start=(lane_rect.centerx, lane_rect.top),
+                end=(attacker_rect.centerx, attacker_rect.bottom if attacker_rect.centery < lane_rect.centery else attacker_rect.top),
+                color=line_color,
+                via_y=lane_rect.y - 14 if attacker_rect.centery < lane_rect.centery else lane_rect.bottom + 14,
+                width=3 if attacker_selected else 2,
+            )
+
+            for blocker_id in blocker_ids:
+                blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
+                if blocker_rect is None:
+                    continue
+                blocker_selected = blocker_id == self.engine.selected_blocker_id or blocker_id in self.engine.blocker_to_attacker
+                blocker_color = HIGHLIGHT if attacker_selected else ((102, 188, 112) if len(blocker_ids) == 1 else (212, 170, 94))
+                self.draw_polyline(
+                    start=(lane_rect.centerx, lane_rect.bottom),
+                    end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > lane_rect.centery else blocker_rect.bottom),
+                    color=blocker_color,
+                    via_y=lane_rect.bottom + 14 if blocker_rect.centery > lane_rect.centery else lane_rect.y - 14,
+                    width=3 if blocker_selected else 2,
+                )
+
+    def get_unit_screen_positions(
+        self,
+        units,
+        is_human: bool,
+        start_x: int,
+        start_y: int,
+        lane_width: int,
+    ) -> Dict[int, pygame.Rect]:
+        positions: Dict[int, pygame.Rect] = {}
+        column_step = self.card_height + self.card_gap + 10
+        columns = max(1, lane_width // column_step)
+        for index, unit in enumerate(units):
+            column = index % columns
+            row = index // columns
+            x = start_x + column * column_step
+            y = start_y + row * (self.card_height + 22)
+            width = self.card_height if unit.tapped else self.card_width
+            height = self.card_width if unit.tapped else self.card_height
+            positions[unit.unit_id] = pygame.Rect(x, y, width, height)
+        return positions
+
+    def get_combat_lane_positions(self) -> Dict[int, pygame.Rect]:
+        positions: Dict[int, pygame.Rect] = {}
+        if not self.engine.block_assignments:
+            return positions
+        side_panel_x = self.window_width - self.side_panel_width - 10
+        rect = pygame.Rect(10, 374, side_panel_x - 20, 56)
+        attacker_width = 230 if self.window_width >= 1800 else 190
+        gap = 14
+        x = rect.x + 12
+        y = rect.y + 24
+        max_width = rect.right - 12
+        for attacker_id in self.engine.block_assignments:
+            pill_rect = pygame.Rect(x, y, attacker_width, 22)
+            positions[attacker_id] = pill_rect
+            x += attacker_width + gap
+            if x + attacker_width > max_width:
+                break
+        return positions
+
+    def draw_polyline(
+        self,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        color,
+        via_y: int,
+        width: int,
+    ) -> None:
+        points = [start, (start[0], via_y), (end[0], via_y), end]
+        pygame.draw.lines(self.screen, color, False, points, width)
+        pygame.draw.circle(self.screen, color, end, max(3, width + 1))
+        self.draw_arrowhead(points[-2], end, color, width)
+        self.draw_link_marker(points[1], color, width)
+
+    def draw_arrowhead(
+        self,
+        from_point: tuple[int, int],
+        to_point: tuple[int, int],
+        color,
+        width: int,
+    ) -> None:
+        dx = to_point[0] - from_point[0]
+        dy = to_point[1] - from_point[1]
+        if dx == 0 and dy == 0:
+            return
+
+        arrow_size = 10 + width
+        if abs(dx) > abs(dy):
+            if dx > 0:
+                points = [
+                    to_point,
+                    (to_point[0] - arrow_size, to_point[1] - arrow_size // 2),
+                    (to_point[0] - arrow_size, to_point[1] + arrow_size // 2),
+                ]
+            else:
+                points = [
+                    to_point,
+                    (to_point[0] + arrow_size, to_point[1] - arrow_size // 2),
+                    (to_point[0] + arrow_size, to_point[1] + arrow_size // 2),
+                ]
+        else:
+            if dy > 0:
+                points = [
+                    to_point,
+                    (to_point[0] - arrow_size // 2, to_point[1] - arrow_size),
+                    (to_point[0] + arrow_size // 2, to_point[1] - arrow_size),
+                ]
+            else:
+                points = [
+                    to_point,
+                    (to_point[0] - arrow_size // 2, to_point[1] + arrow_size),
+                    (to_point[0] + arrow_size // 2, to_point[1] + arrow_size),
+                ]
+        pygame.draw.polygon(self.screen, color, points)
+
+    def draw_link_marker(self, center: tuple[int, int], color, width: int) -> None:
+        radius = 4 + width
+        pygame.draw.circle(self.screen, color, center, radius, 2)
+        pygame.draw.circle(self.screen, color, center, max(2, radius - 4))
+
     def draw_resources(self, resources, start_x: int, start_y: int) -> None:
         resource_gap = 76 if self.window_width >= 1800 else 70
         for index, resource in enumerate(resources):
@@ -219,7 +414,11 @@ class TcgPrototypeApp:
             selected = False
             if target_key == "player_units" and unit.unit_id in self.engine.selected_attackers:
                 selected = True
+            if target_key == "player_units" and unit.unit_id in self.engine.blocker_to_attacker:
+                selected = True
             if target_key == "player_units" and unit.unit_id == self.engine.selected_blocker_id:
+                selected = True
+            if target_key == "enemy_units" and unit.unit_id == self.engine.selected_attack_target_id:
                 selected = True
             if self.engine.pending_order is not None and unit.unit_id in self.engine.pending_order.chosen_order:
                 selected = True
@@ -250,10 +449,19 @@ class TcgPrototypeApp:
         for line in self.engine.log_messages[-18:]:
             y = self.blit_wrapped_text(self.small_font, line, MUTED_TEXT, pygame.Rect(rect.x + 14, y, rect.width - 28, 100), 18)
             y += 4
-        if self.engine.phase == PHASE_DECLARE_BLOCKERS and self.engine.selected_blocker_id is not None:
-            blocker = self.engine.get_unit_by_id(self.engine.selected_blocker_id)
-            if blocker is not None:
-                self.blit_text(self.font, f"Ausgewaehlter Blocker: {blocker.name}", TEXT_COLOR, rect.x + 14, rect.bottom - 40)
+        if self.engine.phase == PHASE_DECLARE_BLOCKERS:
+            target = self.engine.get_unit_by_id(self.engine.selected_attack_target_id) if self.engine.selected_attack_target_id is not None else None
+            target_name = target.name if target is not None else "-"
+            self.blit_text(self.font, f"Blockziel: {target_name}", TEXT_COLOR, rect.x + 14, rect.bottom - 62)
+            assigned_names = []
+            if target is not None:
+                assigned_names = [
+                    self.engine.get_unit_by_id(blocker_id).name
+                    for blocker_id in self.engine.block_assignments.get(target.unit_id, [])
+                    if self.engine.get_unit_by_id(blocker_id) is not None
+                ]
+            assigned_text = ", ".join(assigned_names) if assigned_names else "-"
+            self.blit_text(self.small_font, f"Zugewiesene Blocker: {assigned_text}", MUTED_TEXT, rect.x + 14, rect.bottom - 38)
 
     def draw_buttons(self) -> None:
         specs = self.engine.get_button_specs()

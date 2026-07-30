@@ -54,6 +54,7 @@ class GameEngine:
         self.selected_hand_ids: List[int] = []
         self.selected_attackers: List[int] = []
         self.selected_blocker_id: Optional[int] = None
+        self.selected_attack_target_id: Optional[int] = None
         self.block_assignments: Dict[int, List[int]] = {}
         self.blocker_to_attacker: Dict[int, int] = {}
         self.pending_order: Optional[PendingBlockOrder] = None
@@ -214,6 +215,7 @@ class GameEngine:
     def reset_combat_state(self) -> None:
         self.selected_attackers = []
         self.selected_blocker_id = None
+        self.selected_attack_target_id = None
         self.block_assignments = {}
         self.blocker_to_attacker = {}
         self.pending_order = None
@@ -295,6 +297,9 @@ class GameEngine:
         elif action == "clear_blocks":
             self.clear_block_assignments()
         elif action == "confirm_blocks":
+            self.finish_block_assignment()
+        elif action == "skip_blocks":
+            self.log("Keine Blocker zugewiesen. Schaden wird durchgelassen.")
             self.finish_block_assignment()
         elif action == "reset_order" and self.pending_order is not None:
             self.pending_order.chosen_order.clear()
@@ -383,49 +388,58 @@ class GameEngine:
         if self.defending_player.is_human:
             self.phase = PHASE_DECLARE_BLOCKERS
             self.selected_blocker_id = None
-            self.log("Waehle Blocker und klicke danach auf den zu blockenden Angreifer.")
+            self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
+            self.log("Waehle einen Angreifer und ordne dann eigene Blocker zu.")
         else:
             self.ai_assign_blocks()
             self.begin_combat_resolution()
 
-    def toggle_selected_blocker(self, unit_id: int) -> None:
+    def toggle_selected_attack_target(self, unit_id: int) -> None:
+        if self.phase != PHASE_DECLARE_BLOCKERS or not self.defending_player.is_human:
+            return
+        if unit_id not in self.block_assignments:
+            return
+        self.selected_attack_target_id = None if self.selected_attack_target_id == unit_id else unit_id
+        attacker = self.get_unit_by_id(unit_id)
+        if attacker is not None:
+            self.log(f"Blockziel ausgewaehlt: {attacker.name}.")
+
+    def toggle_blocker_assignment(self, unit_id: int) -> None:
         if self.phase != PHASE_DECLARE_BLOCKERS or not self.defending_player.is_human:
             return
         unit = self.get_unit_by_id(unit_id)
         if unit is None or self.get_unit_owner(unit_id) != self.defending_player:
             return
-        if not unit.is_ready():
+        if not unit.is_ready() and unit_id not in self.blocker_to_attacker:
             self.log("Diese Unit kann nicht blocken.")
             return
-        self.selected_blocker_id = None if self.selected_blocker_id == unit_id else unit_id
-
-    def assign_selected_blocker(self, attacker_id: int) -> None:
-        if self.phase != PHASE_DECLARE_BLOCKERS or self.selected_blocker_id is None:
+        if self.selected_attack_target_id is None:
+            self.selected_blocker_id = unit_id
+            self.log("Waehle zuerst einen Angreifer als Blockziel aus.")
             return
+        attacker_id = self.selected_attack_target_id
         if attacker_id not in self.block_assignments:
             return
-        previous = self.blocker_to_attacker.get(self.selected_blocker_id)
+        self.selected_blocker_id = unit_id
+        previous = self.blocker_to_attacker.get(unit_id)
         if previous == attacker_id:
             self.block_assignments[attacker_id] = [
-                blocker_id
-                for blocker_id in self.block_assignments[attacker_id]
-                if blocker_id != self.selected_blocker_id
+                blocker_id for blocker_id in self.block_assignments[attacker_id] if blocker_id != unit_id
             ]
-            del self.blocker_to_attacker[self.selected_blocker_id]
-            self.log("Blockzuweisung entfernt.")
+            del self.blocker_to_attacker[unit_id]
+            attacker = self.get_unit_by_id(attacker_id)
+            if attacker is not None:
+                self.log(f"{unit.name} blockt {attacker.name} nicht mehr.")
             return
         if previous is not None:
             self.block_assignments[previous] = [
-                blocker_id
-                for blocker_id in self.block_assignments[previous]
-                if blocker_id != self.selected_blocker_id
+                blocker_id for blocker_id in self.block_assignments[previous] if blocker_id != unit_id
             ]
-        self.block_assignments[attacker_id].append(self.selected_blocker_id)
-        self.blocker_to_attacker[self.selected_blocker_id] = attacker_id
-        blocker = self.get_unit_by_id(self.selected_blocker_id)
+        self.block_assignments[attacker_id].append(unit_id)
+        self.blocker_to_attacker[unit_id] = attacker_id
         attacker = self.get_unit_by_id(attacker_id)
-        if blocker is not None and attacker is not None:
-            self.log(f"{blocker.name} blockt {attacker.name}.")
+        if attacker is not None:
+            self.log(f"{unit.name} blockt {attacker.name}.")
 
     def clear_block_assignments(self) -> None:
         if self.phase != PHASE_DECLARE_BLOCKERS:
@@ -433,6 +447,8 @@ class GameEngine:
         self.block_assignments = {attacker_id: [] for attacker_id in self.block_assignments}
         self.blocker_to_attacker.clear()
         self.selected_blocker_id = None
+        if len(self.block_assignments) != 1:
+            self.selected_attack_target_id = None
         self.log("Alle Blockzuweisungen wurden geloescht.")
 
     def finish_block_assignment(self) -> None:
@@ -793,10 +809,13 @@ class GameEngine:
             if self.phase == PHASE_DECLARE_ATTACKERS and self.active_player.is_human:
                 self.toggle_attacker(item_id)
             elif self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
-                self.toggle_selected_blocker(item_id)
+                self.toggle_blocker_assignment(item_id)
             return
         if area == "enemy_units" and self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
-            self.assign_selected_blocker(item_id)
+            self.toggle_selected_attack_target(item_id)
+            return
+        if area == "combat_lane" and self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
+            self.toggle_selected_attack_target(item_id)
             return
         if area == "order_blockers" and self.pending_order is not None:
             self.choose_next_block_order_item(item_id)
@@ -860,7 +879,7 @@ class GameEngine:
         if self.phase == PHASE_DECLARE_ATTACKERS:
             return "Waehle Angreifer und bestaetige."
         if self.phase == PHASE_DECLARE_BLOCKERS:
-            return "Waehle einen Blocker und klicke danach auf einen Angreifer."
+            return "Waehle einen Angreifer und ordne dann eigene Blocker zu."
         if self.phase == PHASE_ORDER_BLOCKERS:
             return "Lege die Reihenfolge fuer mehrere Blocker fest."
         if self.phase == PHASE_DICE_BATTLE:
@@ -901,7 +920,10 @@ class GameEngine:
         elif self.phase == PHASE_DECLARE_ATTACKERS:
             buttons.append(ButtonSpec("Angriff bestaetigen", True, "confirm_attackers"))
         elif self.phase == PHASE_DECLARE_BLOCKERS:
-            buttons.append(ButtonSpec("Blocker bestaetigen", True, "confirm_blocks"))
+            has_assignments = any(self.block_assignments.values())
+            confirm_label = "Block bestaetigen" if has_assignments else "Ohne Blocker weiter"
+            buttons.append(ButtonSpec(confirm_label, True, "confirm_blocks"))
+            buttons.append(ButtonSpec("Ohne Blocker", True, "skip_blocks"))
             buttons.append(ButtonSpec("Blocker loeschen", True, "clear_blocks"))
         elif self.phase == PHASE_ORDER_BLOCKERS:
             ready = self.pending_order is not None and len(self.pending_order.chosen_order) == len(self.pending_order.blocker_ids)
