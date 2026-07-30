@@ -1,0 +1,4 @@
+game_id,timestamp,seed,winner,turns_played,human_life_end,ai_life_end,human_cards_drawn,ai_cards_drawn,human_resources_played,ai_resources_played,human_units_played,ai_units_played,human_attackers_declared,ai_attackers_declared,human_unblocked_attacks,ai_unblocked_attacks,normal_blocks,multi_blocks,unit_combats,dice_comparisons,human_units_destroyed,ai_units_destroyed,mutual_destructions,combats_without_destruction,human_player_damage_dealt,ai_player_damage_dealt,human_unit_damage_dealt,ai_unit_damage_dealt,avg_dice_comparisons_per_combat,start_player
+game-20260731-003751-457091428892,2026-07-31T00:37:51,457091428892,Spieler,1,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,Spieler
+game-20260731-003811-382035843224,2026-07-31T00:38:11,382035843224,Spieler,1,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,Spieler
+game-20260731-003947-45715085331,2026-07-31T00:39:47,45715085331,Spieler,1,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,Gegner
