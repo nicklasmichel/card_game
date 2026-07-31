@@ -1,0 +1,8 @@
+PHASE_MULLIGAN = "Mulligan"
+PHASE_RESOURCE = "Ressourcenphase"
+PHASE_SUMMONING = "Beschwörungsphase"
+PHASE_DECLARE_ATTACKERS = "Angreifer wählen"
+PHASE_DECLARE_BLOCKERS = "Blocker wählen"
+PHASE_ORDER_BLOCKERS = "Blockreihenfolge"
+PHASE_DICE_BATTLE = "Würfelkampf"
+PHASE_GAME_OVER = "Spielende"
