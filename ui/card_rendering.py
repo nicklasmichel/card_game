@@ -136,30 +136,40 @@ def draw_summoner_card(
     life: int,
     x: int,
     y: int,
+    tapped: bool = False,
     think_progress: float | None = None,
 ) -> pygame.Rect:
-    rect = pygame.Rect(x, y, self.card_width, self.card_height)
+    width = self.card_height if tapped else self.card_width
+    height = self.card_width if tapped else self.card_height
+    rect = pygame.Rect(x, y, width, height)
+    surface = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
     image = self.summoner_images.get(summoner_key)
     if image is None:
-        pygame.draw.rect(self.screen, CARD_COLOR, rect, border_radius=9)
-        self.draw_summoner_life_circle(life, x, y, think_progress)
-        self.last_rendered_card_surface = self.screen.subsurface(rect).copy()
-        self.last_preview_builder = lambda summoner_key=summoner_key, life=life, think_progress=think_progress: self.build_preview_summoner_surface(summoner_key, life, think_progress)
-        return rect
-    scaled = pygame.transform.smoothscale(image, (self.card_width, self.card_height))
-    clipped = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
-    pygame.draw.rect(clipped, (255, 255, 255), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
-    scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-    self.screen.blit(scaled, rect.topleft)
-    self.draw_summoner_life_circle(life, x, y, think_progress)
-    self.last_rendered_card_surface = self.screen.subsurface(rect).copy()
+        pygame.draw.rect(surface, CARD_COLOR, pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
+        pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
+    else:
+        scaled = pygame.transform.smoothscale(image, (self.card_width, self.card_height))
+        clipped = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
+        pygame.draw.rect(clipped, (255, 255, 255), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
+        scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        surface.blit(scaled, (0, 0))
+        pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
+    old_screen = self.screen
+    self.screen = surface
+    try:
+        self.draw_summoner_life_circle(life, 0, 0, think_progress)
+    finally:
+        self.screen = old_screen
+    rendered_surface = pygame.transform.rotate(surface, -90) if tapped else surface
+    self.screen.blit(rendered_surface, rect.topleft)
+    self.last_rendered_card_surface = rendered_surface.copy()
     self.last_preview_builder = lambda summoner_key=summoner_key, life=life, think_progress=think_progress: self.build_preview_summoner_surface(summoner_key, life, think_progress)
     return rect
 
 
 def draw_summoner_life_circle(self, life: int, x: int, y: int, think_progress: float | None) -> None:
     scale = getattr(self, "layout_scale", 1.0)
-    center = (x + self.card_width // 2, y + int(self.card_height * 0.72))
+    center = (x + self.card_width // 2, y + int(self.card_height * 0.34))
     radius = max(12, int(24 * scale))
     circle_rect = pygame.Rect(center[0] - radius, center[1] - radius, radius * 2, radius * 2)
     ring_radius = max(8, radius - max(1, int(2 * scale)))
@@ -181,6 +191,12 @@ def draw_summoner_life_circle(self, life: int, x: int, y: int, think_progress: f
         for point in points:
             pygame.draw.circle(self.screen, (212, 170, 74), point, ring_width // 2)
     self.blit_centered_text(self.small_font, str(life), (255, 255, 255), circle_rect)
+
+
+def draw_card_badge(self, surface: pygame.Surface, badge_rect: pygame.Rect, text: str, font: pygame.font.Font | None = None) -> None:
+    pygame.draw.circle(surface, (18, 18, 20), badge_rect.center, badge_rect.width // 2)
+    pygame.draw.circle(surface, (0, 0, 0), badge_rect.center, max(4, badge_rect.width // 2 - 4), max(2, badge_rect.width // 12))
+    self.blit_centered_text_to_surface(surface, font or self.font, text, (255, 255, 255), badge_rect)
 
 
 def draw_creature_card(
@@ -775,7 +791,7 @@ def can_drag_hand_card_to_resource(self) -> bool:
     return (
         self.engine.phase == PHASE_RESOURCE
         and self.engine.active_player.is_human
-        and not self.engine.active_player.resource_played_this_turn
+        and self.engine.active_player.resources_played_this_turn < 2
         and self.engine.pending_recycle_payment is None
     )
 

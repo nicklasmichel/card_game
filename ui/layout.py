@@ -10,6 +10,7 @@ from models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_FORCED_DISCARD,
     PHASE_SUMMONING,
     PHASE_ORDER_BLOCKERS,
     PHASE_RESOURCE,
@@ -269,21 +270,64 @@ def draw_link_marker(self, center: tuple[int, int], color, width: int) -> None:
 
 
 def draw_resources(self, resources, start_x: int, start_y: int, available_width: int, player=None, target_key: str | None = None) -> None:
+    summoner_rect = None
+    summoner_width = 0
+    center_padding = max(28, self.card_gap * 2)
+    if player is not None:
+        summoner_width = self.card_height if player.summoner_tapped else self.card_width
+        summoner_height = self.card_width if player.summoner_tapped else self.card_height
+        summoner_x = start_x + max(0, (available_width - summoner_width) // 2)
+        summoner_y = start_y + max(0, (self.card_height - summoner_height) // 2)
+        summoner_rect = self.draw_summoner_card(
+            player.summoner_key,
+            player.life,
+            summoner_x,
+            summoner_y,
+            player.summoner_tapped,
+            self.get_think_progress(player),
+        )
+        self.summoner_rects[player.player_id] = summoner_rect.copy()
+        if self.last_preview_builder is not None:
+            self.preview_targets.append((summoner_rect.copy(), self.last_preview_builder))
+        if target_key == "player_resources":
+            self.click_targets["player_summoner"].append((summoner_rect.copy(), player.player_id))
     if not resources:
         return
-    widths = [self.card_height if resource.tapped else self.card_width for resource in resources]
-    base_gap = self.card_gap + 8
-    total_width = sum(widths) + max(0, len(resources) - 1) * base_gap
-    if total_width <= available_width:
-        positions = []
-        x = start_x + max(0, (available_width - total_width) // 2)
-        for width in widths:
-            positions.append(x)
-            x += width + base_gap
-    else:
-        step = max(40, (available_width - widths[-1]) // max(1, len(resources) - 1))
-        positions = [start_x + index * step for index in range(len(resources))]
-    for index, (resource, x) in enumerate(zip(resources, positions)):
+    left_resources = resources[: (len(resources) + 1) // 2]
+    right_resources = resources[(len(resources) + 1) // 2 :]
+    left_widths = [self.card_height if resource.tapped else self.card_width for resource in left_resources]
+    right_widths = [self.card_height if resource.tapped else self.card_width for resource in right_resources]
+    left_start = start_x
+    left_available = max(0, ((summoner_rect.x if summoner_rect is not None else start_x + available_width // 2) - left_start - center_padding))
+    right_start = (summoner_rect.right + center_padding) if summoner_rect is not None else start_x + available_width // 2
+    right_available = max(0, start_x + available_width - right_start)
+
+    def _positions(widths, zone_start: int, zone_available: int, from_right: bool) -> list[int]:
+        if not widths:
+            return []
+        base_gap = self.card_gap + 8
+        total_width = sum(widths) + max(0, len(widths) - 1) * base_gap
+        if total_width <= zone_available:
+            x = zone_start + max(0, (zone_available - total_width) // 2)
+            positions = []
+            for width in widths:
+                positions.append(x)
+                x += width + base_gap
+            return positions
+        step = max(40, (zone_available - widths[-1]) // max(1, len(widths) - 1))
+        if from_right:
+            positions = []
+            x = zone_start + zone_available - widths[0]
+            for width in widths:
+                positions.append(x)
+                x -= step
+            return list(reversed(positions))
+        return [zone_start + index * step for index in range(len(widths))]
+
+    left_positions = _positions(left_widths, left_start, left_available, from_right=True)
+    right_positions = _positions(right_widths, right_start, right_available, from_right=False)
+    laid_out_resources = list(zip(left_resources, left_positions)) + list(zip(right_resources, right_positions))
+    for index, (resource, x) in enumerate(laid_out_resources):
         height = self.card_width if resource.tapped else self.card_height
         y = start_y + max(0, (self.card_height - height) // 2)
         rect = self.draw_resource_card(resource, x, y)
@@ -361,55 +405,19 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
 
 def draw_hand(self, player, start_x: int, start_y: int, available_width: int, interactive: bool = True) -> None:
     hand = player.hand
-    summoner_x = start_x + max(0, (available_width - self.card_width) // 2)
-    summoner_center_x = summoner_x + self.card_width // 2
-    self.draw_summoner_card(
-        player.summoner_key,
-        player.life,
-        summoner_x,
-        start_y,
-        self.get_think_progress(player),
-    )
-    self.summoner_rects[player.player_id] = pygame.Rect(summoner_x, start_y, self.card_width, self.card_height)
-    if self.last_preview_builder is not None:
-        self.preview_targets.append((pygame.Rect(summoner_x, start_y, self.card_width, self.card_height), self.last_preview_builder))
+    if not hand:
+        return
+    card_step = self.card_width + self.card_gap
+    total_width = len(hand) * self.card_width + (len(hand) - 1) * self.card_gap
+    if total_width > available_width:
+        card_step = max(26, (available_width - self.card_width) // max(1, len(hand) - 1))
+    total_render_width = self.card_width + max(0, len(hand) - 1) * card_step
+    card_start_x = start_x + max(0, (available_width - total_render_width) // 2)
 
-    left_cards = hand[: (len(hand) + 1) // 2]
-    right_cards = hand[(len(hand) + 1) // 2 :]
-    center_padding = max(28, self.card_gap * 2)
-    left_available = max(0, summoner_x - start_x - center_padding)
-    right_start = summoner_x + self.card_width + center_padding
-    right_available = max(0, start_x + available_width - right_start)
-
-    left_step = self.card_width + self.card_gap
-    if len(left_cards) > 1:
-        left_total = len(left_cards) * self.card_width + (len(left_cards) - 1) * self.card_gap
-        if left_total > left_available:
-            left_step = max(26, (left_available - self.card_width) // (len(left_cards) - 1))
-
-    right_step = self.card_width + self.card_gap
-    if len(right_cards) > 1:
-        right_total = len(right_cards) * self.card_width + (len(right_cards) - 1) * self.card_gap
-        if right_total > right_available:
-            right_step = max(26, (right_available - self.card_width) // (len(right_cards) - 1))
-
-    for index, card in enumerate(left_cards):
+    for index, card in enumerate(hand):
         if interactive and self.drag_active and self.dragged_card_surface is not None and card.instance_id == self.dragged_hand_card_id:
             continue
-        x = summoner_x - center_padding - self.card_width - index * left_step
-        if interactive or self.show_enemy_hand_cards:
-            rect = self.draw_hand_card(card, x, start_y, interactive and card.instance_id in self.engine.selected_hand_ids)
-        else:
-            rect = self.draw_hidden_hand_card(card, x, start_y)
-        if self.last_preview_builder is not None:
-            self.preview_targets.append((rect, self.last_preview_builder))
-        if interactive:
-            self.click_targets["hand"].append((rect, card.instance_id))
-
-    for index, card in enumerate(right_cards):
-        if interactive and self.drag_active and self.dragged_card_surface is not None and card.instance_id == self.dragged_hand_card_id:
-            continue
-        x = right_start + index * right_step
+        x = card_start_x + index * card_step
         if interactive or self.show_enemy_hand_cards:
             rect = self.draw_hand_card(card, x, start_y, interactive and card.instance_id in self.engine.selected_hand_ids)
         else:
@@ -584,10 +592,10 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
         deck_rect = pygame.Rect(deck_x, card_y, card_width, card_height)
         self.screen.blit(deck_surface, deck_rect.topleft)
         pygame.draw.rect(self.screen, CARD_BORDER, deck_rect, 2, border_radius=9)
-        badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.62) - 23, 46, 46)
-        pygame.draw.circle(self.screen, (18, 18, 20), badge_rect.center, 23)
-        pygame.draw.circle(self.screen, (0, 0, 0), badge_rect.center, 19, 4)
-        self.blit_centered_text(self.font, str(len(player.deck)), TEXT_COLOR, badge_rect)
+        life_badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.31) - 23, 46, 46)
+        deck_badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.69) - 23, 46, 46)
+        self.draw_card_badge(self.screen, life_badge_rect, str(player.life), self.font)
+        self.draw_card_badge(self.screen, deck_badge_rect, str(len(player.deck)), self.font)
         self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player)))
 
     top_discard = player.discard_pile[-1] if player.discard_pile else None

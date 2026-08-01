@@ -15,6 +15,7 @@ from models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
@@ -38,6 +39,7 @@ from ui.card_rendering import (
     can_drop_on_resource_area,
     clear_drag_state,
     draw_art_panel,
+    draw_card_badge,
     draw_creature_card,
     draw_dragged_card,
     draw_element_symbol,
@@ -117,6 +119,7 @@ class TcgPrototypeApp:
     draw_resource_card = draw_resource_card
     draw_summoner_card = draw_summoner_card
     draw_summoner_life_circle = draw_summoner_life_circle
+    draw_card_badge = draw_card_badge
     draw_creature_card = draw_creature_card
     blit_symbol_image = blit_symbol_image
     build_card_surface = build_card_surface
@@ -238,6 +241,7 @@ class TcgPrototypeApp:
         self.summoner_rects: Dict[int, pygame.Rect] = {}
         self.click_targets: Dict[str, List[Tuple[pygame.Rect, int]]] = {
             "hand": [],
+            "player_summoner": [],
             "player_creatures": [],
             "enemy_creatures": [],
             "combat_lane": [],
@@ -343,6 +347,8 @@ class TcgPrototypeApp:
             return (self.engine.active_player.player_id, self.engine.phase, "summoning")
         if self.engine.phase == PHASE_RECYCLE_PAYMENT:
             return (self.engine.active_player.player_id, self.engine.phase, "recycle")
+        if self.engine.phase == PHASE_FORCED_DISCARD:
+            return (self.engine.human_player.player_id, self.engine.phase, "forced_discard")
         if self.engine.phase == PHASE_DECLARE_ATTACKERS:
             return (self.engine.active_player.player_id, self.engine.phase, "attackers")
         if self.engine.phase == PHASE_DECLARE_BLOCKERS and self.engine.defending_player.is_human:
@@ -491,11 +497,11 @@ class TcgPrototypeApp:
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
-        hand_rect = sections["player_hand"] if player.player_id == self.engine.human_player.player_id else sections["enemy_hand"]
-        start_x = hand_rect.x + 10
-        available_width = hand_rect.width - 20
+        resource_rect = sections["player_resources"] if player.player_id == self.engine.human_player.player_id else sections["enemy_resources"]
+        start_x = resource_rect.x + 10
+        available_width = resource_rect.width - 20
         summoner_x = start_x + max(0, (available_width - self.card_width) // 2)
-        return pygame.Rect(summoner_x, hand_rect.y + 10, self.card_width, self.card_height)
+        return pygame.Rect(summoner_x, resource_rect.y + 10, self.card_width, self.card_height)
 
     def is_creature_visually_tapped(self, creature) -> bool:
         return (
@@ -682,10 +688,15 @@ class TcgPrototypeApp:
             "air": Element.AIR,
         }
         element = top_card.template.element if top_card is not None else fallback_elements.get(player.summoner_key, Element.AIR)
-        return self.render_scaled_card_surface(
-            2.0,
-            lambda: self.build_resource_back_surface(element, False),
-        )
+        def _render() -> pygame.Surface:
+            surface = self.build_resource_back_surface(element, False)
+            life_badge_rect = pygame.Rect(self.card_width // 2 - 23, int(self.card_height * 0.31) - 23, 46, 46)
+            deck_badge_rect = pygame.Rect(self.card_width // 2 - 23, int(self.card_height * 0.69) - 23, 46, 46)
+            self.draw_card_badge(surface, life_badge_rect, str(player.life), self.font)
+            self.draw_card_badge(surface, deck_badge_rect, str(len(player.deck)), self.font)
+            return surface
+
+        return self.render_scaled_card_surface(2.0, _render)
 
     def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
         accent = (98, 151, 109) if is_human else (177, 98, 98)
@@ -819,6 +830,12 @@ class TcgPrototypeApp:
         self.combat_overlay_card_rects.clear()
         self.summoner_rects.clear()
 
+        previous_show_enemy_hand_cards = self.show_enemy_hand_cards
+        reveal_enemy_hand_from_effect = any(
+            getattr(creature, "reveal_opponent_hand", False)
+            for creature in self.engine.human_player.battlefield
+        )
+        self.show_enemy_hand_cards = self.show_enemy_hand_cards or reveal_enemy_hand_from_effect
         self.draw_enemy_area()
         self.draw_player_area()
         self.draw_combat_links()
@@ -838,6 +855,7 @@ class TcgPrototypeApp:
         if self.engine.phase == PHASE_GAME_OVER:
             self.draw_game_over_overlay()
         self.draw_card_preview_overlay()
+        self.show_enemy_hand_cards = previous_show_enemy_hand_cards
 
         pygame.display.flip()
 

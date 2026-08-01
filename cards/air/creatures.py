@@ -1,16 +1,40 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from models import Ability, CardCost, CardTemplate, Element
 
 
 AIR_CREATURES = [
     CardTemplate(
-        template_id="air_windgeist",
-        name="Windgeist",
+        template_id="air_windhuscher",
+        name="Windhuscher",
         cost=CardCost(resources=1),
-        aw=1,
+        aw=2,
         vw=1,
         element=Element.AIR,
+        abilities=frozenset({Ability.HASTE}),
+        rules_text="Eile. Mische diese Kreatur am Ende deines Zuges zurück in dein Deck.",
+        return_to_deck_end_of_turn=True,
+    ),
+    CardTemplate(
+        template_id="air_boeengeist",
+        name="Böengeist",
+        cost=CardCost(resources=1, recycle=1),
+        aw=2,
+        vw=2,
+        element=Element.AIR,
+        rules_text="Beim Ausspielen werfen beide Spieler 1 Handkarte ab.",
+        discard_self_on_play=1,
+        discard_opponent_on_play=1,
+    ),
+    CardTemplate(
+        template_id="air_windgeist",
+        name="Windgeist",
+        cost=CardCost(resources=2),
+        aw=2,
+        vw=3,
+        element=Element.AIR,
+        rules_text="Beim Ausspielen wirfst du eine Handkarte ab.",
+        discard_self_on_play=1,
     ),
     CardTemplate(
         template_id="air_himmelsspaeher",
@@ -19,14 +43,18 @@ AIR_CREATURES = [
         aw=2,
         vw=2,
         element=Element.AIR,
+        rules_text="Schaue dir die Handkarten deines Gegners an.",
+        reveal_opponent_hand=True,
     ),
     CardTemplate(
         template_id="air_sturmfalke",
         name="Sturmfalke",
         cost=CardCost(resources=4),
-        aw=3,
-        vw=3,
+        aw=2,
+        vw=2,
         element=Element.AIR,
+        rules_text="Beim Ausspielen wirft der Gegner 1 Handkarte ab.",
+        discard_opponent_on_play=1,
     ),
     CardTemplate(
         template_id="air_boeenreiter",
@@ -40,7 +68,7 @@ AIR_CREATURES = [
     CardTemplate(
         template_id="air_windklinge",
         name="Windklinge",
-        cost=CardCost(resources=4, recycle=1),
+        cost=CardCost(resources=2, recycle=1),
         aw=4,
         vw=2,
         element=Element.AIR,
@@ -50,7 +78,7 @@ AIR_CREATURES = [
         template_id="air_wolkenwaechter",
         name="Wolkenwächter",
         cost=CardCost(resources=3),
-        aw=2,
+        aw=1,
         vw=2,
         element=Element.AIR,
         abilities=frozenset({Ability.VIGILANCE}),
@@ -59,7 +87,7 @@ AIR_CREATURES = [
         template_id="air_himmelsgreif",
         name="Himmelsgreif",
         cost=CardCost(resources=5, recycle=1),
-        aw=4,
+        aw=3,
         vw=4,
         element=Element.AIR,
         abilities=frozenset({Ability.VIGILANCE}),

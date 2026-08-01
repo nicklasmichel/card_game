@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from ai_logic import SimpleAI
 from cards import build_card_templates, build_test_deck
 from cards.registry import get_deck_templates
-from config import AI_DECK_NAME, ENABLE_MULLIGAN, GAME_MODE, HUMAN_DECK_NAME
+from config import AI_DECK_NAME, ENABLE_MULLIGAN, GAME_MODE, HUMAN_DECK_NAME, STARTING_HAND_SIZE
 from models import (
     Ability,
     BattlefieldCreature,
@@ -19,9 +19,11 @@ from models import (
     DiceRoundRecord,
     Element,
     PendingComparison,
+    PendingForcedDiscard,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_SUMMONING,
     PHASE_MULLIGAN,
@@ -106,6 +108,7 @@ class GameEngine:
         self.pending_order: Optional[PendingBlockOrder] = None
         self.pending_dice_battle: Optional[PendingDiceBattle] = None
         self.pending_recycle_payment: Optional[PendingRecyclePayment] = None
+        self.pending_forced_discard: Optional[PendingForcedDiscard] = None
         self.combat_queue: List[int] = []
         self.current_attack_index = 0
         self.current_blocker_order: List[int] = []
@@ -219,10 +222,11 @@ class GameEngine:
             player.discard_pile.clear()
             player.battlefield.clear()
             player.resources.clear()
-            player.resource_played_this_turn = False
+            player.resources_played_this_turn = 0
+            player.summoner_tapped = False
             player.turns_started = 0
             player.mulligan_used = False
-            for _ in range(5):
+            for _ in range(STARTING_HAND_SIZE):
                 drawn = player.draw_card()
                 if drawn is not None:
                     continue
@@ -255,7 +259,8 @@ class GameEngine:
             player.discard_pile.clear()
             player.battlefield.clear()
             player.resources.clear()
-            player.resource_played_this_turn = False
+            player.resources_played_this_turn = 0
+            player.summoner_tapped = False
             player.turns_started = 0
             player.mulligan_used = False
 
@@ -346,7 +351,7 @@ class GameEngine:
         else:
             self.log(f"{player.name} ist Startspieler und zieht im ersten Zug keine Karte.")
         player.turns_started += 1
-        player.resource_played_this_turn = False
+        player.resources_played_this_turn = 0
         self.phase = PHASE_RESOURCE
         self.selected_hand_ids.clear()
         self.selected_attackers.clear()
@@ -365,6 +370,7 @@ class GameEngine:
         self.pending_order = None
         self.pending_dice_battle = None
         self.pending_recycle_payment = None
+        self.pending_forced_discard = None
         self.combat_queue = []
         self.current_attack_index = 0
         self.current_blocker_order = []
@@ -379,6 +385,140 @@ class GameEngine:
             for creature in player.battlefield
             if creature.is_ready() and not getattr(creature, "cannot_block", False)
         ]
+
+    def choose_cards_to_discard_for_ai(self, player: PlayerState, count: int) -> List[CardInstance]:
+        if count <= 0 or not player.hand:
+            return []
+        return sorted(
+            player.hand,
+            key=lambda card: (
+                card.template.cost.total_value,
+                card.template.aw + card.template.vw,
+                len(card.template.abilities),
+            ),
+        )[:count]
+
+    def discard_cards(self, player: PlayerState, cards: List[CardInstance], source_card_name: str) -> None:
+        if not cards:
+            return
+        card_ids = {card.instance_id for card in cards}
+        player.hand = [card for card in player.hand if card.instance_id not in card_ids]
+        player.discard_pile.extend(cards)
+        discarded_names = ", ".join(card.template.name for card in cards)
+        self.log(f"{player.name} wirft durch {source_card_name} ab: {discarded_names}.")
+
+    def begin_forced_discard(self, target_player: PlayerState, count: int, source_card_name: str, return_phase: str) -> bool:
+        required_count = min(count, len(target_player.hand))
+        if required_count <= 0:
+            return False
+        if not target_player.is_human:
+            cards = self.choose_cards_to_discard_for_ai(target_player, required_count)
+            self.discard_cards(target_player, cards, source_card_name)
+            return False
+        self.pending_forced_discard = PendingForcedDiscard(
+            target_player_id=target_player.player_id,
+            required_count=required_count,
+            selected_card_ids=[],
+            source_card_name=source_card_name,
+            return_phase=return_phase,
+        )
+        self.phase = PHASE_FORCED_DISCARD
+        self.selected_hand_ids.clear()
+        self.log(f"Wähle {required_count} Handkarte(n), die du durch {source_card_name} abwerfen musst.")
+        return True
+
+    def toggle_forced_discard_selection(self, card_id: int) -> None:
+        pending = self.pending_forced_discard
+        if pending is None or self.phase != PHASE_FORCED_DISCARD:
+            return
+        if pending.target_player_id != self.human_player.player_id:
+            return
+        if not any(card.instance_id == card_id for card in self.human_player.hand):
+            return
+        if card_id in pending.selected_card_ids:
+            pending.selected_card_ids.remove(card_id)
+        elif len(pending.selected_card_ids) < pending.required_count:
+            pending.selected_card_ids.append(card_id)
+        else:
+            self.log("Es wurden bereits genug Handkarten zum Abwerfen ausgewählt.")
+            return
+        self.selected_hand_ids = list(pending.selected_card_ids)
+
+    def confirm_forced_discard(self) -> None:
+        pending = self.pending_forced_discard
+        if pending is None or self.phase != PHASE_FORCED_DISCARD:
+            return
+        if pending.target_player_id != self.human_player.player_id:
+            return
+        if len(pending.selected_card_ids) != pending.required_count:
+            self.log("Wähle genau die benötigte Anzahl an Handkarten zum Abwerfen.")
+            return
+        cards = [
+            card
+            for card in self.human_player.hand
+            if card.instance_id in pending.selected_card_ids
+        ]
+        if len(cards) != pending.required_count:
+            self.log("Mindestens eine ausgewählte Handkarte ist nicht mehr verfügbar.")
+            return
+        self.discard_cards(self.human_player, cards, pending.source_card_name)
+        self.pending_forced_discard = None
+        self.selected_hand_ids.clear()
+        self.phase = pending.return_phase
+        if self.active_player.is_human:
+            self.auto_advance_human_summoning_phase_if_needed()
+
+    def resolve_end_of_turn_returns(self, player: PlayerState) -> None:
+        returning = [
+            creature
+            for creature in player.battlefield
+            if getattr(creature, "return_to_deck_end_of_turn", False)
+        ]
+        if not returning:
+            return
+        returning_ids = {creature.unit_id for creature in returning}
+        player.battlefield = [
+            creature for creature in player.battlefield if creature.unit_id not in returning_ids
+        ]
+        for creature in returning:
+            player.deck.append(CardInstance(self.make_instance_id(), self.templates[creature.template_id]))
+        self.rng.shuffle(player.deck)
+        names = ", ".join(creature.name for creature in returning)
+        self.log(f"{names} wird/werden am Ende des Zuges zurück ins Deck gemischt.")
+
+    def can_activate_summoner_draw(self, player: PlayerState) -> bool:
+        return (
+            player == self.active_player
+            and player.is_human
+            and self.phase in {PHASE_RESOURCE, PHASE_SUMMONING}
+            and not player.summoner_tapped
+            and bool(player.deck)
+            and self.pending_recycle_payment is None
+            and self.pending_forced_discard is None
+        )
+
+    def activate_summoner_draw(self, player: PlayerState) -> bool:
+        if player != self.active_player:
+            return False
+        if player.summoner_tapped:
+            self.log("Der Beschwörer ist bereits getappt.")
+            return False
+        if self.phase not in {PHASE_RESOURCE, PHASE_SUMMONING}:
+            self.log("Der Beschwörer kann gerade nicht aktiviert werden.")
+            return False
+        if not player.deck:
+            self.log("Es kann keine Karte gezogen werden.")
+            return False
+        player.summoner_tapped = True
+        drawn = player.draw_card()
+        if drawn is not None:
+            self.statistics.register_draw(player.player_id)
+            if drawn.was_recycled:
+                self.statistics.register_recycled_card_drawn(player.player_id)
+            self.log(f"{player.name} tappt den Beschwörer und zieht eine Karte.")
+            return True
+        self.log("Es kann keine Karte gezogen werden.")
+        return False
 
     def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
         return any(self.can_play_card(player, card) for card in player.hand)
@@ -651,6 +791,22 @@ class GameEngine:
             self.check_for_game_over()
             if self.phase == PHASE_GAME_OVER:
                 return True
+        self.begin_forced_discard(
+            self.active_player,
+            card.template.discard_self_on_play,
+            card.template.name,
+            PHASE_SUMMONING,
+        )
+        if self.phase == PHASE_FORCED_DISCARD:
+            return True
+        self.begin_forced_discard(
+            self.defending_player,
+            card.template.discard_opponent_on_play,
+            card.template.name,
+            PHASE_SUMMONING,
+        )
+        if self.phase == PHASE_FORCED_DISCARD:
+            return True
         if recycled_templates:
             recycled_names = ", ".join(self.templates[template_id].name for template_id in recycled_templates)
             self.log(f"Recycle aufgedeckt und zurück ins Deck gemischt: {recycled_names}.")
@@ -668,6 +824,9 @@ class GameEngine:
 
     def toggle_hand_card(self, card_id: int) -> None:
         if self.pending_recycle_payment is not None:
+            return
+        if self.phase == PHASE_FORCED_DISCARD:
+            self.toggle_forced_discard_selection(card_id)
             return
         if self.phase == PHASE_MULLIGAN:
             if card_id in self.selected_hand_ids:
@@ -698,6 +857,7 @@ class GameEngine:
             PHASE_DECLARE_BLOCKERS,
             PHASE_ORDER_BLOCKERS,
             PHASE_DICE_BATTLE,
+            PHASE_FORCED_DISCARD,
         }
         if self.phase == PHASE_GAME_OVER or (not self.active_player.is_human and self.phase not in human_response_phases):
             return
@@ -712,6 +872,8 @@ class GameEngine:
             self.confirm_recycle_payment()
         elif action == "cancel_recycle":
             self.cancel_recycle_payment()
+        elif action == "confirm_forced_discard":
+            self.confirm_forced_discard()
         elif action == "to_combat":
             self.begin_attack_declaration()
         elif action == "confirm_attackers":
@@ -754,6 +916,14 @@ class GameEngine:
             self.log("Zeit abgelaufen. Recycle-Auswahl wurde abgebrochen.")
             self.cancel_recycle_payment()
             return
+        if self.phase == PHASE_FORCED_DISCARD and self.pending_forced_discard is not None:
+            required = self.pending_forced_discard.required_count
+            chosen = self.human_player.hand[:required]
+            self.pending_forced_discard.selected_card_ids = [card.instance_id for card in chosen]
+            self.selected_hand_ids = list(self.pending_forced_discard.selected_card_ids)
+            self.log("Zeit abgelaufen. Handkarten wurden automatisch abgeworfen.")
+            self.confirm_forced_discard()
+            return
         if self.phase == PHASE_DECLARE_ATTACKERS and self.active_player.is_human:
             self.log("Zeit abgelaufen. Kein Angriff deklariert.")
             self.confirm_attackers()
@@ -763,7 +933,7 @@ class GameEngine:
             self.finish_block_assignment()
 
     def play_selected_card_as_resource(self) -> None:
-        if self.phase != PHASE_RESOURCE or self.active_player.resource_played_this_turn:
+        if self.phase != PHASE_RESOURCE or self.active_player.resources_played_this_turn >= 2:
             return
         card = self.get_selected_hand_card()
         if card is None:
@@ -772,7 +942,7 @@ class GameEngine:
         self.play_hand_card_as_resource(card.instance_id)
 
     def play_hand_card_as_resource(self, card_id: int) -> None:
-        if self.phase != PHASE_RESOURCE or self.active_player.resource_played_this_turn or not self.active_player.is_human:
+        if self.phase != PHASE_RESOURCE or self.active_player.resources_played_this_turn >= 2 or not self.active_player.is_human:
             return
         card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
         if card is None:
@@ -782,11 +952,12 @@ class GameEngine:
             existing for existing in self.active_player.hand if existing.instance_id != card.instance_id
         ]
         self.active_player.resources.append(ResourceCard(template=card.template, resource_id=card.instance_id))
-        self.active_player.resource_played_this_turn = True
+        self.active_player.resources_played_this_turn += 1
         self.selected_hand_ids.clear()
         self.statistics.register_resource_played(self.active_player.player_id)
         self.log(f"{self.active_player.name} legt {card.template.name} als Ressource.")
-        self.enter_summoning_phase()
+        if self.active_player.resources_played_this_turn >= 2:
+            self.enter_summoning_phase()
 
     def play_selected_creature_card(self) -> None:
         if self.phase != PHASE_SUMMONING:

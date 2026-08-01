@@ -9,6 +9,7 @@ from models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
@@ -25,20 +26,33 @@ def process_ai_turn(self) -> None:
     ai_block_decision = self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human
     if self.active_player.is_human and not ai_block_decision:
         return
-    if self.phase in {PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE, PHASE_RECYCLE_PAYMENT}:
+    if self.phase in {PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE, PHASE_RECYCLE_PAYMENT, PHASE_FORCED_DISCARD}:
         return
     if not self.ai_turn_initialized:
         self.ai_turn_initialized = True
 
     if self.phase == PHASE_RESOURCE:
-        self.ai_play_resource()
+        if not self.active_player.summoner_tapped and self.active_player.deck:
+            self.active_player.summoner_tapped = True
+            drawn = self.active_player.draw_card()
+            if drawn is not None:
+                self.statistics.register_draw(self.active_player.player_id)
+                if drawn.was_recycled:
+                    self.statistics.register_recycled_card_drawn(self.active_player.player_id)
+                self.log("Gegner tappt den Beschwörer und zieht eine Karte.")
+        while self.active_player.resources_played_this_turn < 2:
+            chosen = self.ai.choose_resource_card(self.active_player)
+            if chosen is None:
+                break
+            self.ai_play_resource()
         self.phase = PHASE_SUMMONING
         self.log("Gegner wechselt in die Beschwörungsphase.")
         return
 
     if self.phase == PHASE_SUMMONING:
         self.ai_play_creatures()
-        self.begin_attack_declaration()
+        if self.phase == PHASE_SUMMONING:
+            self.begin_attack_declaration()
         return
 
     if self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
@@ -59,7 +73,7 @@ def ai_play_resource(self) -> None:
         card for card in self.active_player.hand if card.instance_id != chosen.instance_id
     ]
     self.active_player.resources.append(ResourceCard(template=chosen.template, resource_id=chosen.instance_id))
-    self.active_player.resource_played_this_turn = True
+    self.active_player.resources_played_this_turn += 1
     self.statistics.register_resource_played(self.active_player.player_id)
     self.log(f"Gegner legt {chosen.template.name} als Ressource.")
 
@@ -73,6 +87,8 @@ def ai_play_creatures(self) -> None:
         if len(recycle_ids) != chosen.template.recycle_cost:
             break
         if not self.resolve_creature_play(chosen, recycle_ids):
+            break
+        if self.phase != PHASE_SUMMONING:
             break
 
 
@@ -95,6 +111,9 @@ def ai_declare_attackers(self) -> None:
 
 
 def handle_click(self, area: str, item_id: int) -> None:
+    if area == "player_summoner":
+        self.activate_summoner_draw(self.human_player)
+        return
     if area == "hand":
         self.toggle_hand_card(item_id)
         return
@@ -118,6 +137,10 @@ def handle_click(self, area: str, item_id: int) -> None:
 
 
 def end_turn(self) -> None:
+    self.check_for_game_over()
+    if self.phase == PHASE_GAME_OVER:
+        return
+    self.resolve_end_of_turn_returns(self.active_player)
     self.check_for_game_over()
     if self.phase == PHASE_GAME_OVER:
         return
@@ -172,7 +195,7 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_MULLIGAN:
         return "Wähle Karten für den Mulligan oder behalte die Starthand."
     if self.phase == PHASE_RESOURCE:
-        return "Lege optional eine Ressource und gehe dann in die Beschwörungsphase."
+        return "Lege bis zu 2 Handkarten als Ressource."
     if self.phase == PHASE_SUMMONING:
         return "Spiele Kreaturen aus, beginne den Kampf oder beende den Zug."
     if self.phase == PHASE_RECYCLE_PAYMENT:
@@ -181,7 +204,18 @@ def current_prompt(self) -> str:
             return "Wähle Recycle-Ressourcen aus."
         card = next((existing for existing in self.active_player.hand if existing.instance_id == pending.card_instance_id), None)
         card_name = card.template.name if card is not None else "die Karte"
-        return f"Wähle {pending.required_count} Ressourcen für {card_name}. Ausgewählt: {len(pending.selected_resource_ids)}/{pending.required_count}."
+        return (
+            f"Wähle {pending.required_count} Ressourcen für {card_name}. "
+            f"Ausgewählt: {len(pending.selected_resource_ids)}/{pending.required_count}."
+        )
+    if self.phase == PHASE_FORCED_DISCARD:
+        pending = self.pending_forced_discard
+        if pending is None:
+            return "Wähle Handkarten zum Abwerfen."
+        return (
+            f"Wähle {pending.required_count} Handkarte(n) für {pending.source_card_name}. "
+            f"Ausgewählt: {len(pending.selected_card_ids)}/{pending.required_count}."
+        )
     if self.phase == PHASE_DECLARE_ATTACKERS:
         return "Wähle Angreifer und bestätige."
     if self.phase == PHASE_DECLARE_BLOCKERS:
@@ -210,6 +244,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
         PHASE_ORDER_BLOCKERS,
         PHASE_DICE_BATTLE,
         PHASE_RECYCLE_PAYMENT,
+        PHASE_FORCED_DISCARD,
     }
     if not self.active_player.is_human and self.phase not in human_response_phases:
         return []
@@ -227,6 +262,12 @@ def get_button_specs(self) -> List[ButtonSpec]:
         )
         buttons.append(ButtonSpec("Recycle bestätigen", ready, "confirm_recycle"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_recycle"))
+    elif self.phase == PHASE_FORCED_DISCARD:
+        ready = (
+            self.pending_forced_discard is not None
+            and len(self.pending_forced_discard.selected_card_ids) == self.pending_forced_discard.required_count
+        )
+        buttons.append(ButtonSpec("Abwurf bestätigen", ready, "confirm_forced_discard"))
     elif self.phase == PHASE_DECLARE_ATTACKERS:
         attacker_count = len(self.selected_attackers)
         attack_label = "Angriff überspringen" if attacker_count <= 0 else f"{attacker_count} Angreifer bestätigen"

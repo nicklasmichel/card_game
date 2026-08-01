@@ -33,6 +33,8 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_infernodrache", 1),
     ],
     "air": [
+        ("air_windhuscher", 2),
+        ("air_boeengeist", 2),
         ("air_windgeist", 3),
         ("air_himmelsspaeher", 3),
         ("air_sturmfalke", 3),

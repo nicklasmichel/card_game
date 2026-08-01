@@ -18,6 +18,8 @@ class BattlefieldCreature:
     element: Element
     abilities: frozenset[Ability]
     rules_text: str
+    reveal_opponent_hand: bool
+    return_to_deck_end_of_turn: bool
     cannot_block: bool
     current_hp: int
     tapped: bool = True
@@ -36,6 +38,8 @@ class BattlefieldCreature:
             element=card.template.element,
             abilities=card.template.abilities,
             rules_text=card.template.rules_text,
+            reveal_opponent_hand=card.template.reveal_opponent_hand,
+            return_to_deck_end_of_turn=card.template.return_to_deck_end_of_turn,
             cannot_block=card.template.cannot_block,
             current_hp=card.template.vw,
             tapped=not has_haste,
@@ -77,7 +81,8 @@ class PlayerState:
     discard_pile: List[CardInstance] = field(default_factory=list)
     battlefield: List[BattlefieldCreature] = field(default_factory=list)
     resources: List[ResourceCard] = field(default_factory=list)
-    resource_played_this_turn: bool = False
+    resources_played_this_turn: int = 0
+    summoner_tapped: bool = False
     turns_started: int = 0
     mulligan_used: bool = False
 
@@ -89,7 +94,8 @@ class PlayerState:
                 creature.current_hp = min(creature.vw, creature.current_hp + 1)
             creature.tapped = False
             creature.summoning_sick = False
-        self.resource_played_this_turn = False
+        self.resources_played_this_turn = 0
+        self.summoner_tapped = False
 
     def draw_card(self) -> Optional[CardInstance]:
         if not self.deck:

@@ -51,7 +51,7 @@ class SimpleAI:
         return [index for index, card in enumerate(hand) if card.template.cost.total_value >= 5]
 
     def choose_resource_card(self, player: PlayerState) -> Optional[CardInstance]:
-        if player.resource_played_this_turn or not player.hand:
+        if player.resources_played_this_turn >= 2 or not player.hand:
             return None
         affordable = player.available_resources()
         return max(

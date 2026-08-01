@@ -9,6 +9,7 @@ from models import (
     CardInstance,
     CombatUnitSnapshot,
     DieResult,
+    PHASE_FORCED_DISCARD,
     PHASE_RESOURCE,
     PHASE_RECYCLE_PAYMENT,
     PHASE_SUMMONING,
@@ -382,6 +383,94 @@ class ElementalCombatTests(unittest.TestCase):
         self.assertEqual(self.engine.ai_player.life, 17)
         self.assertEqual(len(self.engine.pending_visual_events), 2)
         self.assertTrue(all(event["type"] == "player_damage" for event in self.engine.pending_visual_events[-2:]))
+
+    def test_windgeist_forces_human_discard_selection_on_play(self) -> None:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_windgeist"])
+        spare = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"])
+        self.engine.human_player.hand = [card, spare]
+        self.engine.human_player.resources = [
+            self.make_resource("fire_funkenkobold"),
+            self.make_resource("water_wassertropfen"),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        played = self.engine.resolve_creature_play(card)
+
+        self.assertTrue(played)
+        self.assertEqual(self.engine.phase, PHASE_FORCED_DISCARD)
+        self.assertIsNotNone(self.engine.pending_forced_discard)
+        self.assertEqual(self.engine.pending_forced_discard.required_count, 1)
+
+    def test_sturmfalke_forces_ai_to_discard_one_card_on_play(self) -> None:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_sturmfalke"])
+        self.engine.human_player.hand = [card]
+        self.engine.human_player.resources = [
+            self.make_resource("fire_funkenkobold"),
+            self.make_resource("water_wassertropfen"),
+            self.make_resource("earth_steinkobold"),
+            self.make_resource("air_windgeist"),
+        ]
+        self.engine.ai_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["water_wassertropfen"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        played = self.engine.resolve_creature_play(card)
+
+        self.assertTrue(played)
+        self.assertEqual(len(self.engine.ai_player.hand), 1)
+        self.assertEqual(len(self.engine.ai_player.discard_pile), 1)
+
+    def test_windhuscher_returns_to_deck_at_end_of_turn(self) -> None:
+        creature = self.make_creature("air_windhuscher", owner_id=0)
+        self.engine.human_player.deck = []
+
+        self.engine.resolve_end_of_turn_returns(self.engine.human_player)
+
+        self.assertEqual(len(self.engine.human_player.battlefield), 0)
+        self.assertEqual(len(self.engine.human_player.deck), 1)
+        self.assertEqual(self.engine.human_player.deck[0].template.template_id, "air_windhuscher")
+
+    def test_human_can_play_two_resources_in_resource_phase(self) -> None:
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"])
+        second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_wassertropfen"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_steinkobold"])
+        self.engine.human_player.hand = [first, second, third]
+        self.engine.phase = PHASE_RESOURCE
+
+        self.engine.play_hand_card_as_resource(first.instance_id)
+        self.assertEqual(self.engine.phase, PHASE_RESOURCE)
+        self.assertEqual(self.engine.human_player.resources_played_this_turn, 1)
+        self.assertEqual(len(self.engine.human_player.resources), 1)
+
+        self.engine.play_hand_card_as_resource(second.instance_id)
+        self.assertEqual(self.engine.phase, PHASE_SUMMONING)
+        self.assertEqual(self.engine.human_player.resources_played_this_turn, 2)
+        self.assertEqual(len(self.engine.human_player.resources), 2)
+
+        self.engine.phase = PHASE_RESOURCE
+        self.engine.play_hand_card_as_resource(third.instance_id)
+        self.assertEqual(len(self.engine.human_player.resources), 2)
+
+    def test_summoner_can_tap_to_draw_once_per_turn(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"])
+        ]
+        self.engine.human_player.hand = []
+        self.engine.human_player.summoner_tapped = False
+        self.engine.phase = PHASE_RESOURCE
+
+        activated = self.engine.activate_summoner_draw(self.engine.human_player)
+
+        self.assertTrue(activated)
+        self.assertTrue(self.engine.human_player.summoner_tapped)
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+
+        second_activation = self.engine.activate_summoner_draw(self.engine.human_player)
+
+        self.assertFalse(second_activation)
+        self.assertEqual(len(self.engine.human_player.hand), 1)
 
     def make_resource(self, template_id: str) -> ResourceCard:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates[template_id])

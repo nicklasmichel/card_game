@@ -33,6 +33,10 @@ class CardTemplate:
     rules_text: str = ""
     self_damage_on_play: int = 0
     opponent_damage_on_play: int = 0
+    discard_self_on_play: int = 0
+    discard_opponent_on_play: int = 0
+    reveal_opponent_hand: bool = False
+    return_to_deck_end_of_turn: bool = False
     cannot_block: bool = False
 
     def has_ability(self, ability: Ability) -> bool:
@@ -66,3 +70,12 @@ class PendingRecyclePayment:
     card_instance_id: int
     required_count: int
     selected_resource_ids: list[int]
+
+
+@dataclass
+class PendingForcedDiscard:
+    target_player_id: int
+    required_count: int
+    selected_card_ids: list[int]
+    source_card_name: str
+    return_phase: str

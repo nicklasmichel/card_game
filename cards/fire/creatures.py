@@ -31,6 +31,9 @@ FIRE_CREATURES = [
         aw=2,
         vw=1,
         element=Element.FIRE,
+        rules_text="Beim Ausspielen erleiden beide Spieler 1 Schaden.",
+        self_damage_on_play=1,
+        opponent_damage_on_play=1,
     ),
     CardTemplate(
         template_id="fire_flammenrekrut",
@@ -65,7 +68,7 @@ FIRE_CREATURES = [
     CardTemplate(
         template_id="fire_flammenmagier",
         name="Flammenmagier",
-        cost=CardCost(resources=3, recycle=2),
+        cost=CardCost(resources=2, recycle=2),
         aw=3,
         vw=3,
         element=Element.FIRE,
@@ -85,7 +88,7 @@ FIRE_CREATURES = [
         name="Magmabestie",
         cost=CardCost(resources=5, recycle=2),
         aw=5,
-        vw=3,
+        vw=4,
         element=Element.FIRE,
         abilities=frozenset({Ability.TRAMPLE}),
     ),
