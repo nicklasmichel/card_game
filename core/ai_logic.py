@@ -3,7 +3,7 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from models import Ability, BattlefieldCreature, CardCost, CardInstance, DieResult, PlayerState
+from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, DieResult, PlayerState
 
 
 class RandomDieStrategy:

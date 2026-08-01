@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from models import (
+from core.models import (
     Ability,
     BattlefieldCreature,
     ButtonSpec,

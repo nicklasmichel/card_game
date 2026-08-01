@@ -2,16 +2,13 @@
 
 import math
 import os
-from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
 import pygame
 
-from game_logic import GameEngine
-from models import (
+from core.game_logic import GameEngine
+from core.models import (
     ButtonSpec,
-    CardInstance,
-    Element,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -50,6 +47,7 @@ from ui.card_rendering import (
     draw_playfield_section_box,
     draw_resource_card,
     draw_summoner_card,
+    draw_summoner_footer,
     draw_summoner_life_circle,
     fit_text,
     get_ability_names,
@@ -60,7 +58,23 @@ from ui.card_rendering import (
     get_target_at_position,
     wrap_text,
 )
-from ui.input import handle_mouse_click, handle_mouse_down, handle_mouse_motion, handle_mouse_up
+from ui.assets import (
+    build_preview_creature_surface,
+    build_preview_deck_surface,
+    build_preview_hand_card_surface,
+    build_preview_hidden_hand_surface,
+    build_preview_resource_surface,
+    build_preview_summoner_surface,
+    build_recycle_reveal_surfaces,
+    draw_card_preview_overlay,
+    handle_preview_start,
+    handle_preview_stop,
+    load_creature_art_images,
+    load_resource_back_images,
+    load_summoner_images,
+    load_ui_symbol_images,
+    render_scaled_card_surface,
+)
 from ui.layout import (
     blit_text,
     draw_arrowhead,
@@ -90,24 +104,30 @@ from ui.overlays import (
     draw_game_over_overlay,
     draw_mulligan_overlay,
 )
-from ui.style import (
-    AI_THINK_DURATION_MS,
-    BG_COLOR,
-    BUTTON_COLOR,
-    BUTTON_DISABLED,
-    CARD_BORDER,
-    ENEMY_CARD_COLOR,
-    FPS,
-    HIGHLIGHT,
-    HUMAN_THINK_DURATION_MS,
-    MUTED_TEXT,
-    OVERLAY_COLOR,
-    PANEL_COLOR,
-    SECTION_COLOR,
-    TEXT_COLOR,
-    WINDOW_HEIGHT,
-    WINDOW_WIDTH,
+from ui.runtime import (
+    draw,
+    get_decision_duration_ms,
+    get_decision_marker,
+    get_think_progress,
+    handle_mouse_click,
+    handle_mouse_down,
+    handle_mouse_motion,
+    handle_mouse_up,
+    handle_ui_action,
+    is_timed_decision_ready,
+    process_timed_decision,
+    run,
+    update_decision_timer,
 )
+from ui.visuals import (
+    consume_visual_events,
+    draw_combat_damage_popups,
+    draw_creature_overlays,
+    draw_damage_popups,
+    draw_recycle_reveals,
+    prune_finished_visuals,
+)
+from ui.style import AI_THINK_DURATION_MS, HUMAN_THINK_DURATION_MS
 
 
 class TcgPrototypeApp:
@@ -118,6 +138,7 @@ class TcgPrototypeApp:
     draw_dragged_card = draw_dragged_card
     draw_resource_card = draw_resource_card
     draw_summoner_card = draw_summoner_card
+    draw_summoner_footer = draw_summoner_footer
     draw_summoner_life_circle = draw_summoner_life_circle
     draw_card_badge = draw_card_badge
     draw_creature_card = draw_creature_card
@@ -146,10 +167,6 @@ class TcgPrototypeApp:
     can_drag_hand_card_to_creature = can_drag_hand_card_to_creature
     can_drop_on_creature_area = can_drop_on_creature_area
     clear_drag_state = clear_drag_state
-    handle_mouse_down = handle_mouse_down
-    handle_mouse_up = handle_mouse_up
-    handle_mouse_motion = handle_mouse_motion
-    handle_mouse_click = handle_mouse_click
     draw_enemy_area = draw_enemy_area
     draw_player_area = draw_player_area
     draw_combat_links = draw_combat_links
@@ -175,6 +192,40 @@ class TcgPrototypeApp:
     draw_game_over_overlay = draw_game_over_overlay
     blit_text = blit_text
     draw_section_box = draw_section_box
+    load_resource_back_images = load_resource_back_images
+    load_summoner_images = load_summoner_images
+    load_ui_symbol_images = load_ui_symbol_images
+    load_creature_art_images = load_creature_art_images
+    render_scaled_card_surface = render_scaled_card_surface
+    build_preview_hand_card_surface = build_preview_hand_card_surface
+    build_preview_hidden_hand_surface = build_preview_hidden_hand_surface
+    build_preview_resource_surface = build_preview_resource_surface
+    build_preview_deck_surface = build_preview_deck_surface
+    build_preview_creature_surface = build_preview_creature_surface
+    build_preview_summoner_surface = build_preview_summoner_surface
+    build_recycle_reveal_surfaces = build_recycle_reveal_surfaces
+    handle_preview_start = handle_preview_start
+    handle_preview_stop = handle_preview_stop
+    draw_card_preview_overlay = draw_card_preview_overlay
+    consume_visual_events = consume_visual_events
+    prune_finished_visuals = prune_finished_visuals
+    draw_damage_popups = draw_damage_popups
+    draw_combat_damage_popups = draw_combat_damage_popups
+    draw_creature_overlays = draw_creature_overlays
+    draw_recycle_reveals = draw_recycle_reveals
+    run = run
+    get_decision_marker = get_decision_marker
+    update_decision_timer = update_decision_timer
+    get_decision_duration_ms = get_decision_duration_ms
+    is_timed_decision_ready = is_timed_decision_ready
+    process_timed_decision = process_timed_decision
+    get_think_progress = get_think_progress
+    handle_ui_action = handle_ui_action
+    handle_mouse_down = handle_mouse_down
+    handle_mouse_up = handle_mouse_up
+    handle_mouse_motion = handle_mouse_motion
+    handle_mouse_click = handle_mouse_click
+    draw = draw
 
     def __init__(self) -> None:
         os.environ["SDL_VIDEO_CENTERED"] = "1"
@@ -251,250 +302,6 @@ class TcgPrototypeApp:
             "player_resources": [],
         }
 
-    def load_resource_back_images(self) -> dict[str, pygame.Surface]:
-        resources_dir = Path(__file__).resolve().parent.parent / "ressources"
-        image_map: dict[str, pygame.Surface] = {}
-        for name in ("fire", "water", "earth", "air"):
-            image_path = resources_dir / f"{name}.png"
-            if image_path.exists():
-                image_map[name] = pygame.image.load(str(image_path)).convert_alpha()
-        return image_map
-
-    def load_summoner_images(self) -> dict[str, pygame.Surface]:
-        resources_dir = Path(__file__).resolve().parent.parent / "ressources"
-        image_map: dict[str, pygame.Surface] = {}
-        for name in ("fire", "water", "earth", "air"):
-            image_path = resources_dir / f"{name}_summoner.png"
-            if image_path.exists():
-                image_map[name] = pygame.image.load(str(image_path)).convert_alpha()
-        return image_map
-
-    def load_ui_symbol_images(self) -> dict[str, pygame.Surface]:
-        resources_dir = Path(__file__).resolve().parent.parent / "ressources"
-        image_map: dict[str, pygame.Surface] = {}
-        for name in (
-            "creature_symbol",
-            "sword_symbol",
-            "shield_symbol",
-            "fire_symbol",
-            "water_symbol",
-            "earth_symbol",
-            "air_symbol",
-        ):
-            image_path = resources_dir / f"{name}.png"
-            if image_path.exists():
-                image_map[name] = pygame.image.load(str(image_path)).convert_alpha()
-        return image_map
-
-    def load_creature_art_images(self) -> dict[str, pygame.Surface]:
-        image_map: dict[str, pygame.Surface] = {}
-        base_dir = Path(__file__).resolve().parent.parent / "ressources"
-        for folder_name in ("fire_creatures", "water_creatures", "earth_creatures", "air_creatures"):
-            resources_dir = base_dir / folder_name
-            if not resources_dir.exists():
-                continue
-            for image_path in resources_dir.glob("*.png"):
-                image_map[image_path.stem] = pygame.image.load(str(image_path)).convert_alpha()
-        return image_map
-
-
-    def run(self) -> None:
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    running = False
-                elif event.type == pygame.MOUSEWHEEL:
-                    self.handle_log_scroll(-event.y * 36)
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    self.handle_mouse_down(event.pos)
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                    self.handle_preview_start(event.pos)
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    self.handle_mouse_up(event.pos)
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
-                    self.handle_preview_stop()
-                elif event.type == pygame.MOUSEMOTION:
-                    self.handle_mouse_motion(event.pos)
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
-                    direction = -36 if event.button == 4 else 36
-                    self.handle_log_scroll(direction)
-
-            self.consume_visual_events()
-            if not self.paused:
-                self.update_decision_timer()
-                if self.is_timed_decision_ready():
-                    self.process_timed_decision()
-            self.engine.auto_resolve_human_no_blockers_if_needed()
-            self.engine.resolve_stalled_dice_battle_if_needed()
-            if self.engine.exit_requested:
-                running = False
-            self.draw()
-            self.clock.tick_busy_loop(FPS)
-
-        pygame.quit()
-
-    def get_decision_marker(self) -> tuple[int, str, str] | None:
-        if self.engine.phase == PHASE_MULLIGAN:
-            return (self.engine.human_player.player_id, self.engine.phase, "mulligan")
-        if self.engine.phase == PHASE_GAME_OVER:
-            return None
-        if self.engine.phase == PHASE_RESOURCE:
-            return (self.engine.active_player.player_id, self.engine.phase, "resource")
-        if self.engine.phase == PHASE_SUMMONING:
-            return (self.engine.active_player.player_id, self.engine.phase, "summoning")
-        if self.engine.phase == PHASE_RECYCLE_PAYMENT:
-            return (self.engine.active_player.player_id, self.engine.phase, "recycle")
-        if self.engine.phase == PHASE_FORCED_DISCARD:
-            return (self.engine.human_player.player_id, self.engine.phase, "forced_discard")
-        if self.engine.phase == PHASE_DECLARE_ATTACKERS:
-            return (self.engine.active_player.player_id, self.engine.phase, "attackers")
-        if self.engine.phase == PHASE_DECLARE_BLOCKERS and self.engine.defending_player.is_human:
-            return (self.engine.human_player.player_id, self.engine.phase, "blockers")
-        if self.engine.phase == PHASE_DECLARE_BLOCKERS and not self.engine.defending_player.is_human:
-            return (self.engine.defending_player.player_id, self.engine.phase, "blocks_ai")
-        return None
-
-    def update_decision_timer(self, force_reset: bool = False) -> None:
-        marker = self.get_decision_marker()
-        if force_reset or marker != self.decision_marker:
-            self.decision_marker = marker
-            self.decision_started_at_ms = pygame.time.get_ticks()
-
-    def get_decision_duration_ms(self, marker: tuple[int, str, str] | None) -> int:
-        if marker is None:
-            return 0
-        if marker[0] == self.engine.human_player.player_id:
-            return self.human_think_duration_ms
-        return self.ai_think_duration_ms
-
-    def is_timed_decision_ready(self) -> bool:
-        marker = self.get_decision_marker()
-        if marker is None:
-            return False
-        elapsed = pygame.time.get_ticks() - self.decision_started_at_ms
-        return elapsed >= self.get_decision_duration_ms(marker)
-
-    def process_timed_decision(self) -> None:
-        marker = self.get_decision_marker()
-        if marker is None:
-            return
-        if marker[0] == self.engine.human_player.player_id:
-            self.engine.handle_human_timeout()
-        else:
-            self.engine.process_ai_turn()
-        self.update_decision_timer(force_reset=True)
-
-    def get_think_progress(self, player) -> float | None:
-        marker = self.get_decision_marker()
-        if marker is None or player.player_id != marker[0]:
-            return None
-        duration_ms = self.get_decision_duration_ms(marker)
-        if duration_ms <= 0:
-            return None
-        now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
-        elapsed = now - self.decision_started_at_ms
-        return max(0.0, min(1.0, elapsed / duration_ms))
-
-    def handle_ui_action(self, action: str) -> bool:
-        if action == "ui_toggle_enemy_hand":
-            self.show_enemy_hand_cards = not self.show_enemy_hand_cards
-            return True
-        if action == "ui_toggle_pause":
-            now = pygame.time.get_ticks()
-            if self.paused:
-                if self.pause_started_at_ms is not None:
-                    paused_duration = now - self.pause_started_at_ms
-                    self.decision_started_at_ms += paused_duration
-                    for popup in self.damage_popups:
-                        popup["started_at_ms"] += paused_duration
-                    for reveal in self.recycle_reveals:
-                        reveal["started_at_ms"] += paused_duration
-                    for animation in self.creature_lunges.values():
-                        animation["started_at_ms"] += paused_duration
-                self.paused = False
-                self.pause_started_at_ms = None
-            else:
-                self.paused = True
-                self.pause_started_at_ms = now
-            return True
-        return False
-
-    def consume_visual_events(self) -> None:
-        if not self.engine.pending_visual_events:
-            self.prune_finished_visuals()
-            return
-        now = pygame.time.get_ticks()
-        popup_totals: Dict[int, dict] = {}
-        for event in self.engine.pending_visual_events:
-            if event.get("type") == "creature_damage":
-                source_element = event.get("source_element")
-                color = self.get_element_color(source_element) if source_element is not None else (255, 255, 255)
-                self.damage_popups.append(
-                    {
-                        "type": "creature_damage",
-                        "target_role": event["target_role"],
-                        "amount": event["amount"],
-                        "color": color,
-                        "started_at_ms": now,
-                    }
-                )
-                continue
-            if event.get("type") == "recycle_reveal":
-                self.recycle_reveals.append(
-                    {
-                        "player_id": event["player_id"],
-                        "template_ids": event["template_ids"],
-                        "started_at_ms": now,
-                    }
-                )
-                continue
-            if event.get("type") != "player_damage":
-                continue
-            source_element = event.get("source_element")
-            color = self.get_element_color(source_element) if source_element is not None else (255, 255, 255)
-            target_player_id = event["target_player_id"]
-            popup_entry = popup_totals.setdefault(
-                target_player_id,
-                {
-                    "type": "player_damage",
-                    "target_player_id": target_player_id,
-                    "amount": 0,
-                    "color": color,
-                    "started_at_ms": now,
-                },
-            )
-            popup_entry["amount"] += event["amount"]
-            attacker_id = event.get("attacker_id")
-            if attacker_id is not None:
-                self.creature_lunges[attacker_id] = {
-                    "target_player_id": target_player_id,
-                    "started_at_ms": now,
-                }
-        self.damage_popups.extend(popup_totals.values())
-        self.engine.pending_visual_events.clear()
-        self.prune_finished_visuals()
-
-    def prune_finished_visuals(self) -> None:
-        now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
-        self.damage_popups = [
-            popup
-            for popup in self.damage_popups
-            if now - popup["started_at_ms"] <= 3000
-        ]
-        self.recycle_reveals = [
-            reveal
-            for reveal in self.recycle_reveals
-            if now - reveal["started_at_ms"] <= 3000
-        ]
-        self.creature_lunges = {
-            creature_id: animation
-            for creature_id, animation in self.creature_lunges.items()
-            if now - animation["started_at_ms"] <= 1550
-        }
-
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
         resource_rect = sections["player_resources"] if player.player_id == self.engine.human_player.player_id else sections["enemy_resources"]
@@ -544,320 +351,6 @@ class TcgPrototypeApp:
             progress = 0.5 * (1.0 + math.cos(math.pi * t))
 
         return (round(max_offset_x * progress), round(max_offset_y * progress))
-
-    def draw_damage_popups(self) -> None:
-        now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
-        for popup in self.damage_popups:
-            if popup.get("type") != "player_damage":
-                continue
-            target_player = self.engine.players[popup["target_player_id"]]
-            summoner_rect = self.get_summoner_rect_for_player(target_player)
-            progress = min(1.0, max(0.0, (now - popup["started_at_ms"]) / 3000.0))
-            y_offset = int(46 * progress)
-            alpha = 255 if progress < 0.8 else max(0, int(255 * (1.0 - (progress - 0.8) / 0.2)))
-            text = f"-{popup['amount']}"
-            text_surface = self.title_font.render(text, True, popup["color"])
-            shadow_surface = self.title_font.render(text, True, (0, 0, 0))
-            text_surface.set_alpha(alpha)
-            shadow_surface.set_alpha(alpha)
-            text_rect = text_surface.get_rect(center=(summoner_rect.centerx, summoner_rect.y + int(self.card_height * 0.56) - y_offset))
-            self.screen.blit(shadow_surface, text_rect.move(2, 2))
-            self.screen.blit(text_surface, text_rect)
-
-    def draw_combat_damage_popups(self) -> None:
-        now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
-        for popup in self.damage_popups:
-            if popup.get("type") != "creature_damage":
-                continue
-            target_rect = self.combat_overlay_card_rects.get(popup["target_role"])
-            if target_rect is None:
-                continue
-            progress = min(1.0, max(0.0, (now - popup["started_at_ms"]) / 3000.0))
-            y_offset = int(54 * progress)
-            alpha = 255 if progress < 0.8 else max(0, int(255 * (1.0 - (progress - 0.8) / 0.2)))
-            text = f"-{popup['amount']}"
-            text_surface = self.title_font.render(text, True, popup["color"])
-            shadow_surface = self.title_font.render(text, True, (0, 0, 0))
-            text_surface.set_alpha(alpha)
-            shadow_surface.set_alpha(alpha)
-            text_rect = text_surface.get_rect(center=(target_rect.centerx, target_rect.bottom - 20 - y_offset))
-            self.screen.blit(shadow_surface, text_rect.move(2, 2))
-            self.screen.blit(text_surface, text_rect)
-
-    def draw_creature_overlays(self) -> None:
-        for creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key in self.creature_overlay_draws:
-            rect = self.draw_creature_card(creature, is_human, draw_x, draw_y, selected, extra_line, attacking)
-            if self.last_preview_builder is not None:
-                self.preview_targets.append((rect, self.last_preview_builder))
-            self.click_targets[target_key].append((rect, creature.unit_id))
-
-    def draw_recycle_reveals(self) -> None:
-        if not self.recycle_reveals:
-            return
-        latest = self.recycle_reveals[-1]
-        templates = [self.engine.templates[template_id] for template_id in latest["template_ids"] if template_id in self.engine.templates]
-        if not templates:
-            return
-        surfaces = [self.build_preview_hand_card_surface(CardInstance(-1, template)) for template in templates]
-        scale = 0.6
-        scaled_surfaces = [
-            pygame.transform.smoothscale(surface, (max(1, int(surface.get_width() * scale)), max(1, int(surface.get_height() * scale))))
-            for surface in surfaces
-        ]
-        gap = 12
-        total_width = sum(surface.get_width() for surface in scaled_surfaces) + gap * max(0, len(scaled_surfaces) - 1)
-        panel_width = total_width + 28
-        panel_height = max(surface.get_height() for surface in scaled_surfaces) + 36
-        panel = pygame.Rect((self.window_width - panel_width) // 2, 24, panel_width, panel_height)
-        overlay = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
-        overlay.fill((12, 14, 18, 220))
-        self.screen.blit(overlay, panel.topleft)
-        pygame.draw.rect(self.screen, CARD_BORDER, panel, 2, border_radius=10)
-        x = panel.x + 14
-        y = panel.y + 18
-        for surface in scaled_surfaces:
-            self.screen.blit(surface, (x, y))
-            x += surface.get_width() + gap
-
-    def handle_preview_start(self, position: tuple[int, int]) -> None:
-        for rect, builder in reversed(self.preview_targets):
-            if rect.collidepoint(position):
-                self.preview_builder = builder
-                self.preview_surface = None
-                return
-        self.preview_builder = None
-        self.preview_surface = None
-
-    def handle_preview_stop(self) -> None:
-        self.preview_builder = None
-        self.preview_surface = None
-
-    def render_scaled_card_surface(self, scale: float, render_fn: Callable[[], pygame.Surface]) -> pygame.Surface:
-        old_card_width = self.card_width
-        old_card_height = self.card_height
-        old_small_font = self.small_font
-        old_layout_scale = self.layout_scale
-        self.card_width = max(1, int(old_card_width * scale))
-        self.card_height = max(1, int(old_card_height * scale))
-        self.small_font = pygame.font.SysFont("arial", max(12, int(12 * scale)))
-        self.layout_scale = scale
-        try:
-            return render_fn()
-        finally:
-            self.card_width = old_card_width
-            self.card_height = old_card_height
-            self.small_font = old_small_font
-            self.layout_scale = old_layout_scale
-
-    def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surface:
-        line_one, line_two = self.get_card_ability_lines(card.template)
-        return self.render_scaled_card_surface(
-            2.0,
-            lambda: self.build_card_surface(
-                template_id=card.template.template_id,
-                title=card.template.name,
-                cost=card.template.cost,
-                stats=f"{card.template.aw}/{card.template.vw}",
-                defense_text=f"{card.template.vw}/{card.template.vw}",
-                element=card.template.element,
-                type_line=self.get_creature_type_line(card.template),
-                line_one=line_one,
-                line_two=note or line_two,
-                accent_color=(186, 177, 154),
-                frame_color=(191, 161, 92),
-                tapped=False,
-                selected=False,
-            ),
-        )
-
-    def build_preview_hidden_hand_surface(self, card) -> pygame.Surface:
-        return self.render_scaled_card_surface(2.0, lambda: self.build_resource_back_surface(card.template.element, False))
-
-    def build_preview_resource_surface(self, resource) -> pygame.Surface:
-        return self.render_scaled_card_surface(
-            2.0,
-            lambda: self.build_resource_back_surface(resource.template.element, resource.tapped),
-        )
-
-    def build_preview_deck_surface(self, player) -> pygame.Surface:
-        top_card = player.deck[-1] if player.deck else None
-        fallback_elements = {
-            "fire": Element.FIRE,
-            "water": Element.WATER,
-            "earth": Element.EARTH,
-            "air": Element.AIR,
-        }
-        element = top_card.template.element if top_card is not None else fallback_elements.get(player.summoner_key, Element.AIR)
-        def _render() -> pygame.Surface:
-            surface = self.build_resource_back_surface(element, False)
-            life_badge_rect = pygame.Rect(self.card_width // 2 - 23, int(self.card_height * 0.31) - 23, 46, 46)
-            deck_badge_rect = pygame.Rect(self.card_width // 2 - 23, int(self.card_height * 0.69) - 23, 46, 46)
-            self.draw_card_badge(surface, life_badge_rect, str(player.life), self.font)
-            self.draw_card_badge(surface, deck_badge_rect, str(len(player.deck)), self.font)
-            return surface
-
-        return self.render_scaled_card_surface(2.0, _render)
-
-    def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
-        accent = (98, 151, 109) if is_human else (177, 98, 98)
-        line_one = ""
-        line_two = extra_line
-        ability_line_one, ability_line_two = self.get_card_ability_lines_from_creature(creature)
-        if ability_line_one:
-            line_one = ability_line_one
-        if not extra_line and ability_line_two:
-            line_two = ability_line_two
-        return self.render_scaled_card_surface(
-            2.0,
-            lambda: self.build_card_surface(
-                template_id=getattr(creature, "template_id", None),
-                title=creature.name,
-                cost=creature.cost,
-                stats=creature.aw_vw,
-                defense_text=f"{creature.current_hp}/{creature.vw}",
-                element=creature.element,
-                type_line=f"Kreatur - {creature.element.value}",
-                line_one=line_one,
-                line_two=line_two,
-                accent_color=accent,
-                frame_color=accent,
-                tapped=False,
-                selected=False,
-                attacking=attacking,
-            ),
-        )
-
-    def build_preview_summoner_surface(self, summoner_key: str, life: int, think_progress: float | None = None) -> pygame.Surface:
-        def _render() -> pygame.Surface:
-            surface = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
-            image = self.summoner_images.get(summoner_key)
-            if image is None:
-                pygame.draw.rect(surface, (238, 232, 218), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
-                pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
-            else:
-                scaled = pygame.transform.smoothscale(image, (self.card_width, self.card_height))
-                clipped = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
-                pygame.draw.rect(clipped, (255, 255, 255), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
-                scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-                surface.blit(scaled, (0, 0))
-                pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
-            old_screen = self.screen
-            self.screen = surface
-            try:
-                self.draw_summoner_life_circle(life, 0, 0, think_progress)
-            finally:
-                self.screen = old_screen
-            return surface
-
-        return self.render_scaled_card_surface(2.0, _render)
-
-    def draw_card_preview_overlay(self) -> None:
-        if self.preview_surface is None and self.preview_builder is not None:
-            self.preview_surface = self.preview_builder()
-        if self.preview_surface is None:
-            return
-        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
-        overlay.fill((10, 12, 16, 170))
-        self.screen.blit(overlay, (0, 0))
-        width = self.preview_surface.get_width() * 2
-        height = self.preview_surface.get_height() * 2
-        playfield_width = self.window_width - self.side_panel_width - 30
-        max_width = playfield_width - 80
-        max_height = self.window_height - 80
-        scale = min(max_width / width, max_height / height, 1.0)
-        preview_size = (max(1, int(width * scale)), max(1, int(height * scale)))
-        scaled = pygame.transform.smoothscale(self.preview_surface, preview_size)
-        playfield_center_x = 10 + playfield_width // 2
-        rect = scaled.get_rect(center=(playfield_center_x, self.window_height // 2))
-        self.screen.blit(scaled, rect.topleft)
-        pygame.draw.rect(self.screen, CARD_BORDER, rect, 3, border_radius=10)
-
-    def handle_mouse_down(self, position: tuple[int, int]) -> None:
-        hand_target = self.get_target_at_position("hand", position)
-        if hand_target is not None and self.can_drag_hand_card(hand_target[1]):
-            self.dragged_hand_card_id = hand_target[1]
-            self.drag_start_pos = position
-            self.drag_current_pos = position
-            self.drag_active = False
-            return
-        self.handle_mouse_click(position)
-
-    def handle_mouse_up(self, position: tuple[int, int]) -> None:
-        if self.dragged_hand_card_id is None:
-            return
-        if self.drag_active and self.can_drag_hand_card_to_resource() and self.can_drop_on_resource_area(position):
-            self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
-        elif self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
-            self.engine.play_hand_card_as_creature(self.dragged_hand_card_id)
-        else:
-            self.engine.handle_click("hand", self.dragged_hand_card_id)
-        self.clear_drag_state()
-        self.update_decision_timer(force_reset=True)
-
-    def handle_mouse_motion(self, position: tuple[int, int]) -> None:
-        if self.dragged_hand_card_id is None:
-            return
-        self.drag_current_pos = position
-        if self.drag_start_pos is None:
-            return
-        dx = position[0] - self.drag_start_pos[0]
-        dy = position[1] - self.drag_start_pos[1]
-        if abs(dx) > 8 or abs(dy) > 8:
-            self.drag_active = True
-
-    def handle_mouse_click(self, position: tuple[int, int]) -> None:
-        for rect, spec in self.buttons:
-            if spec.enabled and rect.collidepoint(position):
-                if not self.handle_ui_action(spec.action):
-                    self.engine.handle_action(spec.action)
-                    self.update_decision_timer(force_reset=True)
-                return
-        for area in self.click_targets:
-            target = self.get_target_at_position(area, position)
-            if target is not None:
-                area_name = "hand" if area == "mulligan_hand" else area
-                self.engine.handle_click(area_name, target[1])
-                self.update_decision_timer(force_reset=True)
-                return
-
-    def draw(self) -> None:
-        self.screen.fill(BG_COLOR)
-        for key in self.click_targets:
-            self.click_targets[key] = []
-        self.buttons.clear()
-        self.preview_targets.clear()
-        self.creature_overlay_draws.clear()
-        self.combat_overlay_card_rects.clear()
-        self.summoner_rects.clear()
-
-        previous_show_enemy_hand_cards = self.show_enemy_hand_cards
-        reveal_enemy_hand_from_effect = any(
-            getattr(creature, "reveal_opponent_hand", False)
-            for creature in self.engine.human_player.battlefield
-        )
-        self.show_enemy_hand_cards = self.show_enemy_hand_cards or reveal_enemy_hand_from_effect
-        self.draw_enemy_area()
-        self.draw_player_area()
-        self.draw_combat_links()
-        self.draw_creature_overlays()
-        self.draw_damage_popups()
-        self.draw_side_panel()
-        self.draw_recycle_reveals()
-        self.draw_buttons()
-        self.draw_dragged_card()
-
-        if self.engine.phase == PHASE_MULLIGAN:
-            self.draw_mulligan_overlay()
-        if self.engine.pending_order is not None:
-            self.draw_block_order_overlay()
-        if self.engine.pending_dice_battle is not None:
-            self.draw_dice_battle_overlay()
-        if self.engine.phase == PHASE_GAME_OVER:
-            self.draw_game_over_overlay()
-        self.draw_card_preview_overlay()
-        self.show_enemy_hand_cards = previous_show_enemy_hand_cards
-
-        pygame.display.flip()
 
 
 def run() -> None:

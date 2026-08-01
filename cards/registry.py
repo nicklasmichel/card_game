@@ -6,7 +6,7 @@ from cards.air.creatures import AIR_CREATURES
 from cards.earth.creatures import EARTH_CREATURES
 from cards.fire.creatures import FIRE_CREATURES
 from cards.water.creatures import WATER_CREATURES
-from models import CardInstance, CardTemplate
+from core.models import CardInstance, CardTemplate
 
 
 DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {

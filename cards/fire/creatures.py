@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from models import Ability, CardCost, CardTemplate, Element
+from core.models import Ability, CardCost, CardTemplate, Element
 
 
 FIRE_CREATURES = [
