@@ -4,10 +4,17 @@ from __future__ import annotations
 def handle_mouse_down(self, position: tuple[int, int]) -> None:
     hand_target = self.get_target_at_position("hand", position)
     if hand_target is not None and self.can_drag_hand_card(hand_target[1]):
-        self.dragged_hand_card_id = hand_target[1]
+        rect, card_id = hand_target
+        self.dragged_hand_card_id = card_id
+        card = next(
+            (existing for existing in self.engine.human_player.hand if existing.instance_id == self.dragged_hand_card_id),
+            None,
+        )
+        self.dragged_card_surface = self.build_hand_card_surface(card, selected=True) if card is not None else None
         self.drag_start_pos = position
         self.drag_current_pos = position
-        self.drag_active = False
+        self.drag_grab_offset = (position[0] - rect.x, position[1] - rect.y)
+        self.drag_active = True
         return
     self.handle_mouse_click(position)
 
@@ -28,12 +35,6 @@ def handle_mouse_motion(self, position: tuple[int, int]) -> None:
     if self.dragged_hand_card_id is None:
         return
     self.drag_current_pos = position
-    if self.drag_start_pos is None:
-        return
-    dx = position[0] - self.drag_start_pos[0]
-    dy = position[1] - self.drag_start_pos[1]
-    if abs(dx) > 8 or abs(dy) > 8:
-        self.drag_active = True
 
 
 def handle_mouse_click(self, position: tuple[int, int]) -> None:

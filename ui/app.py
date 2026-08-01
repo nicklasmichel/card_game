@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple
@@ -9,10 +10,13 @@ import pygame
 from game_logic import GameEngine
 from models import (
     ButtonSpec,
+    CardInstance,
+    Element,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_GAME_OVER,
+    PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
     PHASE_SUMMONING,
     PHASE_MULLIGAN,
@@ -24,6 +28,7 @@ from ui.card_rendering import (
     blit_symbol_image,
     blit_text_to_surface,
     blit_wrapped_text,
+    build_hand_card_surface,
     build_card_surface,
     build_resource_back_surface,
     can_drag_hand_card,
@@ -68,6 +73,7 @@ from ui.layout import (
     draw_resources,
     draw_section_box,
     draw_side_actions,
+    draw_side_piles,
     draw_side_log,
     draw_side_overview,
     draw_side_panel,
@@ -104,6 +110,7 @@ from ui.style import (
 
 class TcgPrototypeApp:
     draw_playfield_section_box = draw_playfield_section_box
+    build_hand_card_surface = build_hand_card_surface
     draw_hand_card = draw_hand_card
     draw_hidden_hand_card = draw_hidden_hand_card
     draw_dragged_card = draw_dragged_card
@@ -157,6 +164,7 @@ class TcgPrototypeApp:
     draw_side_overview = draw_side_overview
     draw_side_log = draw_side_log
     draw_side_actions = draw_side_actions
+    draw_side_piles = draw_side_piles
     handle_log_scroll = handle_log_scroll
     draw_mulligan_overlay = draw_mulligan_overlay
     draw_block_order_overlay = draw_block_order_overlay
@@ -171,10 +179,18 @@ class TcgPrototypeApp:
         display_info = pygame.display.Info()
         self.window_width = display_info.current_w
         self.window_height = display_info.current_h
-        self.screen = pygame.display.set_mode(
-            (self.window_width, self.window_height),
-            pygame.NOFRAME,
-        )
+        display_flags = pygame.NOFRAME | pygame.DOUBLEBUF
+        try:
+            self.screen = pygame.display.set_mode(
+                (self.window_width, self.window_height),
+                display_flags,
+                vsync=1,
+            )
+        except TypeError:
+            self.screen = pygame.display.set_mode(
+                (self.window_width, self.window_height),
+                display_flags,
+            )
         self.card_width = 172 if self.window_width >= 1800 else 151
         self.card_height = int(self.card_width * 1.26)
         self.card_gap = 18 if self.window_width >= 1800 else 13
@@ -206,15 +222,19 @@ class TcgPrototypeApp:
         self.dragged_hand_card_id: int | None = None
         self.drag_start_pos: tuple[int, int] | None = None
         self.drag_current_pos: tuple[int, int] | None = None
+        self.drag_grab_offset: tuple[int, int] | None = None
         self.drag_active = False
+        self.dragged_card_surface: pygame.Surface | None = None
         self.last_rendered_card_surface: pygame.Surface | None = None
         self.last_preview_builder: Callable[[], pygame.Surface] | None = None
         self.preview_targets: List[Tuple[pygame.Rect, Callable[[], pygame.Surface]]] = []
         self.preview_builder: Callable[[], pygame.Surface] | None = None
         self.preview_surface: pygame.Surface | None = None
         self.damage_popups: List[dict] = []
+        self.recycle_reveals: List[dict] = []
         self.creature_lunges: Dict[int, dict] = {}
         self.creature_overlay_draws: List[tuple] = []
+        self.combat_overlay_card_rects: Dict[str, pygame.Rect] = {}
         self.summoner_rects: Dict[int, pygame.Rect] = {}
         self.click_targets: Dict[str, List[Tuple[pygame.Rect, int]]] = {
             "hand": [],
@@ -224,6 +244,7 @@ class TcgPrototypeApp:
             "human_dice": [],
             "order_blockers": [],
             "mulligan_hand": [],
+            "player_resources": [],
         }
 
     def load_resource_back_images(self) -> dict[str, pygame.Surface]:
@@ -307,7 +328,7 @@ class TcgPrototypeApp:
             if self.engine.exit_requested:
                 running = False
             self.draw()
-            self.clock.tick(FPS)
+            self.clock.tick_busy_loop(FPS)
 
         pygame.quit()
 
@@ -320,6 +341,8 @@ class TcgPrototypeApp:
             return (self.engine.active_player.player_id, self.engine.phase, "resource")
         if self.engine.phase == PHASE_SUMMONING:
             return (self.engine.active_player.player_id, self.engine.phase, "summoning")
+        if self.engine.phase == PHASE_RECYCLE_PAYMENT:
+            return (self.engine.active_player.player_id, self.engine.phase, "recycle")
         if self.engine.phase == PHASE_DECLARE_ATTACKERS:
             return (self.engine.active_player.player_id, self.engine.phase, "attackers")
         if self.engine.phase == PHASE_DECLARE_BLOCKERS and self.engine.defending_player.is_human:
@@ -381,6 +404,8 @@ class TcgPrototypeApp:
                     self.decision_started_at_ms += paused_duration
                     for popup in self.damage_popups:
                         popup["started_at_ms"] += paused_duration
+                    for reveal in self.recycle_reveals:
+                        reveal["started_at_ms"] += paused_duration
                     for animation in self.creature_lunges.values():
                         animation["started_at_ms"] += paused_duration
                 self.paused = False
@@ -398,6 +423,28 @@ class TcgPrototypeApp:
         now = pygame.time.get_ticks()
         popup_totals: Dict[int, dict] = {}
         for event in self.engine.pending_visual_events:
+            if event.get("type") == "creature_damage":
+                source_element = event.get("source_element")
+                color = self.get_element_color(source_element) if source_element is not None else (255, 255, 255)
+                self.damage_popups.append(
+                    {
+                        "type": "creature_damage",
+                        "target_role": event["target_role"],
+                        "amount": event["amount"],
+                        "color": color,
+                        "started_at_ms": now,
+                    }
+                )
+                continue
+            if event.get("type") == "recycle_reveal":
+                self.recycle_reveals.append(
+                    {
+                        "player_id": event["player_id"],
+                        "template_ids": event["template_ids"],
+                        "started_at_ms": now,
+                    }
+                )
+                continue
             if event.get("type") != "player_damage":
                 continue
             source_element = event.get("source_element")
@@ -406,6 +453,7 @@ class TcgPrototypeApp:
             popup_entry = popup_totals.setdefault(
                 target_player_id,
                 {
+                    "type": "player_damage",
                     "target_player_id": target_player_id,
                     "amount": 0,
                     "color": color,
@@ -430,10 +478,15 @@ class TcgPrototypeApp:
             for popup in self.damage_popups
             if now - popup["started_at_ms"] <= 3000
         ]
+        self.recycle_reveals = [
+            reveal
+            for reveal in self.recycle_reveals
+            if now - reveal["started_at_ms"] <= 3000
+        ]
         self.creature_lunges = {
             creature_id: animation
             for creature_id, animation in self.creature_lunges.items()
-            if now - animation["started_at_ms"] <= 1500
+            if now - animation["started_at_ms"] <= 1550
         }
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
@@ -459,20 +512,38 @@ class TcgPrototypeApp:
         target_rect = self.get_summoner_rect_for_player(target_player)
         now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
         elapsed = max(0.0, now - animation["started_at_ms"])
-        if elapsed < 500.0:
-            travel = elapsed / 500.0
-        else:
-            travel = max(0.0, 1.0 - ((elapsed - 500.0) / 1000.0))
         dx = target_rect.centerx - base_rect.centerx
         dy = target_rect.centery - base_rect.centery
         distance = max(1.0, (dx * dx + dy * dy) ** 0.5)
         stop_gap = 42.0
         charge_ratio = max(0.0, min(1.0, (distance - stop_gap) / distance))
-        return (round(dx * charge_ratio * travel), round(dy * charge_ratio * travel))
+        max_offset_x = dx * charge_ratio
+        max_offset_y = dy * charge_ratio
+
+        forward_duration = 620.0
+        hold_duration = 110.0
+        return_duration = 820.0
+        total_duration = forward_duration + hold_duration + return_duration
+
+        if elapsed >= total_duration:
+            return (0, 0)
+
+        if elapsed <= forward_duration:
+            t = max(0.0, min(1.0, elapsed / forward_duration))
+            progress = 1.0 - ((1.0 - t) ** 3)
+        elif elapsed <= forward_duration + hold_duration:
+            progress = 1.0
+        else:
+            t = max(0.0, min(1.0, (elapsed - forward_duration - hold_duration) / return_duration))
+            progress = 0.5 * (1.0 + math.cos(math.pi * t))
+
+        return (round(max_offset_x * progress), round(max_offset_y * progress))
 
     def draw_damage_popups(self) -> None:
         now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
         for popup in self.damage_popups:
+            if popup.get("type") != "player_damage":
+                continue
             target_player = self.engine.players[popup["target_player_id"]]
             summoner_rect = self.get_summoner_rect_for_player(target_player)
             progress = min(1.0, max(0.0, (now - popup["started_at_ms"]) / 3000.0))
@@ -487,12 +558,60 @@ class TcgPrototypeApp:
             self.screen.blit(shadow_surface, text_rect.move(2, 2))
             self.screen.blit(text_surface, text_rect)
 
+    def draw_combat_damage_popups(self) -> None:
+        now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
+        for popup in self.damage_popups:
+            if popup.get("type") != "creature_damage":
+                continue
+            target_rect = self.combat_overlay_card_rects.get(popup["target_role"])
+            if target_rect is None:
+                continue
+            progress = min(1.0, max(0.0, (now - popup["started_at_ms"]) / 3000.0))
+            y_offset = int(54 * progress)
+            alpha = 255 if progress < 0.8 else max(0, int(255 * (1.0 - (progress - 0.8) / 0.2)))
+            text = f"-{popup['amount']}"
+            text_surface = self.title_font.render(text, True, popup["color"])
+            shadow_surface = self.title_font.render(text, True, (0, 0, 0))
+            text_surface.set_alpha(alpha)
+            shadow_surface.set_alpha(alpha)
+            text_rect = text_surface.get_rect(center=(target_rect.centerx, target_rect.bottom - 20 - y_offset))
+            self.screen.blit(shadow_surface, text_rect.move(2, 2))
+            self.screen.blit(text_surface, text_rect)
+
     def draw_creature_overlays(self) -> None:
         for creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key in self.creature_overlay_draws:
             rect = self.draw_creature_card(creature, is_human, draw_x, draw_y, selected, extra_line, attacking)
             if self.last_preview_builder is not None:
                 self.preview_targets.append((rect, self.last_preview_builder))
             self.click_targets[target_key].append((rect, creature.unit_id))
+
+    def draw_recycle_reveals(self) -> None:
+        if not self.recycle_reveals:
+            return
+        latest = self.recycle_reveals[-1]
+        templates = [self.engine.templates[template_id] for template_id in latest["template_ids"] if template_id in self.engine.templates]
+        if not templates:
+            return
+        surfaces = [self.build_preview_hand_card_surface(CardInstance(-1, template)) for template in templates]
+        scale = 0.6
+        scaled_surfaces = [
+            pygame.transform.smoothscale(surface, (max(1, int(surface.get_width() * scale)), max(1, int(surface.get_height() * scale))))
+            for surface in surfaces
+        ]
+        gap = 12
+        total_width = sum(surface.get_width() for surface in scaled_surfaces) + gap * max(0, len(scaled_surfaces) - 1)
+        panel_width = total_width + 28
+        panel_height = max(surface.get_height() for surface in scaled_surfaces) + 36
+        panel = pygame.Rect((self.window_width - panel_width) // 2, 24, panel_width, panel_height)
+        overlay = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
+        overlay.fill((12, 14, 18, 220))
+        self.screen.blit(overlay, panel.topleft)
+        pygame.draw.rect(self.screen, CARD_BORDER, panel, 2, border_radius=10)
+        x = panel.x + 14
+        y = panel.y + 18
+        for surface in scaled_surfaces:
+            self.screen.blit(surface, (x, y))
+            x += surface.get_width() + gap
 
     def handle_preview_start(self, position: tuple[int, int]) -> None:
         for rect, builder in reversed(self.preview_targets):
@@ -554,6 +673,20 @@ class TcgPrototypeApp:
             lambda: self.build_resource_back_surface(resource.template.element, resource.tapped),
         )
 
+    def build_preview_deck_surface(self, player) -> pygame.Surface:
+        top_card = player.deck[-1] if player.deck else None
+        fallback_elements = {
+            "fire": Element.FIRE,
+            "water": Element.WATER,
+            "earth": Element.EARTH,
+            "air": Element.AIR,
+        }
+        element = top_card.template.element if top_card is not None else fallback_elements.get(player.summoner_key, Element.AIR)
+        return self.render_scaled_card_surface(
+            2.0,
+            lambda: self.build_resource_back_surface(element, False),
+        )
+
     def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
         accent = (98, 151, 109) if is_human else (177, 98, 98)
         line_one = ""
@@ -577,7 +710,7 @@ class TcgPrototypeApp:
                 line_two=line_two,
                 accent_color=accent,
                 frame_color=accent,
-                tapped=creature.tapped,
+                tapped=False,
                 selected=False,
                 attacking=attacking,
             ),
@@ -683,6 +816,7 @@ class TcgPrototypeApp:
         self.buttons.clear()
         self.preview_targets.clear()
         self.creature_overlay_draws.clear()
+        self.combat_overlay_card_rects.clear()
         self.summoner_rects.clear()
 
         self.draw_enemy_area()
@@ -691,6 +825,7 @@ class TcgPrototypeApp:
         self.draw_creature_overlays()
         self.draw_damage_popups()
         self.draw_side_panel()
+        self.draw_recycle_reveals()
         self.draw_buttons()
         self.draw_dragged_card()
 

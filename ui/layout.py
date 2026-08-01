@@ -6,6 +6,7 @@ import pygame
 
 from models import (
     ButtonSpec,
+    Element,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -31,6 +32,8 @@ def get_overview_phase_label(phase: str) -> str:
         return "Ressource"
     if phase == PHASE_SUMMONING:
         return "Beschwörung"
+    if phase == "Recycle auswählen":
+        return "Beschwörung"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
     return phase
@@ -45,7 +48,14 @@ def draw_enemy_area(self) -> None:
     self.draw_playfield_section_box(resource_rect, "enemy_resources")
     self.draw_playfield_section_box(creatures_rect, "enemy_creatures")
     self.draw_hand(self.engine.ai_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20, interactive=False)
-    self.draw_resources(self.engine.ai_player.resources, resource_rect.x + 10, resource_rect.y + 10, resource_rect.width - 20)
+    self.draw_resources(
+        self.engine.ai_player.resources,
+        resource_rect.x + 10,
+        resource_rect.y + 10,
+        resource_rect.width - 20,
+        player=self.engine.ai_player,
+        target_key=None,
+    )
     self.draw_creatures(
         self.engine.ai_player.battlefield,
         False,
@@ -67,7 +77,14 @@ def draw_player_area(self) -> None:
     self.draw_playfield_section_box(resource_rect, "player_resources")
     self.draw_playfield_section_box(creatures_rect, "player_creatures")
     self.draw_playfield_section_box(hand_rect, "player_hand")
-    self.draw_resources(self.engine.human_player.resources, resource_rect.x + 10, resource_rect.y + 10, resource_rect.width - 20)
+    self.draw_resources(
+        self.engine.human_player.resources,
+        resource_rect.x + 10,
+        resource_rect.y + 10,
+        resource_rect.width - 20,
+        player=self.engine.human_player,
+        target_key="player_resources",
+    )
     self.draw_creatures(
         self.engine.human_player.battlefield,
         True,
@@ -251,17 +268,40 @@ def draw_link_marker(self, center: tuple[int, int], color, width: int) -> None:
     pygame.draw.circle(self.screen, color, center, max(2, radius - 4))
 
 
-def draw_resources(self, resources, start_x: int, start_y: int, available_width: int) -> None:
-    card_step = self.card_width + self.card_gap
-    if resources:
-        total_width = len(resources) * self.card_width + (len(resources) - 1) * self.card_gap
-        if total_width > available_width:
-            card_step = max(26, (available_width - self.card_width) // max(1, len(resources) - 1))
-    for index, resource in enumerate(resources):
-        x = start_x + index * card_step
+def draw_resources(self, resources, start_x: int, start_y: int, available_width: int, player=None, target_key: str | None = None) -> None:
+    if not resources:
+        return
+    widths = [self.card_height if resource.tapped else self.card_width for resource in resources]
+    base_gap = self.card_gap + 8
+    total_width = sum(widths) + max(0, len(resources) - 1) * base_gap
+    if total_width <= available_width:
+        positions = []
+        x = start_x + max(0, (available_width - total_width) // 2)
+        for width in widths:
+            positions.append(x)
+            x += width + base_gap
+    else:
+        step = max(40, (available_width - widths[-1]) // max(1, len(resources) - 1))
+        positions = [start_x + index * step for index in range(len(resources))]
+    for index, (resource, x) in enumerate(zip(resources, positions)):
         height = self.card_width if resource.tapped else self.card_height
         y = start_y + max(0, (self.card_height - height) // 2)
         rect = self.draw_resource_card(resource, x, y)
+        if (
+            target_key == "player_resources"
+            and player is not None
+            and player.player_id == self.engine.human_player.player_id
+            and self.engine.pending_recycle_payment is not None
+            and resource.resource_id is not None
+        ):
+            selected = resource.resource_id in self.engine.pending_recycle_payment.selected_resource_ids
+            badge_rect = pygame.Rect(rect.x + 6, rect.y + 6, 28, 28)
+            pygame.draw.circle(self.screen, HIGHLIGHT if selected else (18, 18, 20), badge_rect.center, 14)
+            pygame.draw.circle(self.screen, CARD_BORDER, badge_rect.center, 12, 2)
+            self.blit_centered_text(self.small_font, str(index + 1), TEXT_COLOR, badge_rect)
+            if selected:
+                pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=8)
+            self.click_targets[target_key].append((rect, resource.resource_id))
         if self.last_preview_builder is not None:
             self.preview_targets.append((rect, self.last_preview_builder))
 
@@ -303,10 +343,6 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
                 selected = True
             attacking = creature.unit_id in self.engine.selected_attackers
             extra_line = ""
-            if target_key == "enemy_creatures" and creature.unit_id in self.engine.block_assignments:
-                blockers = len(self.engine.block_assignments[creature.unit_id])
-                if blockers:
-                    extra_line = f"Blocker {blockers}"
             render_entry = (creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key)
             if creature.unit_id in self.creature_lunges:
                 overlay_queue.append(render_entry)
@@ -358,7 +394,7 @@ def draw_hand(self, player, start_x: int, start_y: int, available_width: int, in
             right_step = max(26, (right_available - self.card_width) // (len(right_cards) - 1))
 
     for index, card in enumerate(left_cards):
-        if interactive and self.drag_active and card.instance_id == self.dragged_hand_card_id:
+        if interactive and self.drag_active and self.dragged_card_surface is not None and card.instance_id == self.dragged_hand_card_id:
             continue
         x = summoner_x - center_padding - self.card_width - index * left_step
         if interactive or self.show_enemy_hand_cards:
@@ -371,7 +407,7 @@ def draw_hand(self, player, start_x: int, start_y: int, available_width: int, in
             self.click_targets["hand"].append((rect, card.instance_id))
 
     for index, card in enumerate(right_cards):
-        if interactive and self.drag_active and card.instance_id == self.dragged_hand_card_id:
+        if interactive and self.drag_active and self.dragged_card_surface is not None and card.instance_id == self.dragged_hand_card_id:
             continue
         x = right_start + index * right_step
         if interactive or self.show_enemy_hand_cards:
@@ -385,24 +421,36 @@ def draw_hand(self, player, start_x: int, start_y: int, available_width: int, in
 
 
 def draw_side_panel(self) -> None:
-    panel, log_rect, action_rect = self.get_side_panel_layout()
+    panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect = self.get_side_panel_layout()
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=6)
+    self.draw_side_piles(enemy_piles_rect, self.engine.ai_player, self.get_playfield_sections()["enemy_hand"].y + 10)
     self.draw_section_box(log_rect)
     self.draw_side_log(log_rect)
+    self.draw_section_box(action_rect)
     self.draw_side_actions(action_rect)
+    self.draw_side_piles(player_piles_rect, self.engine.human_player, self.get_playfield_sections()["player_hand"].y + 10)
 
-
-def get_side_panel_layout(self) -> tuple[pygame.Rect, pygame.Rect, pygame.Rect]:
+def get_side_panel_layout(self) -> tuple[pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect]:
     panel = pygame.Rect(self.window_width - self.side_panel_width - 10, 10, self.side_panel_width, self.window_height - 20)
     inner_x = panel.x + 14
     inner_width = panel.width - 28
     section_gap = 10
-    inner_height = panel.height - 28 - section_gap
-    log_height = inner_height // 2
-    action_height = inner_height - log_height
-    log_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, log_height)
+    inner_height = panel.height - 28
+    hand_height = self.get_playfield_sections()["player_hand"].height
+    piles_height = min(hand_height, max(self.card_height + 44, inner_height // 5))
+    remaining_height = inner_height - piles_height * 2 - section_gap * 4
+    log_height = max(140, remaining_height // 2)
+    action_height = max(180, remaining_height - log_height)
+    used_height = piles_height * 2 + log_height + action_height + section_gap * 4
+    slack = max(0, inner_height - used_height)
+    log_height += slack // 2
+    action_height += slack - (slack // 2)
+
+    enemy_piles_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, piles_height)
+    log_rect = pygame.Rect(inner_x, enemy_piles_rect.bottom + section_gap, inner_width, log_height)
     action_rect = pygame.Rect(inner_x, log_rect.bottom + section_gap, inner_width, action_height)
-    return panel, log_rect, action_rect
+    player_piles_rect = pygame.Rect(inner_x, action_rect.bottom + section_gap, inner_width, piles_height)
+    return panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect
 
 
 def draw_buttons(self) -> None:
@@ -472,17 +520,18 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     phase_label = get_overview_phase_label(self.engine.phase)
     self.blit_text(
         self.title_font,
-        f"Zug {self.engine.turn_number} | {self.engine.active_player.name} - {phase_label}",
+        f"{self.engine.turn_number} | {self.engine.active_player.name} - {phase_label}",
         TEXT_COLOR,
         rect.x + 12,
         rect.y + 12,
     )
     prompt_rect = pygame.Rect(rect.x + 12, rect.y + 52, rect.width - 24, 72)
     self.blit_wrapped_text(self.font, self.engine.current_prompt(), MUTED_TEXT, prompt_rect, 22)
-    width = rect.width
+    button_margin = 12
+    width = rect.width - button_margin * 2
     height = 36
     gap = 10
-    start_x = rect.x
+    start_x = rect.x + button_margin
     start_y = rect.y + 132
     for index, spec in enumerate(action_specs):
         button_rect = pygame.Rect(
@@ -497,7 +546,7 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
         self.buttons.append((button_rect, spec))
 
     ui_total_height = len(ui_specs) * height + max(0, len(ui_specs) - 1) * gap
-    ui_start_y = rect.bottom - ui_total_height
+    ui_start_y = rect.bottom - ui_total_height - 12
     for index, spec in enumerate(ui_specs):
         button_rect = pygame.Rect(
             start_x,
@@ -509,6 +558,62 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
         pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
         self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
         self.buttons.append((button_rect, spec))
+
+
+def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
+    card_width = self.card_width
+    card_height = self.card_height
+    available_width = max(0, rect.width - card_width * 2)
+    side_gap = max(0, available_width // 3)
+    middle_gap = max(0, rect.width - card_width * 2 - side_gap * 2)
+    deck_x = rect.x + side_gap
+    discard_x = deck_x + card_width + middle_gap
+
+    top_deck_card = player.deck[-1] if player.deck else None
+    if top_deck_card is not None or player.summoner_key:
+        if top_deck_card is not None:
+            deck_surface = self.build_resource_back_surface(top_deck_card.template.element, False)
+        else:
+            fallback_elements = {
+                "fire": Element.FIRE,
+                "water": Element.WATER,
+                "earth": Element.EARTH,
+                "air": Element.AIR,
+            }
+            deck_surface = self.build_resource_back_surface(fallback_elements.get(player.summoner_key, Element.AIR), False)
+        deck_rect = pygame.Rect(deck_x, card_y, card_width, card_height)
+        self.screen.blit(deck_surface, deck_rect.topleft)
+        pygame.draw.rect(self.screen, CARD_BORDER, deck_rect, 2, border_radius=9)
+        badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.62) - 23, 46, 46)
+        pygame.draw.circle(self.screen, (18, 18, 20), badge_rect.center, 23)
+        pygame.draw.circle(self.screen, (0, 0, 0), badge_rect.center, 19, 4)
+        self.blit_centered_text(self.font, str(len(player.deck)), TEXT_COLOR, badge_rect)
+        self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player)))
+
+    top_discard = player.discard_pile[-1] if player.discard_pile else None
+    discard_rect = pygame.Rect(discard_x, card_y, card_width, card_height)
+    if top_discard is not None:
+        preview_surface = self.build_card_surface(
+            template_id=top_discard.template.template_id,
+            title=top_discard.template.name,
+            cost=top_discard.template.cost,
+            stats=f"{top_discard.template.aw}/{top_discard.template.vw}",
+            defense_text=f"{top_discard.template.vw}/{top_discard.template.vw}",
+            element=top_discard.template.element,
+            type_line=self.get_creature_type_line(top_discard.template),
+            line_one=self.get_card_ability_lines(top_discard.template)[0],
+            line_two=self.get_card_ability_lines(top_discard.template)[1],
+            accent_color=(186, 177, 154),
+            frame_color=(191, 161, 92),
+            tapped=False,
+            selected=False,
+        )
+        self.screen.blit(preview_surface, discard_rect.topleft)
+        pygame.draw.rect(self.screen, CARD_BORDER, discard_rect, 2, border_radius=9)
+        self.preview_targets.append((discard_rect, lambda card=top_discard: self.build_preview_hand_card_surface(card)))
+    else:
+        pygame.draw.rect(self.screen, PANEL_COLOR, discard_rect, border_radius=9)
+        pygame.draw.rect(self.screen, CARD_BORDER, discard_rect, 2, border_radius=9)
 
 
 def handle_log_scroll(self, delta: int) -> None:

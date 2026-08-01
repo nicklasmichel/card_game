@@ -1,5 +1,5 @@
-from .cards import CardInstance, CardTemplate, ResourceCard
-from .combat import DiceRoundRecord, DieResult, PendingBlockOrder, PendingComparison, PendingDiceBattle
+from .cards import CardCost, CardInstance, CardTemplate, PendingRecyclePayment, ResourceCard
+from .combat import CombatUnitSnapshot, DiceRoundRecord, DieResult, PendingBlockOrder, PendingComparison, PendingDiceBattle
 from .enums import Ability, Element
 from .phases import (
     PHASE_DECLARE_ATTACKERS,
@@ -9,6 +9,7 @@ from .phases import (
     PHASE_SUMMONING,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
+    PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
 )
 from .players import BattlefieldCreature, PlayerState
@@ -18,8 +19,11 @@ __all__ = [
     "Ability",
     "BattlefieldCreature",
     "ButtonSpec",
+    "CardCost",
     "CardInstance",
     "CardTemplate",
+    "PendingRecyclePayment",
+    "CombatUnitSnapshot",
     "DiceRoundRecord",
     "DieResult",
     "Element",
@@ -33,6 +37,7 @@ __all__ = [
     "PHASE_SUMMONING",
     "PHASE_MULLIGAN",
     "PHASE_ORDER_BLOCKERS",
+    "PHASE_RECYCLE_PAYMENT",
     "PHASE_RESOURCE",
     "PlayerState",
     "ResourceCard",

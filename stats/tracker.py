@@ -37,17 +37,33 @@ class GameStatistics:
     def register_draw(self, player_id: int) -> None:
         self.player_stats[player_id].cards_drawn += 1
 
+    def register_recycled_card_drawn(self, player_id: int) -> None:
+        self.player_stats[player_id].recycled_cards_drawn_again += 1
+
     def register_resource_played(self, player_id: int) -> None:
         self.player_stats[player_id].resources_played += 1
 
-    def register_creature_played(self, player_id: int) -> None:
+    def register_creature_played(self, player_id: int, recycle_cost: int = 0) -> None:
         self.player_stats[player_id].creatures_played += 1
+        if recycle_cost > 0:
+            self.player_stats[player_id].recycled_cards_played += 1
+            self.player_stats[player_id].total_recycle_cost_paid += recycle_cost
+            self.player_stats[player_id].max_recycle_paid_once = max(
+                self.player_stats[player_id].max_recycle_paid_once,
+                recycle_cost,
+            )
+
+    def register_recycle_payment(self, player_id: int, recycle_cost: int) -> None:
+        self.player_stats[player_id].recycled_resources += recycle_cost
 
     def register_attackers(self, player_id: int, count: int) -> None:
         self.player_stats[player_id].attackers_declared += count
 
     def register_unblocked_attack(self, player_id: int, damage: int) -> None:
         self.player_stats[player_id].unblocked_attacks += 1
+        self.player_stats[player_id].player_damage_dealt += damage
+
+    def register_player_damage(self, player_id: int, damage: int) -> None:
         self.player_stats[player_id].player_damage_dealt += damage
 
     def register_block_assignment(self, blocker_count: int) -> None:
@@ -160,7 +176,14 @@ class GameStatistics:
         ])
         self.current_pending_combat = None
 
-    def finalize_game(self, winner: str, human_life: int, ai_life: int) -> Dict[str, str]:
+    def finalize_game(
+        self,
+        winner: str,
+        human_life: int,
+        ai_life: int,
+        human_resources_remaining: int,
+        ai_resources_remaining: int,
+    ) -> Dict[str, str]:
         self.winner = winner
         average = self.total_dice_comparisons / self.creature_combats if self.creature_combats else 0.0
         row = {
@@ -175,8 +198,20 @@ class GameStatistics:
             "ai_cards_drawn": str(self.player_stats[1].cards_drawn),
             "human_resources_played": str(self.player_stats[0].resources_played),
             "ai_resources_played": str(self.player_stats[1].resources_played),
+            "human_resources_remaining": str(human_resources_remaining),
+            "ai_resources_remaining": str(ai_resources_remaining),
             "human_creatures_played": str(self.player_stats[0].creatures_played),
             "ai_creatures_played": str(self.player_stats[1].creatures_played),
+            "human_recycled_resources": str(self.player_stats[0].recycled_resources),
+            "ai_recycled_resources": str(self.player_stats[1].recycled_resources),
+            "human_recycled_cards_played": str(self.player_stats[0].recycled_cards_played),
+            "ai_recycled_cards_played": str(self.player_stats[1].recycled_cards_played),
+            "human_avg_recycle_cost": f"{(self.player_stats[0].total_recycle_cost_paid / self.player_stats[0].creatures_played) if self.player_stats[0].creatures_played else 0.0:.2f}",
+            "ai_avg_recycle_cost": f"{(self.player_stats[1].total_recycle_cost_paid / self.player_stats[1].creatures_played) if self.player_stats[1].creatures_played else 0.0:.2f}",
+            "human_max_recycle_paid_once": str(self.player_stats[0].max_recycle_paid_once),
+            "ai_max_recycle_paid_once": str(self.player_stats[1].max_recycle_paid_once),
+            "human_recycled_cards_drawn_again": str(self.player_stats[0].recycled_cards_drawn_again),
+            "ai_recycled_cards_drawn_again": str(self.player_stats[1].recycled_cards_drawn_again),
             "human_attackers_declared": str(self.player_stats[0].attackers_declared),
             "ai_attackers_declared": str(self.player_stats[1].attackers_declared),
             "human_unblocked_attacks": str(self.player_stats[0].unblocked_attacks),

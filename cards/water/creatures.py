@@ -1,16 +1,76 @@
 ﻿from __future__ import annotations
 
-from models import Ability, CardTemplate, Element
+from models import Ability, CardCost, CardTemplate, Element
 
 
 WATER_CREATURES = [
-    CardTemplate("water_wassertropfen", "Wassertropfen", 1, 1, 1, Element.WATER),
-    CardTemplate("water_kuestenkaempfer", "Küstenkämpfer", 2, 2, 2, Element.WATER),
-    CardTemplate("water_flusskrieger", "Flusskrieger", 3, 3, 3, Element.WATER),
-    CardTemplate("water_quellnymphe", "Quellnymphe", 2, 1, 2, Element.WATER, frozenset({Ability.REGENERATION})),
-    CardTemplate("water_gezeitenheiler", "Gezeitenheiler", 4, 3, 4, Element.WATER, frozenset({Ability.REGENERATION})),
-    CardTemplate("water_wellenformer", "Wellenformer", 3, 3, 2, Element.WATER, frozenset({Ability.ADAPTATION})),
-    CardTemplate("water_tiefenjaeger", "Tiefenjäger", 5, 5, 4, Element.WATER, frozenset({Ability.ADAPTATION})),
-    CardTemplate("water_uralter_leviathan", "Uralter Leviathan", 6, 4, 6, Element.WATER, frozenset({Ability.REGENERATION, Ability.ADAPTATION})),
+    CardTemplate(
+        template_id="water_wassertropfen",
+        name="Wassertropfen",
+        cost=CardCost(resources=1),
+        aw=1,
+        vw=1,
+        element=Element.WATER,
+    ),
+    CardTemplate(
+        template_id="water_kuestenkaempfer",
+        name="Küstenkämpfer",
+        cost=CardCost(resources=2),
+        aw=2,
+        vw=2,
+        element=Element.WATER,
+    ),
+    CardTemplate(
+        template_id="water_flusskrieger",
+        name="Flusskrieger",
+        cost=CardCost(resources=2, recycle=1),
+        aw=3,
+        vw=3,
+        element=Element.WATER,
+    ),
+    CardTemplate(
+        template_id="water_quellnymphe",
+        name="Quellnymphe",
+        cost=CardCost(resources=2),
+        aw=1,
+        vw=2,
+        element=Element.WATER,
+        abilities=frozenset({Ability.REGENERATION}),
+    ),
+    CardTemplate(
+        template_id="water_gezeitenheiler",
+        name="Gezeitenheiler",
+        cost=CardCost(resources=4),
+        aw=3,
+        vw=4,
+        element=Element.WATER,
+        abilities=frozenset({Ability.REGENERATION}),
+    ),
+    CardTemplate(
+        template_id="water_wellenformer",
+        name="Wellenformer",
+        cost=CardCost(resources=3),
+        aw=3,
+        vw=2,
+        element=Element.WATER,
+        abilities=frozenset({Ability.ADAPTATION}),
+    ),
+    CardTemplate(
+        template_id="water_tiefenjaeger",
+        name="Tiefenjäger",
+        cost=CardCost(resources=5),
+        aw=5,
+        vw=4,
+        element=Element.WATER,
+        abilities=frozenset({Ability.ADAPTATION}),
+    ),
+    CardTemplate(
+        template_id="water_uralter_leviathan",
+        name="Uralter Leviathan",
+        cost=CardCost(resources=6),
+        aw=4,
+        vw=6,
+        element=Element.WATER,
+        abilities=frozenset({Ability.REGENERATION, Ability.ADAPTATION}),
+    ),
 ]
-

@@ -5,7 +5,7 @@ from typing import List
 
 import pygame
 
-from models import Ability, CardTemplate, Element, PHASE_RESOURCE, PHASE_SUMMONING
+from models import Ability, CardCost, CardTemplate, Element, PHASE_RESOURCE, PHASE_SUMMONING
 from ui.style import (
     ATTACK_HIGHLIGHT,
     CARD_BADGE_DARK,
@@ -64,9 +64,9 @@ def get_zone_fill_color(self, zone_key: str) -> tuple[int, int, int, int]:
     return (blended[0], blended[1], blended[2], 42)
 
 
-def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -> pygame.Rect:
+def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygame.Surface:
     line_one, line_two = self.get_card_ability_lines(card.template)
-    surface = self.build_card_surface(
+    return self.build_card_surface(
         template_id=card.template.template_id,
         title=card.template.name,
         cost=card.template.cost,
@@ -81,6 +81,10 @@ def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -
         tapped=False,
         selected=selected,
     )
+
+
+def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -> pygame.Rect:
+    surface = self.build_hand_card_surface(card, selected, note)
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda card=card, note=note: self.build_preview_hand_card_surface(card, note)
@@ -98,17 +102,21 @@ def draw_hidden_hand_card(self, card, x: int, y: int) -> pygame.Rect:
 
 
 def draw_dragged_card(self) -> None:
-    if not self.drag_active or self.dragged_hand_card_id is None or self.drag_current_pos is None:
+    if not self.drag_active or self.dragged_hand_card_id is None:
         return
-    card = next(
-        (existing for existing in self.engine.human_player.hand if existing.instance_id == self.dragged_hand_card_id),
-        None,
-    )
-    if card is None:
-        return
-    x = self.drag_current_pos[0] - self.card_width // 2
-    y = self.drag_current_pos[1] - self.card_height // 2
-    self.draw_hand_card(card, x, y, selected=True)
+    if self.dragged_card_surface is None:
+        card = next(
+            (existing for existing in self.engine.human_player.hand if existing.instance_id == self.dragged_hand_card_id),
+            None,
+        )
+        if card is None:
+            return
+        self.dragged_card_surface = self.build_hand_card_surface(card, selected=True)
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    grab_offset_x, grab_offset_y = self.drag_grab_offset or (self.card_width // 2, self.card_height // 2)
+    x = mouse_x - grab_offset_x
+    y = mouse_y - grab_offset_y
+    self.screen.blit(self.dragged_card_surface, (x, y))
 
 
 def draw_resource_card(self, resource, x: int, y: int) -> pygame.Rect:
@@ -185,6 +193,7 @@ def draw_creature_card(
     extra_line: str = "",
     attacking: bool = False,
 ) -> pygame.Rect:
+    visually_tapped = self.is_creature_visually_tapped(creature)
     accent = PLAYER_CARD_COLOR if is_human else ENEMY_CARD_COLOR
     line_one = ""
     line_two = ""
@@ -207,12 +216,12 @@ def draw_creature_card(
         line_two=line_two,
         accent_color=accent,
         frame_color=accent,
-        tapped=creature.tapped,
+        tapped=visually_tapped,
         selected=selected,
         attacking=attacking,
     )
-    width = self.card_height if creature.tapped else self.card_width
-    height = self.card_width if creature.tapped else self.card_height
+    width = self.card_height if visually_tapped else self.card_width
+    height = self.card_width if visually_tapped else self.card_height
     rect = pygame.Rect(x, y, width, height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda creature=creature, is_human=is_human, extra_line=extra_line, attacking=attacking: self.build_preview_creature_surface(creature, is_human, extra_line, attacking)
@@ -224,7 +233,7 @@ def build_card_surface(
     self,
     template_id: str | None,
     title: str,
-    cost: int,
+    cost: CardCost | int,
     stats: str,
     defense_text: str | None,
     element: Element,
@@ -269,34 +278,43 @@ def build_card_surface(
 
     aw_text, vw_text = stats.split("/", maxsplit=1)
     shield_text = defense_text or vw_text
-    element_icon_size = max(s(22), int(self.card_width * 0.13))
-    element_icon_rect = pygame.Rect(
-        self.card_width - s(8) - element_icon_size,
-        header_y + s(1),
-        element_icon_size,
-        element_icon_size,
-    )
-    cost_text = str(cost)
-    cost_width = self.small_font.size(cost_text)[0]
-    cost_x = element_icon_rect.x - cost_width - s(2)
+    shield_text_color = (224, 116, 116) if shield_text.startswith("0/") else CARD_TEXT_DARK
+    cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
+    card_number_font = pygame.font.SysFont("arial", max(self.small_font.get_height() + s(2), self.small_font.get_height() + 2))
+    cost_text = str(cost_value.resources) if cost_value.resources > 0 else ""
+    cost_width = card_number_font.size(cost_text)[0] if cost_text else 0
+    cost_x = self.card_width - s(8) - cost_width
     title_text = self.fit_text(self.small_font, title, max(s(24), cost_x - s(12)))
     self.blit_text_to_surface(base, self.small_font, title_text, CARD_TEXT_DARK, s(10), header_y + s(5))
-    self.blit_text_to_surface(base, self.small_font, cost_text, CARD_TEXT_DARK, cost_x, header_y + s(5))
-    self.blit_symbol_image(base, get_element_symbol_key(element), element_icon_rect)
+    if cost_text:
+        self.blit_text_to_surface(base, card_number_font, cost_text, CARD_TEXT_DARK, cost_x, header_y + s(4))
     if line_one:
         self.blit_text_to_surface(base, self.small_font, self.fit_text(self.small_font, line_one, self.card_width - s(28)), CARD_TEXT_DARK, s(12), text_rect.y + s(3))
     if line_two:
         self.blit_text_to_surface(base, self.small_font, self.fit_text(self.small_font, line_two, self.card_width - s(28)), CARD_TEXT_DARK, s(12), self.card_height - s(42))
     footer_y = self.card_height - s(14)
     aw_x = s(12)
-    shield_width = self.small_font.size(shield_text)[0]
+    shield_width = card_number_font.size(shield_text)[0]
     shield_icon_size = s(22)
     shield_x = self.card_width - s(6) - shield_width - shield_icon_size
-    self.blit_text_to_surface(base, self.small_font, aw_text, CARD_TEXT_DARK, aw_x, self.card_height - s(24))
-    self.blit_text_to_surface(base, self.small_font, shield_text, CARD_TEXT_DARK, shield_x, self.card_height - s(24))
-    aw_width = self.small_font.size(aw_text)[0]
-    self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(1), footer_y - s(12), s(22), s(22)))
-    self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(14), shield_icon_size, shield_icon_size))
+    self.blit_text_to_surface(base, card_number_font, aw_text, CARD_TEXT_DARK, aw_x, self.card_height - s(25))
+    self.blit_text_to_surface(base, card_number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
+    recycle_icon_gap = 0
+    recycle_icon_size = s(22)
+    recycle_width = cost_value.recycle * recycle_icon_size + max(0, cost_value.recycle - 1) * recycle_icon_gap
+    recycle_x = (self.card_width - recycle_width) // 2
+    recycle_y = self.card_height - s(25)
+    for recycle_index in range(cost_value.recycle):
+        icon_rect = pygame.Rect(
+            recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),
+            recycle_y,
+            recycle_icon_size,
+            recycle_icon_size,
+        )
+        self.blit_symbol_image(base, get_element_symbol_key(element), icon_rect)
+    aw_width = card_number_font.size(aw_text)[0]
+    self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(3), footer_y - s(12), s(22), s(22)))
+    self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(12), shield_icon_size, shield_icon_size))
 
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
@@ -355,17 +373,17 @@ def build_full_art_card_surface(
 
     aw_text, vw_text = stats.split("/", maxsplit=1)
     shield_text = defense_text or vw_text
-    element_icon_size = max(s(22), int(self.card_width * 0.13))
+    shield_text_color = (255, 142, 142) if shield_text.startswith("0/") else (255, 255, 255)
     header_y = max(s(4), int(self.card_height * 0.02))
-    element_icon_rect = pygame.Rect(self.card_width - s(8) - element_icon_size, header_y + s(1), element_icon_size, element_icon_size)
-    cost_text = str(cost)
-    cost_width = self.small_font.size(cost_text)[0]
-    cost_x = element_icon_rect.x - cost_width - s(2)
+    cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
+    card_number_font = pygame.font.SysFont("arial", max(self.small_font.get_height() + s(2), self.small_font.get_height() + 2))
+    cost_text = str(cost_value.resources) if cost_value.resources > 0 else ""
+    cost_width = card_number_font.size(cost_text)[0] if cost_text else 0
+    cost_x = self.card_width - s(8) - cost_width
     title_text = self.fit_text(self.small_font, title, max(s(24), cost_x - s(12)))
     blit_text_with_shadow(base, self.small_font, title_text, (255, 255, 255), s(10), header_y + s(5))
-    blit_text_with_shadow(base, self.small_font, cost_text, (255, 255, 255), cost_x, header_y + s(5))
-    self.blit_symbol_image(base, get_element_symbol_key(element), element_icon_rect)
-
+    if cost_text:
+        blit_text_with_shadow(base, card_number_font, cost_text, (255, 255, 255), cost_x, header_y + s(4))
     if line_one:
         blit_text_with_shadow(base, self.small_font, self.fit_text(self.small_font, line_one, self.card_width - s(20)), (255, 255, 255), s(10), self.card_height - s(54))
     if line_two:
@@ -373,14 +391,27 @@ def build_full_art_card_surface(
 
     footer_y = self.card_height - s(14)
     aw_x = s(10)
-    shield_width = self.small_font.size(shield_text)[0]
+    shield_width = card_number_font.size(shield_text)[0]
     shield_icon_size = s(22)
     shield_x = self.card_width - s(6) - shield_width - shield_icon_size
-    blit_text_with_shadow(base, self.small_font, aw_text, (255, 255, 255), aw_x, self.card_height - s(24))
-    blit_text_with_shadow(base, self.small_font, shield_text, (255, 255, 255), shield_x, self.card_height - s(24))
-    aw_width = self.small_font.size(aw_text)[0]
-    self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(1), footer_y - s(12), s(22), s(22)))
-    self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(14), shield_icon_size, shield_icon_size))
+    blit_text_with_shadow(base, card_number_font, aw_text, (255, 255, 255), aw_x, self.card_height - s(25))
+    blit_text_with_shadow(base, card_number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
+    recycle_icon_gap = 0
+    recycle_icon_size = s(22)
+    recycle_width = cost_value.recycle * recycle_icon_size + max(0, cost_value.recycle - 1) * recycle_icon_gap
+    recycle_x = (self.card_width - recycle_width) // 2
+    recycle_y = self.card_height - s(25)
+    for recycle_index in range(cost_value.recycle):
+        icon_rect = pygame.Rect(
+            recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),
+            recycle_y,
+            recycle_icon_size,
+            recycle_icon_size,
+        )
+        self.blit_symbol_image(base, get_element_symbol_key(element), icon_rect)
+    aw_width = card_number_font.size(aw_text)[0]
+    self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(3), footer_y - s(12), s(22), s(22)))
+    self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(12), shield_icon_size, shield_icon_size))
 
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
@@ -418,16 +449,28 @@ def get_creature_type_line(self, template: CardTemplate) -> str:
 
 def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
     names = self.get_ability_names(template.abilities)
-    if not names:
-        return "", ""
-    return ", ".join(names), ""
+    line_one = ", ".join(names)
+    line_two = getattr(template, "rules_text", "")
+    if line_one and line_two:
+        return line_one, line_two
+    if line_one:
+        return line_one, ""
+    if line_two:
+        return line_two, ""
+    return "", ""
 
 
 def get_card_ability_lines_from_creature(self, creature) -> tuple[str, str]:
     names = self.get_ability_names(creature.abilities)
-    if not names:
-        return "", ""
-    return ", ".join(names), ""
+    line_one = ", ".join(names)
+    line_two = getattr(creature, "rules_text", "")
+    if line_one and line_two:
+        return line_one, line_two
+    if line_one:
+        return line_one, ""
+    if line_two:
+        return line_two, ""
+    return "", ""
 
 
 def get_ability_names(self, abilities) -> List[str]:
@@ -733,6 +776,7 @@ def can_drag_hand_card_to_resource(self) -> bool:
         self.engine.phase == PHASE_RESOURCE
         and self.engine.active_player.is_human
         and not self.engine.active_player.resource_played_this_turn
+        and self.engine.pending_recycle_payment is None
     )
 
 
@@ -741,7 +785,11 @@ def can_drop_on_resource_area(self, position: tuple[int, int]) -> bool:
 
 
 def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
-    if self.engine.phase != PHASE_SUMMONING or not self.engine.active_player.is_human:
+    if (
+        self.engine.phase != PHASE_SUMMONING
+        or not self.engine.active_player.is_human
+        or self.engine.pending_recycle_payment is not None
+    ):
         return False
     target_card_id = self.dragged_hand_card_id if card_id is None else card_id
     if target_card_id is None:
@@ -750,7 +798,7 @@ def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
         (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
         None,
     )
-    return card is not None and self.engine.active_player.can_pay(card.template.cost)
+    return card is not None and self.engine.can_play_card(self.engine.active_player, card)
 
 
 def can_drop_on_creature_area(self, position: tuple[int, int]) -> bool:
@@ -761,4 +809,6 @@ def clear_drag_state(self) -> None:
     self.dragged_hand_card_id = None
     self.drag_start_pos = None
     self.drag_current_pos = None
+    self.drag_grab_offset = None
     self.drag_active = False
+    self.dragged_card_surface = None

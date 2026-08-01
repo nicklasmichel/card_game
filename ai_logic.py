@@ -3,7 +3,7 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from models import Ability, BattlefieldCreature, CardInstance, DieResult, PlayerState
+from models import Ability, BattlefieldCreature, CardCost, CardInstance, DieResult, PlayerState
 
 
 class RandomDieStrategy:
@@ -45,10 +45,10 @@ class SimpleAI:
         self.rng = rng
 
     def mulligan_indices(self, hand: List[CardInstance]) -> List[int]:
-        low_cost_count = sum(1 for card in hand if card.template.cost <= 2)
+        low_cost_count = sum(1 for card in hand if card.template.cost.total_value <= 2)
         if low_cost_count >= 2:
             return []
-        return [index for index, card in enumerate(hand) if card.template.cost >= 5]
+        return [index for index, card in enumerate(hand) if card.template.cost.total_value >= 5]
 
     def choose_resource_card(self, player: PlayerState) -> Optional[CardInstance]:
         if player.resource_played_this_turn or not player.hand:
@@ -57,8 +57,8 @@ class SimpleAI:
         return max(
             player.hand,
             key=lambda card: (
-                1 if card.template.cost > affordable else 0,
-                card.template.cost,
+                1 if card.template.resource_cost > affordable else 0,
+                card.template.cost.total_value,
                 card.template.aw + card.template.vw,
             ),
         )
@@ -67,7 +67,30 @@ class SimpleAI:
         playable = [card for card in player.hand if player.can_pay(card.template.cost)]
         if not playable:
             return None
-        return max(playable, key=lambda card: (card.template.cost, card.template.aw, card.template.vw))
+        return max(
+            playable,
+            key=lambda card: (
+                card.template.aw + card.template.vw + len(card.template.abilities) * 2 - card.template.recycle_cost,
+                -card.template.recycle_cost,
+                card.template.resource_cost,
+            ),
+        )
+
+    def choose_resources_to_recycle(self, player: PlayerState, count: int) -> List[int]:
+        if count <= 0:
+            return []
+
+        def score(resource) -> tuple[int, int, int, int]:
+            template = resource.template
+            return (
+                len(template.abilities),
+                template.aw + template.vw,
+                template.cost.total_value,
+                template.resource_cost,
+            )
+
+        chosen = sorted(player.resources, key=score, reverse=True)[:count]
+        return [resource.resource_id for resource in chosen if resource.resource_id is not None]
 
     def choose_attackers(self, creatures: List[BattlefieldCreature]) -> List[BattlefieldCreature]:
         return [creature for creature in creatures if creature.is_ready()]

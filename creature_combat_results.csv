@@ -1,0 +1,11 @@
+game_id,combat_id,timestamp,player_name,creature_name,aw,vw,role,won,lost,survived,damage_dealt,damage_taken,dice_comparisons
+game-20260801-191023-297246230540,1,2026-08-01T19:13:37,Gegner,Wolkenwächter,2,2,Angreifer,0,1,0,0,2,1
+game-20260801-191023-297246230540,1,2026-08-01T19:13:37,Spieler,Brandstifter,2,2,Blocker,1,0,1,2,0,1
+game-20260801-191023-297246230540,2,2026-08-01T19:15:44,Gegner,Windklinge,4,2,Angreifer,1,0,1,1,0,1
+game-20260801-191023-297246230540,2,2026-08-01T19:15:44,Spieler,Funkenkobold,2,1,Blocker,0,1,0,0,1,1
+game-20260801-191023-297246230540,3,2026-08-01T19:15:53,Gegner,Windklinge,4,2,Angreifer,0,1,0,0,2,1
+game-20260801-191023-297246230540,3,2026-08-01T19:15:53,Spieler,Brandstifter,2,2,Blocker,1,0,1,2,0,1
+game-20260801-191023-297246230540,4,2026-08-01T19:17:52,Gegner,Himmelsspäher,2,2,Angreifer,1,0,1,2,0,2
+game-20260801-191023-297246230540,4,2026-08-01T19:17:52,Spieler,Brandstifter,2,2,Blocker,0,1,0,0,2,2
+game-20260801-191023-297246230540,5,2026-08-01T19:18:02,Gegner,Böenreiter,2,1,Angreifer,0,1,0,0,1,1
+game-20260801-191023-297246230540,5,2026-08-01T19:18:02,Spieler,Flammenrekrut,3,1,Blocker,1,0,1,1,0,1

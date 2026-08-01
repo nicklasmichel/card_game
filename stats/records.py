@@ -8,6 +8,11 @@ class PlayerCounters:
     cards_drawn: int = 0
     resources_played: int = 0
     creatures_played: int = 0
+    recycled_resources: int = 0
+    recycled_cards_played: int = 0
+    total_recycle_cost_paid: int = 0
+    max_recycle_paid_once: int = 0
+    recycled_cards_drawn_again: int = 0
     attackers_declared: int = 0
     unblocked_attacks: int = 0
     creatures_destroyed: int = 0

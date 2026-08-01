@@ -10,10 +10,11 @@ from models import (
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_GAME_OVER,
-    PHASE_SUMMONING,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
+    PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SUMMONING,
     ResourceCard,
 )
 
@@ -24,7 +25,7 @@ def process_ai_turn(self) -> None:
     ai_block_decision = self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human
     if self.active_player.is_human and not ai_block_decision:
         return
-    if self.phase in {PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
+    if self.phase in {PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE, PHASE_RECYCLE_PAYMENT}:
         return
     if not self.ai_turn_initialized:
         self.ai_turn_initialized = True
@@ -37,9 +38,7 @@ def process_ai_turn(self) -> None:
 
     if self.phase == PHASE_SUMMONING:
         self.ai_play_creatures()
-        self.phase = PHASE_DECLARE_ATTACKERS
-        self.selected_attackers.clear()
-        self.log("Gegner überlegt seine Angreifer.")
+        self.begin_attack_declaration()
         return
 
     if self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
@@ -59,7 +58,7 @@ def ai_play_resource(self) -> None:
     self.active_player.hand = [
         card for card in self.active_player.hand if card.instance_id != chosen.instance_id
     ]
-    self.active_player.resources.append(ResourceCard(template=chosen.template))
+    self.active_player.resources.append(ResourceCard(template=chosen.template, resource_id=chosen.instance_id))
     self.active_player.resource_played_this_turn = True
     self.statistics.register_resource_played(self.active_player.player_id)
     self.log(f"Gegner legt {chosen.template.name} als Ressource.")
@@ -70,16 +69,11 @@ def ai_play_creatures(self) -> None:
         chosen = self.ai.choose_playable_creature(self.active_player)
         if chosen is None:
             break
-        self.active_player.pay_cost(chosen.template.cost)
-        self.active_player.hand = [
-            card for card in self.active_player.hand if card.instance_id != chosen.instance_id
-        ]
-        self.active_player.battlefield.append(BattlefieldCreature.from_card(chosen))
-        self.statistics.register_creature_played(self.active_player.player_id)
-        self.log(
-            f"Gegner spielt {chosen.template.name} ({chosen.template.aw}/{chosen.template.vw}) "
-            f"für {chosen.template.cost}."
-        )
+        recycle_ids = self.ai.choose_resources_to_recycle(self.active_player, chosen.template.recycle_cost)
+        if len(recycle_ids) != chosen.template.recycle_cost:
+            break
+        if not self.resolve_creature_play(chosen, recycle_ids):
+            break
 
 
 def ai_declare_attackers(self) -> None:
@@ -112,6 +106,9 @@ def handle_click(self, area: str, item_id: int) -> None:
         return
     if area == "enemy_creatures" and self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
         self.toggle_selected_attack_target(item_id)
+        return
+    if area == "player_resources" and self.phase == PHASE_RECYCLE_PAYMENT:
+        self.toggle_recycle_resource_selection(item_id)
         return
     if area == "order_blockers" and self.pending_order is not None:
         self.choose_next_block_order_item(item_id)
@@ -150,6 +147,8 @@ def persist_game_results_once(self) -> None:
         winner=self.players[1].name if self.players[0].life <= 0 else self.players[0].name,
         human_life=self.human_player.life,
         ai_life=self.ai_player.life,
+        human_resources_remaining=len(self.human_player.resources),
+        ai_resources_remaining=len(self.ai_player.resources),
     )
     summary = [
         f"Sieger: {row['winner']}",
@@ -157,9 +156,9 @@ def persist_game_results_once(self) -> None:
         f"Lebenspunkte: Spieler {row['human_life_end']} | Gegner {row['ai_life_end']}",
         f"Ausgespielte Kreaturen: Spieler {row['human_creatures_played']} | Gegner {row['ai_creatures_played']}",
         f"Kreaturen-Kämpfe: {row['creature_combats']}",
-        f"Zerstoerte Kreaturen: Spieler {row['human_creatures_destroyed']} | Gegner {row['ai_creatures_destroyed']}",
+        f"Zerstörte Kreaturen: Spieler {row['human_creatures_destroyed']} | Gegner {row['ai_creatures_destroyed']}",
         f"Spielerschaden: Spieler {row['human_player_damage_dealt']} | Gegner {row['ai_player_damage_dealt']}",
-        f"Durchschnittliche Wuerfelvergleiche: {row['avg_dice_comparisons_per_combat']}",
+        f"Durchschnittliche Würfelvergleiche: {row['avg_dice_comparisons_per_combat']}",
         f"CSV Spielstatistik: {self.results_path}",
         f"CSV Kreaturen-Kämpfe: {self.creature_results_path}",
     ]
@@ -176,6 +175,13 @@ def current_prompt(self) -> str:
         return "Lege optional eine Ressource und gehe dann in die Beschwörungsphase."
     if self.phase == PHASE_SUMMONING:
         return "Spiele Kreaturen aus, beginne den Kampf oder beende den Zug."
+    if self.phase == PHASE_RECYCLE_PAYMENT:
+        pending = self.pending_recycle_payment
+        if pending is None:
+            return "Wähle Recycle-Ressourcen aus."
+        card = next((existing for existing in self.active_player.hand if existing.instance_id == pending.card_instance_id), None)
+        card_name = card.template.name if card is not None else "die Karte"
+        return f"Wähle {pending.required_count} Ressourcen für {card_name}. Ausgewählt: {len(pending.selected_resource_ids)}/{pending.required_count}."
     if self.phase == PHASE_DECLARE_ATTACKERS:
         return "Wähle Angreifer und bestätige."
     if self.phase == PHASE_DECLARE_BLOCKERS:
@@ -203,6 +209,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
         PHASE_DECLARE_BLOCKERS,
         PHASE_ORDER_BLOCKERS,
         PHASE_DICE_BATTLE,
+        PHASE_RECYCLE_PAYMENT,
     }
     if not self.active_player.is_human and self.phase not in human_response_phases:
         return []
@@ -213,6 +220,13 @@ def get_button_specs(self) -> List[ButtonSpec]:
     elif self.phase == PHASE_SUMMONING:
         buttons.append(ButtonSpec("Kampfphase", True, "to_combat"))
         buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
+    elif self.phase == PHASE_RECYCLE_PAYMENT:
+        ready = (
+            self.pending_recycle_payment is not None
+            and len(self.pending_recycle_payment.selected_resource_ids) == self.pending_recycle_payment.required_count
+        )
+        buttons.append(ButtonSpec("Recycle bestätigen", ready, "confirm_recycle"))
+        buttons.append(ButtonSpec("Abbrechen", True, "cancel_recycle"))
     elif self.phase == PHASE_DECLARE_ATTACKERS:
         attacker_count = len(self.selected_attackers)
         attack_label = "Angriff überspringen" if attacker_count <= 0 else f"{attacker_count} Angreifer bestätigen"
@@ -230,4 +244,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
         if self.pending_dice_battle is not None and self.pending_dice_battle.pending_comparison is not None:
             buttons.append(ButtonSpec("Anpassung nutzen", True, "use_adaptation"))
             buttons.append(ButtonSpec("Vergleich werten", True, "resolve_comparison"))
+        if self.pending_dice_battle is not None and self.pending_dice_battle.resolution_complete:
+            button_label = "Nächster Kampf" if self.has_more_dice_battles_after_current() else "Kampf abschließen"
+            buttons.append(ButtonSpec(button_label, True, "end_dice_battle"))
     return buttons
