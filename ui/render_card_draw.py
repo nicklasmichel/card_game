@@ -16,7 +16,12 @@ def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -
         legal = self.engine.can_play_card(self.engine.active_player if self.engine.phase == PHASE_SUMMONING else self.engine.human_player, card)
         if in_priority_window and not legal:
             dim = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
-            dim.fill((18, 18, 22, 120))
+            pygame.draw.rect(
+                dim,
+                (18, 18, 22, 120),
+                pygame.Rect(0, 0, surface.get_width(), surface.get_height()),
+                border_radius=9,
+            )
             surface = surface.copy()
             surface.blit(dim, (0, 0))
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
@@ -107,9 +112,6 @@ def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     shield_width = card_number_font.size(shield_text)[0]
     shield_x = self.card_width - s(6) - shield_width - shield_icon_size
     shield_y = self.card_height - s(25)
-    footer_overlay = pygame.Surface((self.card_width, s(40)), pygame.SRCALPHA)
-    pygame.draw.rect(footer_overlay, (0, 0, 0, 72), pygame.Rect(0, 0, self.card_width, s(40)), border_radius=s(9))
-    surface.blit(footer_overlay, (0, self.card_height - s(40)))
     blit_text_with_shadow(surface, card_number_font, shield_text, shield_text_color, shield_x, shield_y)
     self.blit_symbol_image(surface, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, self.card_height - s(26), shield_icon_size, shield_icon_size))
 

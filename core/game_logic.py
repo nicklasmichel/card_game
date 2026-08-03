@@ -166,6 +166,8 @@ class GameEngine:
         get_reaction_window_profile,
         get_reaction_window_description,
         get_reaction_window_title,
+        has_valid_ausweichen_target,
+        has_valid_combat_die_target,
         is_general_spell_window_trigger,
         is_spell_card,
         pass_reaction,
@@ -267,7 +269,6 @@ class GameEngine:
 
     def log(self, message: str) -> None:
         self.log_messages.append(message)
-        self.log_messages = self.log_messages[-18:]
 
     def queue_player_damage_event(
         self,

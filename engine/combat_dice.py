@@ -266,7 +266,7 @@ def apply_comparison_result(self, battle: PendingDiceBattle, comparison: Pending
         attacker_label = f"{comparison.attacker_die.display()} | Runde {round_number}: Gewonnen"
         blocker_label = f"{comparison.blocker_die.display()} | Runde {round_number}: Verloren"
     elif comparison.attacker_die.total < comparison.blocker_die.total:
-        blocker_damage = 1 + (1 if round_number == 1 and blocker.has_ability(Ability.IGNITE) else 0)
+        blocker_damage = 1
         attacker.current_hp -= blocker_damage
         self.queue_creature_damage_event("attacker", blocker_damage, blocker.element)
         outcome = f"{blocker.name} gewinnt den Würfelvergleich und verursacht {blocker_damage} Schaden."

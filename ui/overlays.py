@@ -316,8 +316,5 @@ def draw_reaction_focus_preview(self) -> None:
     self.screen.blit(panel, panel_rect.topleft)
     pygame.draw.rect(self.screen, CARD_BORDER, panel_rect, 2, border_radius=10)
 
-    title_rect = pygame.Rect(panel_rect.x, panel_rect.y + 12, panel_rect.width, 26)
-    self.blit_centered_text(self.font, "Reaktion auf", MUTED_TEXT, title_rect)
     self.screen.blit(scaled, rect.topleft)
-    pygame.draw.rect(self.screen, CARD_BORDER, rect, 3, border_radius=10)
     draw_reaction_context_boxes(self, panel_rect)

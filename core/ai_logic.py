@@ -44,6 +44,28 @@ class SimpleAI:
     def __init__(self, rng: Random) -> None:
         self.rng = rng
 
+    def has_valid_spell_targets(self, player: PlayerState, engine, card: CardInstance) -> bool:
+        effect = card.template.spell_effect
+        enemy = engine.players[1 - player.player_id]
+        if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
+            return bool(enemy.battlefield or player.battlefield)
+        if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER:
+            return True
+        if effect == SpellEffect.SACRIFICE_FOR_DAMAGE:
+            return bool(player.battlefield) and (bool(enemy.battlefield) or enemy.life > 0)
+        if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
+            return bool(player.battlefield or enemy.battlefield)
+        if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
+            return bool(player.battlefield or enemy.battlefield)
+        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
+            return engine.has_valid_ausweichen_target(player)
+        if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
+            return engine.has_valid_combat_die_target(player)
+        if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
+            pending = engine.pending_direct_attack
+            return pending is not None and pending.attacker_owner == player.player_id
+        return True
+
     def mulligan_indices(self, hand: List[CardInstance]) -> List[int]:
         low_cost_count = sum(1 for card in hand if card.template.cost.total_value <= 2)
         if low_cost_count >= 2:
@@ -85,6 +107,7 @@ class SimpleAI:
             card
             for card in player.hand
             if card.template.card_type in {CardType.RITUAL, CardType.SPELL} and engine.can_play_card(player, card)
+            and self.has_valid_spell_targets(player, engine, card)
         ]
         if not candidates:
             return None
@@ -223,7 +246,12 @@ class SimpleAI:
         return Ability.HASTE
 
     def choose_spell(self, hand: List[CardInstance], engine) -> Optional[CardInstance]:
-        legal = [card for card in hand if engine.can_react_with_card(engine.ai_player, card)]
+        legal = [
+            card
+            for card in hand
+            if engine.can_react_with_card(engine.ai_player, card)
+            and self.has_valid_spell_targets(engine.ai_player, engine, card)
+        ]
         if not legal:
             return None
         scored: list[tuple[tuple[int, int], CardInstance]] = []

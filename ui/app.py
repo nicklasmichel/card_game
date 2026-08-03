@@ -119,6 +119,7 @@ from ui.runtime import (
     is_timed_decision_ready,
     process_timed_decision,
     run,
+    trigger_primary_action_button,
     update_decision_timer,
 )
 from ui.visuals import (
@@ -225,6 +226,7 @@ class TcgPrototypeApp:
     process_timed_decision = process_timed_decision
     get_think_progress = get_think_progress
     handle_ui_action = handle_ui_action
+    trigger_primary_action_button = trigger_primary_action_button
     handle_mouse_down = handle_mouse_down
     handle_mouse_up = handle_mouse_up
     handle_mouse_motion = handle_mouse_motion

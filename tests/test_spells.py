@@ -266,6 +266,42 @@ class SpellTests(EngineTestCase):
         self.assertTrue(len(self.engine.human_player.discard_pile) >= 1)
         self.assertTrue(self.engine.statistics.reaction_chains_started >= 1)
 
+    def test_single_pass_resolves_spell_already_on_stack(self) -> None:
+        spell = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_aufwind"])
+        self.engine.spell_stack.append(
+            StackItem(
+                source_card=spell,
+                controller=self.engine.ai_player,
+                targets=[],
+                effect=SpellEffect.REDUCE_CREATURE_COST_THIS_TURN,
+                context=None,
+                amount=spell.template.spell_amount,
+                draw_count=spell.template.spell_draw_count,
+            )
+        )
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.SPELL_CAST,
+                active_player=self.engine.ai_player,
+                source_player=self.engine.ai_player,
+                source_card=spell,
+            ),
+            first_responder_id=self.engine.human_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_SUMMONING,
+        )
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_priority_player_id, self.engine.human_player.player_id)
+
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.phase, PHASE_SUMMONING)
+        self.assertIsNone(self.engine.reaction_priority_player_id)
+        self.assertEqual(len(self.engine.spell_stack), 0)
+        self.assertEqual(self.engine.ai_player.creature_cost_reduction_this_turn, spell.template.spell_amount)
+
     def test_aufwind_reduces_multiple_later_creatures_in_same_turn(self) -> None:
         self.give_resources(0, 3)
         spell = self.give_card("air_ritual_aufwind")
@@ -335,6 +371,40 @@ class SpellTests(EngineTestCase):
         self.engine.end_turn()
 
         self.assertNotIn(Ability.FLYING, target.temporary_abilities)
+
+    def test_selected_creature_in_summoning_shows_no_play_button(self) -> None:
+        creature = self.give_card("air_creature_windgeist")
+        self.give_resources(0, 2)
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.toggle_hand_card(creature.instance_id)
+        labels = [spec.label for spec in self.engine.get_button_specs()]
+
+        self.assertNotIn("Kreatur spielen", labels)
+        self.assertIn("Kampfphase", labels)
+        self.assertIn("Zug beenden", labels)
+
+    def test_human_reaction_priority_shows_pass_button_even_when_enemy_is_active_player(self) -> None:
+        self.give_resources(0, 2)
+        self.give_card("fire_spell_gegenfeuer")
+        target = self.make_creature("earth_creature_felsensoldat", owner_id=0)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.OWN_CREATURE_TARGETED,
+                active_player=self.engine.ai_player,
+                source_player=self.engine.ai_player,
+                target_creature=target,
+            ),
+            first_responder_id=self.engine.human_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_SUMMONING,
+        )
+
+        labels = [spec.label for spec in self.engine.get_button_specs()]
+
+        self.assertIn("Passen", labels)
+        self.assertNotIn("Zauber spielen", labels)
 
     def test_rueckenwind_can_target_enemy_creature(self) -> None:
         self.give_resources(0, 2)
@@ -704,6 +774,28 @@ class SpellTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.resources), 0)
         self.assertEqual(len(self.engine.human_player.hand), 5)
+
+    def test_ai_does_not_choose_boeenschub_without_unused_combat_die(self) -> None:
+        self.engine.ai_player.hand.append(
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_boeenschub"])
+        )
+        self.engine.phase = PHASE_REACTION
+        self.engine.reaction_priority_player_id = self.engine.ai_player.player_id
+
+        chosen = self.engine.ai.choose_spell(self.engine.ai_player.hand, self.engine)
+
+        self.assertIsNone(chosen)
+
+    def test_ai_does_not_choose_boeenschub_in_summoning_without_valid_target(self) -> None:
+        self.engine.ai_player.hand.append(
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_boeenschub"])
+        )
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_SUMMONING
+
+        chosen = self.engine.ai.choose_ritual(self.engine.ai_player, self.engine)
+
+        self.assertIsNone(chosen)
 
     def test_nachwehen_loses_on_empty_deck_mid_resolution(self) -> None:
         spell = self.give_card("air_spell_nachwehen")

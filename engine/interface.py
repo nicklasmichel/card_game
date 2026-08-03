@@ -366,19 +366,24 @@ def get_button_specs(self) -> List[ButtonSpec]:
         PHASE_RECYCLE_PAYMENT,
         PHASE_FORCED_DISCARD,
     }
-    if not self.active_player.is_human and self.phase not in human_response_phases:
+    human_has_reaction_priority = self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.human_player.player_id
+    human_controls_pending_spell = (
+        self.phase == PHASE_SPELL_TARGETING
+        and self.pending_spell_cast is not None
+        and self.pending_spell_cast.controller_id == self.human_player.player_id
+    )
+    if (
+        not self.active_player.is_human
+        and self.phase not in human_response_phases
+        and not human_has_reaction_priority
+        and not human_controls_pending_spell
+    ):
         return []
 
     buttons: List[ButtonSpec] = []
     if self.phase == PHASE_RESOURCE:
         buttons.append(ButtonSpec("Zur Beschwörungsphase", True, "to_summoning"))
     elif self.phase == PHASE_SUMMONING:
-        card = self.get_selected_hand_card()
-        if card is not None:
-            if card.template.card_type == CardType.CREATURE:
-                buttons.append(ButtonSpec("Kreatur spielen", self.can_play_card(self.active_player, card), "play_creature"))
-            elif card.template.card_type in {CardType.RITUAL, CardType.SPELL}:
-                buttons.append(ButtonSpec(f"{card.template.card_type.value} spielen", self.can_play_card(self.active_player, card), "play_spell"))
         buttons.append(ButtonSpec("Kampfphase", True, "to_combat"))
         buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
     elif self.phase == PHASE_SPELL_TARGETING:
@@ -429,8 +434,5 @@ def get_button_specs(self) -> List[ButtonSpec]:
             button_label = "Nächster Kampf" if self.has_more_dice_battles_after_current() else "Kampf abschließen"
             buttons.append(ButtonSpec(button_label, True, "end_dice_battle"))
     elif self.phase == PHASE_REACTION:
-        selected = self.get_selected_hand_card()
-        legal = selected is not None and self.can_react_with_card(self.human_player, selected)
-        buttons.append(ButtonSpec("Zauber spielen", legal, "play_reaction_spell"))
         buttons.append(ButtonSpec("Passen", True, "pass_reaction"))
     return buttons

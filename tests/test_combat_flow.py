@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from core.models import (
+    DiceRoundRecord,
     DieResult,
     PendingComparison,
     PendingDiceBattle,
@@ -274,6 +275,164 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertIs(self.engine.pending_dice_battle, battle)
         self.assertEqual(self.engine.log_messages, [])
+
+    def test_ignite_attacker_deals_two_damage_on_first_won_comparison(self) -> None:
+        attacker = self.make_creature("fire_creature_brandstifter", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DICE_BATTLE
+        battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(20, attacker.aw, used=True)],
+            blocker_dice=[DieResult(1, blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        self.engine.pending_dice_battle = battle
+
+        self.engine.apply_comparison_result(
+            battle,
+            PendingComparison(
+                attacker_die=battle.attacker_dice[0],
+                blocker_die=battle.blocker_dice[0],
+                human_is_attacker=True,
+            ),
+        )
+
+        self.assertEqual(blocker.current_hp, blocker.vw - 2)
+
+    def test_ignite_has_no_effect_while_blocking(self) -> None:
+        attacker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("fire_creature_brandstifter", owner_id=0)
+
+        self.engine.active_player_index = 1
+        self.engine.phase = PHASE_DICE_BATTLE
+        battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=blocker.unit_id,
+            attacker_owner=1,
+            blocker_owner=0,
+            attacker_dice=[DieResult(1, attacker.aw, used=True)],
+            blocker_dice=[DieResult(20, blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        self.engine.pending_dice_battle = battle
+
+        self.engine.apply_comparison_result(
+            battle,
+            PendingComparison(
+                attacker_die=battle.attacker_dice[0],
+                blocker_die=battle.blocker_dice[0],
+                human_is_attacker=False,
+            ),
+        )
+
+        self.assertEqual(attacker.current_hp, attacker.vw - 1)
+
+    def test_ignite_has_no_effect_after_first_comparison_of_same_battle(self) -> None:
+        attacker = self.make_creature("fire_creature_brandstifter", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DICE_BATTLE
+        battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(20, attacker.aw, used=True), DieResult(19, attacker.aw, used=True)],
+            blocker_dice=[DieResult(1, blocker.aw, used=True), DieResult(2, blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        battle.history.append(
+            DiceRoundRecord(
+                round_number=1,
+                human_unit_name=attacker.name,
+                human_result="20",
+                enemy_unit_name=blocker.name,
+                enemy_result="1",
+                outcome_text="dummy",
+            )
+        )
+        self.engine.pending_dice_battle = battle
+
+        self.engine.apply_comparison_result(
+            battle,
+            PendingComparison(
+                attacker_die=battle.attacker_dice[1],
+                blocker_die=battle.blocker_dice[1],
+                human_is_attacker=True,
+            ),
+        )
+
+        self.assertEqual(blocker.current_hp, blocker.vw - 1)
+
+    def test_ignite_can_trigger_again_in_new_single_combat_against_next_blocker(self) -> None:
+        attacker = self.make_creature("fire_creature_brandstifter", owner_id=0)
+        first_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        second_blocker = self.make_creature("earth_creature_schildwache", owner_id=1)
+
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DICE_BATTLE
+
+        first_battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=first_blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(20, attacker.aw, used=True)],
+            blocker_dice=[DieResult(1, first_blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(first_blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        self.engine.pending_dice_battle = first_battle
+        self.engine.apply_comparison_result(
+            first_battle,
+            PendingComparison(
+                attacker_die=first_battle.attacker_dice[0],
+                blocker_die=first_battle.blocker_dice[0],
+                human_is_attacker=True,
+            ),
+        )
+
+        second_battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=second_blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(19, attacker.aw, used=True)],
+            blocker_dice=[DieResult(2, second_blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(second_blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        self.engine.pending_dice_battle = second_battle
+        self.engine.apply_comparison_result(
+            second_battle,
+            PendingComparison(
+                attacker_die=second_battle.attacker_dice[0],
+                blocker_die=second_battle.blocker_dice[0],
+                human_is_attacker=True,
+            ),
+        )
+
+        self.assertEqual(first_blocker.current_hp, first_blocker.vw - 2)
+        self.assertEqual(second_blocker.current_hp, second_blocker.vw - 2)
 
     def test_battle_snapshot_keeps_last_hp_after_creature_removal(self) -> None:
         attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)

@@ -27,6 +27,8 @@ def run(self) -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 self.handle_ui_action("ui_toggle_pause")
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                self.trigger_primary_action_button()
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_log_scroll(-event.y * 36)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -153,6 +155,16 @@ def handle_ui_action(self, action: str) -> bool:
             self.pause_started_at_ms = now
         return True
     return False
+
+
+def trigger_primary_action_button(self) -> None:
+    for _rect, spec in self.buttons:
+        if not spec.enabled:
+            continue
+        if not self.handle_ui_action(spec.action):
+            self.engine.handle_action(spec.action)
+            self.update_decision_timer(force_reset=True)
+        return
 
 
 def handle_mouse_down(self, position: tuple[int, int]) -> None:

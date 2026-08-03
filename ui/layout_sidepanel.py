@@ -35,9 +35,9 @@ def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_RESOURCE:
         return "Ressource"
     if phase == PHASE_SUMMONING:
-        return "Beschwoerung"
+        return "Beschwörung"
     if phase == "Recycle auswaehlen":
-        return "Beschwoerung"
+        return "Beschwörung"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
     return phase
@@ -265,9 +265,6 @@ def get_selected_spell_lines(self) -> list[str]:
 
 def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = []
-    selected_spell_lines = get_selected_spell_lines(self)
-    if selected_spell_lines:
-        sections.append(("Ausgewaehlte Karte", selected_spell_lines))
     if self.engine.phase == PHASE_SPELL_TARGETING:
         sections.append(("Zauberziele", [get_pending_target_summary(self)]))
     return sections

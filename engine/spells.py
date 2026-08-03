@@ -32,7 +32,7 @@ GENERAL_SPELL_WINDOW_TRIGGERS = {
 REACTION_WINDOW_PROFILES = {
     ReactionTrigger.SPELL_CAST: {
         "title": "Reaktionsfenster",
-        "description": "Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.",
+        "description": "Ein Zauber wurde gespielt. Passende Zauber können jetzt darauf reagieren.",
         "is_general_window": False,
         "is_combat_window": False,
         "shows_stack_preview": True,
@@ -40,7 +40,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.AFTER_DICE_REVEALED: {
         "title": "Allgemeines Zauberfenster",
-        "description": "Vor dem ersten Wuerfelvergleich koennen Zauber gespielt werden.",
+        "description": "Vor dem ersten Wuerfelvergleich können Zauber gespielt werden.",
         "is_general_window": True,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -48,7 +48,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.AFTER_DICE_COMPARISON: {
         "title": "Allgemeines Zauberfenster",
-        "description": "Nach dem Wuerfelvergleich koennen weitere Zauber gespielt werden.",
+        "description": "Nach dem Wuerfelvergleich können weitere Zauber gespielt werden.",
         "is_general_window": True,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -56,7 +56,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE: {
         "title": "Allgemeines Zauberfenster",
-        "description": "Vor dem direkten Schaden des ungeblockten Angreifers koennen Zauber gespielt werden.",
+        "description": "Vor dem direkten Schaden des ungeblockten Angreifers können Zauber gespielt werden.",
         "is_general_window": True,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -64,7 +64,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.OWN_CREATURE_DESTROYED: {
         "title": "Reaktionsfenster",
-        "description": "Eine eigene Kreatur wurde zerstoert. Passende Zauber koennen darauf reagieren.",
+        "description": "Eine eigene Kreatur wurde zerstoert. Passende Zauber können darauf reagieren.",
         "is_general_window": False,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -72,7 +72,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.BLOCKER_DECLARED: {
         "title": "Reaktionsfenster",
-        "description": "Ein Blocker wurde deklariert. Passende Zauber koennen darauf reagieren.",
+        "description": "Ein Blocker wurde deklariert. Passende Zauber können darauf reagieren.",
         "is_general_window": False,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -80,7 +80,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.OWN_CREATURE_TARGETED: {
         "title": "Reaktionsfenster",
-        "description": "Eine eigene Kreatur wurde als Ziel gewaehlt. Passende Zauber koennen darauf reagieren.",
+        "description": "Eine eigene Kreatur wurde als Ziel gewaehlt. Passende Zauber können darauf reagieren.",
         "is_general_window": False,
         "is_combat_window": False,
         "shows_stack_preview": True,
@@ -88,7 +88,7 @@ REACTION_WINDOW_PROFILES = {
     },
     ReactionTrigger.OWN_CREATURE_DAMAGED_IN_DICE_COMPARISON: {
         "title": "Reaktionsfenster",
-        "description": "Eine eigene Kreatur hat im Wuerfelvergleich Schaden erhalten. Passende Zauber koennen darauf reagieren.",
+        "description": "Eine eigene Kreatur hat im Wuerfelvergleich Schaden erhalten. Passende Zauber können darauf reagieren.",
         "is_general_window": False,
         "is_combat_window": True,
         "shows_stack_preview": True,
@@ -710,7 +710,7 @@ def begin_reaction_window(
         return
     self.reaction_context = context
     self.reaction_priority_player_id = first_responder_id
-    self.reaction_pass_count = 0
+    self.reaction_pass_count = 1 if len(self.spell_stack) > base_stack_size else 0
     self.reaction_base_stack_size = base_stack_size
     self.reaction_resume_phase = resume_phase
     self.reaction_continuation = continuation
