@@ -2,15 +2,95 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from core.models import DieResult, PendingComparison, PendingDiceBattle, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE
+from core.models import (
+    DieResult,
+    PendingComparison,
+    PendingDiceBattle,
+    PHASE_DECLARE_ATTACKERS,
+    PHASE_DECLARE_BLOCKERS,
+    PHASE_DICE_BATTLE,
+)
 from tests.helpers import EngineTestCase
 
 
 class CombatFlowTests(EngineTestCase):
+    def test_flying_attacker_can_only_be_blocked_by_flying_creature(self) -> None:
+        attacker = self.make_creature("air_creature_sturmfalke", owner_id=1)
+        ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
+        flying_blocker = self.make_creature("air_creature_himmelsgreif", owner_id=0)
+
+        self.engine.active_player_index = 1
+        self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.block_assignments = {attacker.unit_id: []}
+        self.engine.selected_attack_target_id = attacker.unit_id
+
+        self.engine.toggle_blocker_assignment(ground_blocker.unit_id)
+
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [])
+
+        self.engine.toggle_blocker_assignment(flying_blocker.unit_id)
+
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [flying_blocker.unit_id])
+
+    def test_sturmfuerst_bonus_increases_only_attacker_die_results(self) -> None:
+        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.make_creature("air_creature_sturmfuerst", owner_id=1)
+
+        self.engine.active_player_index = 0
+
+        with patch.object(self.engine.rng, "randint", side_effect=[10, 11, 12, 13, 14]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        battle = self.engine.pending_dice_battle
+
+        self.assertIsNotNone(battle)
+        self.assertEqual([die.aw_bonus for die in battle.attacker_dice], [attacker.aw + 2, attacker.aw + 2])
+        self.assertEqual([die.aw_bonus for die in battle.blocker_dice], [blocker.aw, blocker.aw, blocker.aw])
+
+    def test_human_provoke_assigns_selected_blocker_to_attacker(self) -> None:
+        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=0)
+        blocker = self.make_creature("fire_creature_funkenkobold", owner_id=1)
+
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.toggle_provoke_target(blocker.unit_id)
+        self.engine.confirm_attackers()
+
+        self.assertEqual(self.engine.provoke_assignments[attacker.unit_id], blocker.unit_id)
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
+        self.assertEqual(self.engine.blocker_to_attackers[blocker.unit_id], [attacker.unit_id])
+
+    def test_provoke_forced_block_cannot_be_removed(self) -> None:
+        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=1)
+        blocker = self.make_creature("water_creature_flusskrieger", owner_id=0)
+
+        self.engine.active_player_index = 1
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker.unit_id]
+        self.engine.provoke_assignments = {attacker.unit_id: blocker.unit_id}
+        self.engine.confirm_attackers()
+
+        self.engine.selected_attack_target_id = attacker.unit_id
+        self.engine.toggle_blocker_assignment(blocker.unit_id)
+
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
+        self.assertIn("muss diesen Angreifer durch Provozieren blocken", self.engine.log_messages[-1])
+
+    def test_ai_provoke_chooses_and_assigns_blocker(self) -> None:
+        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=1)
+        blocker = self.make_creature("water_creature_flusskrieger", owner_id=0)
+
+        self.engine.active_player_index = 1
+        self.engine.ai_declare_attackers()
+
+        self.assertEqual(self.engine.provoke_assignments[attacker.unit_id], blocker.unit_id)
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
+
     def test_defender_can_block_two_attackers_in_same_combat_phase(self) -> None:
-        attacker_one = self.make_creature("fire_funkenkobold", owner_id=1)
-        attacker_two = self.make_creature("fire_flammenrekrut", owner_id=1)
-        defender = self.make_creature("earth_schildwache", owner_id=0)
+        attacker_one = self.make_creature("fire_creature_funkenkobold", owner_id=1)
+        attacker_two = self.make_creature("fire_creature_flammenrekrut", owner_id=1)
+        defender = self.make_creature("earth_creature_schildwache", owner_id=0)
 
         self.engine.active_player_index = 1
         self.engine.phase = PHASE_DECLARE_BLOCKERS
@@ -29,8 +109,8 @@ class CombatFlowTests(EngineTestCase):
         self.assertEqual(self.engine.blocker_to_attackers[defender.unit_id], [attacker_one.unit_id, attacker_two.unit_id])
 
     def test_human_adaptation_creates_choice_and_can_reroll_comparison(self) -> None:
-        attacker = self.make_creature("fire_lavakrieger", owner_id=1)
-        blocker = self.make_creature("water_wellenformer", owner_id=0)
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=1)
+        blocker = self.make_creature("water_creature_wellenformer", owner_id=0)
         attacker.current_hp = attacker.vw
         blocker.current_hp = blocker.vw
 
@@ -67,8 +147,8 @@ class CombatFlowTests(EngineTestCase):
         self.assertTrue(battle.resolution_complete)
 
     def test_trample_deals_player_damage_from_remaining_attack_dice_after_last_blocker(self) -> None:
-        attacker = self.make_creature("fire_magmabestie", owner_id=0)
-        blocker = self.make_creature("earth_felsensoldat", owner_id=1)
+        attacker = self.make_creature("fire_creature_magmabestie", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         blocker.current_hp = 0
 
         self.engine.active_player_index = 0
@@ -105,8 +185,8 @@ class CombatFlowTests(EngineTestCase):
         self.assertTrue(battle.resolution_complete)
 
     def test_dice_battle_must_be_closed_manually_after_resolution(self) -> None:
-        attacker = self.make_creature("fire_lavakrieger", owner_id=0)
-        blocker = self.make_creature("earth_felsensoldat", owner_id=1)
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
 
         self.engine.active_player_index = 0
         self.engine.phase = PHASE_DICE_BATTLE
@@ -136,10 +216,10 @@ class CombatFlowTests(EngineTestCase):
         self.assertIsNone(self.engine.pending_dice_battle)
 
     def test_dice_battle_button_shows_next_combat_when_another_battle_remains(self) -> None:
-        attacker_one = self.make_creature("fire_lavakrieger", owner_id=0)
-        blocker_one = self.make_creature("earth_felsensoldat", owner_id=1)
-        attacker_two = self.make_creature("fire_funkenkobold", owner_id=0)
-        blocker_two = self.make_creature("earth_schildwache", owner_id=1)
+        attacker_one = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker_one = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        attacker_two = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        blocker_two = self.make_creature("earth_creature_schildwache", owner_id=1)
 
         self.engine.active_player_index = 0
         self.engine.phase = PHASE_DICE_BATTLE
@@ -171,8 +251,8 @@ class CombatFlowTests(EngineTestCase):
         self.assertIn("Nächster Kampf", [spec.label for spec in self.engine.get_button_specs()])
 
     def test_dice_battle_cannot_be_closed_early(self) -> None:
-        attacker = self.make_creature("fire_lavakrieger", owner_id=0)
-        blocker = self.make_creature("earth_felsensoldat", owner_id=1)
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
 
         self.engine.active_player_index = 0
         self.engine.phase = PHASE_DICE_BATTLE
@@ -196,8 +276,8 @@ class CombatFlowTests(EngineTestCase):
         self.assertEqual(self.engine.log_messages, [])
 
     def test_battle_snapshot_keeps_last_hp_after_creature_removal(self) -> None:
-        attacker = self.make_creature("fire_lavakrieger", owner_id=0)
-        blocker = self.make_creature("earth_felsensoldat", owner_id=1)
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         blocker.current_hp = 1
 
         self.engine.active_player_index = 0

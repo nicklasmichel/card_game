@@ -21,7 +21,10 @@ class BattlefieldCreature:
     reveal_opponent_hand: bool
     return_to_deck_end_of_turn: bool
     cannot_block: bool
+    must_attack_each_turn: bool
+    all_attackers_die_bonus: int
     current_hp: int
+    temporary_abilities: set[Ability] = field(default_factory=set)
     tapped: bool = True
     summoning_sick: bool = True
 
@@ -41,6 +44,8 @@ class BattlefieldCreature:
             reveal_opponent_hand=card.template.reveal_opponent_hand,
             return_to_deck_end_of_turn=card.template.return_to_deck_end_of_turn,
             cannot_block=card.template.cannot_block,
+            must_attack_each_turn=card.template.must_attack_each_turn,
+            all_attackers_die_bonus=card.template.all_attackers_die_bonus,
             current_hp=card.template.vw,
             tapped=not has_haste,
             summoning_sick=not has_haste,
@@ -55,10 +60,10 @@ class BattlefieldCreature:
         return f"{self.aw}/{self.vw}"
 
     def is_ready(self) -> bool:
-        return not self.tapped and not self.summoning_sick
+        return not self.tapped and (not self.summoning_sick or self.has_ability(Ability.HASTE))
 
     def has_ability(self, ability: Ability) -> bool:
-        return ability in self.abilities
+        return ability in self.abilities or ability in self.temporary_abilities
 
     def block_capacity(self) -> int:
         return 2 if self.has_ability(Ability.DEFENDER) else 1
@@ -82,6 +87,9 @@ class PlayerState:
     battlefield: List[BattlefieldCreature] = field(default_factory=list)
     resources: List[ResourceCard] = field(default_factory=list)
     resources_played_this_turn: int = 0
+    creature_cost_reduction_this_turn: int = 0
+    attackers_die_bonus_this_turn: int = 0
+    direct_attack_damage_multiplier_this_turn: dict[int, int] = field(default_factory=dict)
     summoner_tapped: bool = False
     turns_started: int = 0
     mulligan_used: bool = False

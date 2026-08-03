@@ -6,14 +6,18 @@ import pygame
 
 from core.models import (
     ButtonSpec,
+    CardType,
     Element,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_ORDER_BLOCKERS,
+    PHASE_REACTION,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
+    SpellEffect,
 )
 from ui.style import (
     BUTTON_COLOR,
@@ -87,10 +91,20 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
         f"Spieler Hand/Deck: {len(self.engine.human_player.hand)}/{len(self.engine.human_player.deck)}",
         f"Gegner Hand/Deck: {len(self.engine.ai_player.hand)}/{len(self.engine.ai_player.deck)}",
     ]
+    if self.paused:
+        lines.append("Status: Pausiert (Enter)")
     y = rect.y + 28
     for line in lines:
         self.blit_text(self.small_font, line, TEXT_COLOR, rect.x + 12, y)
         y += 16
+    if self.engine.phase == PHASE_DECLARE_ATTACKERS:
+        attacker = (
+            self.engine.get_unit_by_id(self.engine.selected_provoke_attacker_id)
+            if self.engine.selected_provoke_attacker_id is not None
+            else None
+        )
+        attacker_name = attacker.name if attacker is not None else "-"
+        self.blit_text(self.small_font, f"Provozieren: {attacker_name}", MUTED_TEXT, rect.x + 12, y + 4)
     if self.engine.phase == PHASE_DECLARE_BLOCKERS:
         target = self.engine.get_unit_by_id(self.engine.selected_attack_target_id) if self.engine.selected_attack_target_id is not None else None
         target_name = target.name if target is not None else "-"
@@ -137,12 +151,159 @@ def draw_side_log(self, rect: pygame.Rect) -> None:
         pygame.draw.rect(self.screen, MUTED_TEXT, track_rect, border_radius=3)
 
 
+def get_spell_target_summary(self, card) -> str:
+    effect = getattr(card.template, "spell_effect", None)
+    if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
+        return "Beliebige Kreatur, danach Schnell oder Fliegend"
+    if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
+        return "Eigene Kreatur und gegnerische Kreatur"
+    if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
+        return "Eigene kaempfende Kreatur"
+    if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
+        return "Unbenutzter eigener Kampfwuerfel"
+    if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
+        return "Aktueller ungeblockter Angreifer"
+    if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
+        return "Keine Ziele"
+    target_mode = getattr(card.template, "target_mode", None)
+    if target_mode is None:
+        return "-"
+    mode_name = getattr(target_mode, "name", "")
+    if mode_name == "NONE":
+        return "Keine Ziele"
+    if mode_name == "CREATURE":
+        return "Beliebige Kreatur"
+    if mode_name == "CREATURE_OR_PLAYER":
+        return "Beliebige Kreatur oder Beschwoerer"
+    return str(target_mode.value)
+
+
+def get_spell_effect_summary(self, card) -> str:
+    text = getattr(card.template, "rules_text", "").strip()
+    if text:
+        return text
+    effect = getattr(card.template, "spell_effect", None)
+    return effect.value if effect is not None else "-"
+
+
+def format_target_ref(self, target) -> str:
+    if target is None:
+        return "-"
+    if target.target_type == "player":
+        player = self.engine.get_player_by_id(target.player_id or 0)
+        return player.name
+    if target.target_type == "creature":
+        creature = self.engine.get_unit_by_id(target.creature_id or -1)
+        return creature.name if creature is not None else "Kreatur nicht mehr im Spiel"
+    if target.target_type == "die":
+        role = "Angreifer" if target.die_role == "attacker" else "Blocker"
+        return f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}"
+    return target.target_type
+
+
+def get_pending_target_summary(self) -> str:
+    pending = self.engine.pending_spell_cast
+    if pending is None:
+        return "-"
+    chosen: list[str] = []
+    if pending.selected_sacrifice_creature_id is not None:
+        creature = self.engine.get_unit_by_id(pending.selected_sacrifice_creature_id)
+        chosen.append(f"Opfer: {creature.name if creature is not None else 'ausgewaehlt'}")
+    for target in pending.selected_targets:
+        chosen.append(f"Ziel: {self.format_target_ref(target)}")
+    if pending.selected_recycle_resource_ids:
+        chosen.append(
+            f"Recycle: {len(pending.selected_recycle_resource_ids)}"
+            f"/{self.engine.get_card_from_pending_spell(pending).template.recycle_cost if self.engine.get_card_from_pending_spell(pending) is not None else 0}"
+        )
+    if pending.selected_keyword_ability is not None:
+        chosen.append(f"Effekt: {pending.selected_keyword_ability.value}")
+    return " | ".join(chosen) if chosen else "Noch nichts ausgewaehlt"
+
+
+def get_stack_lines(self) -> list[str]:
+    if not self.engine.spell_stack:
+        return ["Leer"]
+    lines: list[str] = []
+    for depth, item in enumerate(reversed(self.engine.spell_stack), start=1):
+        target_text = ", ".join(self.format_target_ref(target) for target in item.targets) if item.targets else "ohne Ziel"
+        lines.append(f"{depth}. {item.controller.name}: {item.source_card.template.name} -> {target_text}")
+    return lines
+
+
+def get_legal_reaction_lines(self) -> list[str]:
+    if self.engine.phase != PHASE_REACTION:
+        return []
+    if self.engine.reaction_priority_player_id != self.engine.human_player.player_id:
+        return ["Gegner entscheidet."]
+    legal = [
+        card.template.name
+        for card in self.engine.human_player.hand
+        if self.engine.can_react_with_card(self.engine.human_player, card)
+    ]
+    if not legal:
+        return ["Nur Passen ist legal."]
+    return legal
+
+
+def get_selected_spell_lines(self) -> list[str]:
+    card = self.engine.get_selected_hand_card()
+    if card is None or card.template.card_type == CardType.CREATURE:
+        return []
+    lines = [
+        f"Karte: {card.template.name}",
+        f"Typ: {card.template.card_type.value}",
+        f"Element: {card.template.element.value}",
+        f"Kosten: {self.engine.format_card_cost(card.template.cost)}",
+        f"Ziele: {get_spell_target_summary(self, card)}",
+        f"Effekt: {get_spell_effect_summary(self, card)}",
+    ]
+    if card.template.card_type == CardType.SPELL and card.template.reaction_trigger is not None:
+        lines.append(f"Ausloeser: {card.template.reaction_trigger.value}")
+    return lines
+
+
+def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
+    sections: list[tuple[str, list[str]]] = []
+    selected_spell_lines = get_selected_spell_lines(self)
+    if selected_spell_lines:
+        sections.append(("Ausgewaehlte Karte", selected_spell_lines))
+    if self.engine.phase == PHASE_SPELL_TARGETING:
+        sections.append(("Zauberziele", [get_pending_target_summary(self)]))
+    return sections
+
+
+def draw_action_detail_sections(self, rect: pygame.Rect, start_y: int, max_bottom: int | None = None) -> int:
+    sections = get_action_detail_sections(self)
+    if not sections:
+        return start_y
+    y = start_y
+    for title, lines in sections:
+        content = [title]
+        for line in lines:
+            wrapped = self.wrap_text(self.small_font, line, rect.width - 24)
+            content.extend(wrapped or [""])
+        height = 16 + len(content) * 16 + 8
+        box_rect = pygame.Rect(rect.x + 12, y, rect.width - 24, height)
+        if max_bottom is not None and box_rect.bottom > max_bottom:
+            break
+        pygame.draw.rect(self.screen, SECTION_COLOR, box_rect, border_radius=6)
+        pygame.draw.rect(self.screen, CARD_BORDER, box_rect, 1, border_radius=6)
+        line_y = box_rect.y + 8
+        self.blit_text(self.small_font, title, HIGHLIGHT, box_rect.x + 8, line_y)
+        line_y += 18
+        first = True
+        for line in content[1:]:
+            color = TEXT_COLOR if first else MUTED_TEXT
+            self.blit_text(self.small_font, line, color, box_rect.x + 8, line_y)
+            line_y += 16
+            first = False
+        y = box_rect.bottom + 8
+    return y
+
+
 def draw_side_actions(self, rect: pygame.Rect) -> None:
     action_specs = self.engine.get_button_specs()
-    ui_specs = [
-        ButtonSpec("Gegner Handkarten", True, "ui_toggle_enemy_hand"),
-        ButtonSpec("Spiel fortsetzen" if self.paused else "Spiel Pausieren", True, "ui_toggle_pause"),
-    ]
     phase_label = get_overview_phase_label(self.engine.phase)
     self.blit_text(
         self.title_font,
@@ -151,25 +312,20 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
         rect.x + 12,
         rect.y + 12,
     )
-    prompt_rect = pygame.Rect(rect.x + 12, rect.y + 52, rect.width - 24, 72)
+    prompt_rect = pygame.Rect(rect.x + 12, rect.y + 52, rect.width - 24, 64)
     self.blit_wrapped_text(self.font, self.engine.current_prompt(), MUTED_TEXT, prompt_rect, 22)
+    detail_start_y = draw_action_detail_sections(self, rect, prompt_rect.bottom + 8)
     button_margin = 12
     width = rect.width - button_margin * 2
     height = 36
     gap = 10
     start_x = rect.x + button_margin
-    start_y = rect.y + 132
+    button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
+    button_start_y = rect.bottom - 12 - button_total_height
+    detail_start_y = draw_action_detail_sections(self, rect, prompt_rect.bottom + 8, button_start_y - 8)
+    start_y = button_start_y
     for index, spec in enumerate(action_specs):
         button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)
-        pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
-        pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
-        self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
-        self.buttons.append((button_rect, spec))
-
-    ui_total_height = len(ui_specs) * height + max(0, len(ui_specs) - 1) * gap
-    ui_start_y = rect.bottom - ui_total_height - 12
-    for index, spec in enumerate(ui_specs):
-        button_rect = pygame.Rect(start_x, ui_start_y + index * (height + gap), width, height)
         pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
         self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
@@ -203,6 +359,8 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
         deck_badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.69) - 23, 46, 46)
         self.draw_card_badge(self.screen, deck_badge_rect, str(len(player.deck)), self.font, self.get_think_progress(player))
         self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player)))
+        if player.player_id == self.engine.ai_player.player_id:
+            self.click_targets["enemy_deck"].append((deck_rect.copy(), player.player_id))
 
     top_discard = player.discard_pile[-1] if player.discard_pile else None
     discard_rect = pygame.Rect(discard_x, card_y, card_width, card_height)
@@ -211,8 +369,8 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
             template_id=top_discard.template.template_id,
             title=top_discard.template.name,
             cost=top_discard.template.cost,
-            stats=f"{top_discard.template.aw}/{top_discard.template.vw}",
-            defense_text=f"{top_discard.template.vw}/{top_discard.template.vw}",
+            stats=f"{top_discard.template.aw}/{top_discard.template.vw}" if top_discard.template.card_type == CardType.CREATURE else "",
+            defense_text=f"{top_discard.template.vw}/{top_discard.template.vw}" if top_discard.template.card_type == CardType.CREATURE else None,
             element=top_discard.template.element,
             type_line=self.get_creature_type_line(top_discard.template),
             line_one=self.get_card_ability_lines(top_discard.template)[0],

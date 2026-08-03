@@ -3,15 +3,19 @@ from __future__ import annotations
 from typing import List, Optional
 
 from core.models import (
+    Ability,
     CardInstance,
+    CardType,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
+    PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
     PlayerState,
 )
@@ -98,6 +102,9 @@ def confirm_forced_discard(self) -> None:
     self.pending_forced_discard = None
     self.selected_hand_ids.clear()
     self.phase = pending.return_phase
+    if self.resolving_stack:
+        self.resume_stack_resolution()
+        return
     if self.active_player.is_human:
         self.auto_advance_human_summoning_phase_if_needed()
 
@@ -106,9 +113,13 @@ def get_selected_hand_card(self) -> Optional[CardInstance]:
     if len(self.selected_hand_ids) != 1:
         return None
     selected_id = self.selected_hand_ids[0]
-    for card in self.active_player.hand:
-        if card.instance_id == selected_id:
-            return card
+    candidate_hands = [self.active_player.hand]
+    if self.phase in {PHASE_REACTION, PHASE_SPELL_TARGETING}:
+        candidate_hands = [self.human_player.hand, self.ai_player.hand, self.active_player.hand]
+    for hand in candidate_hands:
+        for card in hand:
+            if card.instance_id == selected_id:
+                return card
     return None
 
 
@@ -124,7 +135,7 @@ def toggle_hand_card(self, card_id: int) -> None:
         else:
             self.selected_hand_ids.append(card_id)
         return
-    if self.active_player.is_human and self.phase in {PHASE_RESOURCE, PHASE_SUMMONING}:
+    if self.active_player.is_human and self.phase in {PHASE_RESOURCE, PHASE_SUMMONING, PHASE_REACTION}:
         if card_id in self.selected_hand_ids:
             self.selected_hand_ids.clear()
         else:
@@ -149,6 +160,8 @@ def handle_action(self, action: str) -> None:
         PHASE_ORDER_BLOCKERS,
         PHASE_DICE_BATTLE,
         PHASE_FORCED_DISCARD,
+        PHASE_REACTION,
+        PHASE_SPELL_TARGETING,
     }
     if self.phase == PHASE_GAME_OVER or (not self.active_player.is_human and self.phase not in human_response_phases):
         return
@@ -159,10 +172,26 @@ def handle_action(self, action: str) -> None:
         self.enter_summoning_phase()
     elif action == "play_creature":
         self.play_selected_creature_card()
+    elif action == "play_spell":
+        card = self.get_selected_hand_card()
+        if card is not None and card.template.card_type in {CardType.RITUAL, CardType.SPELL}:
+            self.begin_spell_cast(card.instance_id)
+    elif action == "play_reaction_spell":
+        card = self.get_selected_hand_card()
+        if card is not None:
+            self.begin_spell_from_hand(card.instance_id)
     elif action == "confirm_recycle":
         self.confirm_recycle_payment()
     elif action == "cancel_recycle":
         self.cancel_recycle_payment()
+    elif action == "confirm_spell_target":
+        self.confirm_pending_spell_cast()
+    elif action == "choose_tailwind_haste":
+        self.select_pending_spell_keyword(Ability.HASTE)
+    elif action == "choose_tailwind_flying":
+        self.select_pending_spell_keyword(Ability.FLYING)
+    elif action == "cancel_spell_target":
+        self.cancel_pending_spell_cast()
     elif action == "confirm_forced_discard":
         self.confirm_forced_discard()
     elif action == "to_combat":
@@ -185,6 +214,8 @@ def handle_action(self, action: str) -> None:
         self.resolve_pending_comparison(use_human_adaptation=True)
     elif action == "resolve_comparison":
         self.resolve_pending_comparison(use_human_adaptation=False)
+    elif action == "pass_reaction":
+        self.pass_reaction()
     elif action == "end_dice_battle":
         self.end_dice_battle()
     elif action == "end_turn":

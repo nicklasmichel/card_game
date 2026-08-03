@@ -81,7 +81,11 @@ def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
         (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
         None,
     )
-    return card is not None and self.engine.can_play_card(self.engine.active_player, card)
+    return (
+        card is not None
+        and getattr(card.template, "card_type", None).value == "Kreatur"
+        and self.engine.can_play_card(self.engine.active_player, card)
+    )
 
 
 def can_drop_on_creature_area(self, position: tuple[int, int]) -> bool:

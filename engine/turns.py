@@ -11,8 +11,10 @@ from core.models import (
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
+    PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
     PlayerState,
 )
@@ -28,7 +30,9 @@ def apply_ai_mulligan(self) -> None:
     self.ai_player.deck.extend(to_replace)
     self.rng.shuffle(self.ai_player.deck)
     for _ in to_replace:
-        self.ai_player.draw_card()
+        self.draw_card_for_player(self.ai_player, "Mulligan")
+        if self.phase == PHASE_GAME_OVER:
+            return
     self.ai_player.mulligan_used = True
     self.log(f"Gegner fuehrt einen Mulligan mit {len(to_replace)} Karten durch.")
 
@@ -42,13 +46,37 @@ def apply_human_mulligan(self) -> None:
         self.human_player.deck.extend(to_replace)
         self.rng.shuffle(self.human_player.deck)
         for _ in to_replace:
-            self.human_player.draw_card()
+            self.draw_card_for_player(self.human_player, "Mulligan")
+            if self.phase == PHASE_GAME_OVER:
+                return
         self.log(f"Spieler tauscht {len(to_replace)} Karten per Mulligan.")
     else:
         self.log("Spieler behaelt seine Starthand.")
     self.human_player.mulligan_used = True
     self.selected_hand_ids.clear()
     self.begin_first_turn()
+
+
+def lose_game_from_empty_deck(self, player: PlayerState, source_name: str) -> None:
+    if self.phase == PHASE_GAME_OVER:
+        return
+    winner = self.players[1 - player.player_id]
+    self.phase = PHASE_GAME_OVER
+    self.game_over_text = f"{winner.name} gewinnt. {player.name} kann durch {source_name} keine Karte mehr ziehen."
+    self.log(self.game_over_text)
+    self.persist_game_results_once()
+
+
+def draw_card_for_player(self, player: PlayerState, source_name: str):
+    if not player.deck:
+        self.lose_game_from_empty_deck(player, source_name)
+        return None
+    drawn = player.draw_card()
+    if drawn is not None and self.statistics is not None:
+        self.statistics.register_draw(player.player_id)
+        if drawn.was_recycled:
+            self.statistics.register_recycled_card_drawn(player.player_id)
+    return drawn
 
 
 def begin_first_turn(self) -> None:
@@ -60,16 +88,15 @@ def begin_first_turn(self) -> None:
 def start_turn(self) -> None:
     player = self.active_player
     self.turn_number += 1
+    self.creatures_died_this_turn = 0
     player.untap_for_turn()
     draw_allowed = not (player.player_id == self.starting_player_id and player.turns_started == 0)
     if draw_allowed:
-        drawn = player.draw_card()
+        drawn = self.draw_card_for_player(player, "Ziehphase")
         if drawn is not None:
-            if self.statistics is not None:
-                self.statistics.register_draw(player.player_id)
-                if drawn.was_recycled:
-                    self.statistics.register_recycled_card_drawn(player.player_id)
             self.log(f"{player.name} zieht eine Karte.")
+        elif self.phase == PHASE_GAME_OVER:
+            return
         else:
             self.log(f"{player.name} kann keine Karte ziehen.")
     else:
@@ -95,6 +122,10 @@ def available_blockers(self, player: PlayerState) -> List[BattlefieldCreature]:
     return [creature for creature in player.battlefield if creature.is_ready() and not getattr(creature, "cannot_block", False)]
 
 
+def get_mandatory_attackers(self, player: PlayerState) -> List[BattlefieldCreature]:
+    return [creature for creature in available_attackers(self, player) if getattr(creature, "must_attack_each_turn", False)]
+
+
 def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
     return any(self.can_play_card(player, card) for card in player.hand)
 
@@ -110,7 +141,7 @@ def auto_advance_human_summoning_phase_if_needed(self) -> None:
         return
     if self.has_playable_creature_in_hand(self.active_player):
         return
-    self.log("Keine Kreatur kann ausgespielt werden. Kampfphase beginnt automatisch.")
+    self.log("Keine Karte kann ausgespielt werden. Kampfphase beginnt automatisch.")
     self.begin_attack_declaration()
 
 
@@ -164,6 +195,14 @@ def handle_human_timeout(self) -> None:
     if self.phase == PHASE_RECYCLE_PAYMENT and self.active_player.is_human:
         self.log("Zeit abgelaufen. Recycle-Auswahl wurde abgebrochen.")
         self.cancel_recycle_payment()
+        return
+    if self.phase == PHASE_SPELL_TARGETING and self.active_player.is_human:
+        self.log("Zeit abgelaufen. Zauberauswahl wurde abgebrochen.")
+        self.cancel_pending_spell_cast()
+        return
+    if self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.human_player.player_id:
+        self.log("Zeit abgelaufen. Spieler passt im Reaktionsfenster.")
+        self.pass_reaction()
         return
     if self.phase == PHASE_FORCED_DISCARD and self.pending_forced_discard is not None:
         required = self.pending_forced_discard.required_count
@@ -223,3 +262,12 @@ def has_more_dice_battles_after_current(self) -> bool:
             if blocker is not None and blocker.current_hp > 0:
                 return True
     return False
+
+
+def clear_end_of_turn_temporary_effects(self) -> None:
+    self.active_player.creature_cost_reduction_this_turn = 0
+    self.active_player.attackers_die_bonus_this_turn = 0
+    self.active_player.direct_attack_damage_multiplier_this_turn.clear()
+    for player in self.players:
+        for creature in player.battlefield:
+            creature.temporary_abilities.clear()

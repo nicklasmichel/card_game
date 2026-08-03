@@ -6,6 +6,8 @@ from core.models import (
     Ability,
     BattlefieldCreature,
     ButtonSpec,
+    CardType,
+    SpellEffect,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -13,10 +15,13 @@ from core.models import (
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
+    PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
     ResourceCard,
+    SpellTargetRef,
 )
 
 
@@ -24,7 +29,9 @@ def process_ai_turn(self) -> None:
     if self.phase in {PHASE_MULLIGAN, PHASE_GAME_OVER}:
         return
     ai_block_decision = self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human
-    if self.active_player.is_human and not ai_block_decision:
+    ai_reaction_decision = self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.ai_player.player_id
+    ai_spell_targeting = self.phase == PHASE_SPELL_TARGETING and self.pending_spell_cast is not None and self.pending_spell_cast.controller_id == self.ai_player.player_id
+    if self.active_player.is_human and not ai_block_decision and not ai_reaction_decision and not ai_spell_targeting:
         return
     if self.phase in {PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE, PHASE_RECYCLE_PAYMENT, PHASE_FORCED_DISCARD}:
         return
@@ -34,12 +41,11 @@ def process_ai_turn(self) -> None:
     if self.phase == PHASE_RESOURCE:
         if not self.active_player.summoner_tapped and self.active_player.deck:
             self.active_player.summoner_tapped = True
-            drawn = self.active_player.draw_card()
+            drawn = self.draw_card_for_player(self.active_player, "Beschwörer")
             if drawn is not None:
-                self.statistics.register_draw(self.active_player.player_id)
-                if drawn.was_recycled:
-                    self.statistics.register_recycled_card_drawn(self.active_player.player_id)
                 self.log("Gegner tappt den Beschwörer und zieht eine Karte.")
+            elif self.phase == PHASE_GAME_OVER:
+                return
         while self.active_player.resources_played_this_turn < 2:
             chosen = self.ai.choose_resource_card(self.active_player)
             if chosen is None:
@@ -55,8 +61,67 @@ def process_ai_turn(self) -> None:
             self.begin_attack_declaration()
         return
 
+    if self.phase == PHASE_SPELL_TARGETING and not self.active_player.is_human:
+        pending = self.pending_spell_cast
+        card = self.get_card_from_pending_spell(pending)
+        if pending is None or card is None:
+            self.cancel_pending_spell_cast()
+            return
+        controller = self.get_player_by_id(pending.controller_id)
+        for _ in range(5):
+            if card.template.recycle_cost > 0 and len(pending.selected_recycle_resource_ids) < card.template.recycle_cost:
+                pending.selected_recycle_resource_ids = self.ai.choose_resources_to_recycle(controller, card.template.recycle_cost)
+                if len(pending.selected_recycle_resource_ids) != card.template.recycle_cost:
+                    self.cancel_pending_spell_cast()
+                    return
+                continue
+            if card.template.sacrifice_own_creature_on_cast and pending.selected_sacrifice_creature_id is None:
+                creature = self.ai.choose_sacrifice_creature(controller, self, card)
+                if creature is None:
+                    self.cancel_pending_spell_cast()
+                    return
+                self.select_spell_target_ref(SpellTargetRef("creature", creature_id=creature.unit_id))
+                continue
+            if (
+                card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN
+                and pending.selected_targets
+                and pending.selected_keyword_ability is None
+            ):
+                creature = self.resolve_target_creature(pending.selected_targets[0])
+                self.select_pending_spell_keyword(self.ai.choose_tailwind_ability(creature))
+                continue
+            if self.pending_spell_ready():
+                self.confirm_pending_spell_cast()
+                return
+            if card.template.spell_effect in {
+                SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE,
+                SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE,
+            }:
+                target = self.ai.choose_spell_target_ref(controller, self, card, pending)
+                if target is None:
+                    self.confirm_pending_spell_cast()
+                    return
+                pending.selected_targets = [target]
+                continue
+            target = self.ai.choose_spell_target_ref(controller, self, card, pending)
+            if target is None:
+                self.confirm_pending_spell_cast()
+                return
+            self.select_spell_target_ref(target)
+        if self.pending_spell_ready():
+            self.confirm_pending_spell_cast()
+        return
+
     if self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
         self.ai_declare_attackers()
+        return
+
+    if self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.ai_player.player_id:
+        chosen = self.ai.choose_spell(self.ai_player.hand, self)
+        if chosen is None:
+            self.pass_reaction()
+        else:
+            self.begin_spell_cast_from_card(chosen, PHASE_REACTION)
         return
 
     if self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human:
@@ -80,6 +145,13 @@ def ai_play_resource(self) -> None:
 
 def ai_play_creatures(self) -> None:
     while True:
+        spell = self.ai.choose_ritual(self.active_player, self)
+        if spell is None:
+            break
+        self.begin_spell_cast_from_card(spell, PHASE_SUMMONING)
+        if self.phase != PHASE_SUMMONING:
+            return
+    while True:
         chosen = self.ai.choose_playable_creature(self.active_player)
         if chosen is None:
             break
@@ -95,8 +167,7 @@ def ai_play_creatures(self) -> None:
 def ai_declare_attackers(self) -> None:
     attackers = self.ai.choose_attackers(self.available_attackers(self.active_player))
     for attacker in attackers:
-        if not attacker.has_ability(Ability.VIGILANCE):
-            attacker.tapped = True
+        attacker.tapped = True
     self.selected_attackers = [attacker.unit_id for attacker in attackers]
     self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
@@ -105,13 +176,36 @@ def ai_declare_attackers(self) -> None:
         return
     self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
     self.blocker_to_attackers.clear()
+    self.prepare_provoke_assignments(attackers)
     self.phase = PHASE_DECLARE_BLOCKERS
+    self.selected_provoke_attacker_id = None
+    self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
+    self.auto_assign_required_blockers()
     attacker_names = ", ".join(attacker.name for attacker in attackers)
     self.log(f"Gegner greift an mit: {attacker_names}. Wähle deine Blocker.")
 
 
 def handle_click(self, area: str, item_id: int) -> None:
+    if self.phase == PHASE_SPELL_TARGETING:
+        if area == "player_creatures":
+            self.select_spell_target_ref(SpellTargetRef("creature", creature_id=item_id))
+            return
+        if area == "enemy_creatures":
+            self.select_spell_target_ref(SpellTargetRef("creature", creature_id=item_id))
+            return
+        if area == "player_summoner":
+            self.select_spell_target_ref(SpellTargetRef("player", player_id=item_id))
+            return
+        if area == "enemy_summoner":
+            self.select_spell_target_ref(SpellTargetRef("player", player_id=item_id))
+            return
+        if area == "human_dice":
+            self.select_spell_combat_die(item_id)
+            return
     if area == "player_summoner":
+        if self.phase == PHASE_SPELL_TARGETING:
+            self.select_spell_target_ref(SpellTargetRef("player", player_id=self.human_player.player_id))
+            return
         self.activate_summoner_draw(self.human_player)
         return
     if area == "hand":
@@ -123,11 +217,24 @@ def handle_click(self, area: str, item_id: int) -> None:
         elif self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
             self.toggle_blocker_assignment(item_id)
         return
-    if area == "enemy_creatures" and self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
-        self.toggle_selected_attack_target(item_id)
+    if area == "enemy_creatures":
+        if self.phase == PHASE_DECLARE_ATTACKERS and self.active_player.is_human:
+            self.toggle_provoke_target(item_id)
+            return
+        if self.phase == PHASE_SPELL_TARGETING:
+            self.select_spell_target_ref(SpellTargetRef("creature", creature_id=item_id))
+            return
+        if self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
+            self.toggle_selected_attack_target(item_id)
+            return
+    if area == "enemy_summoner" and self.phase == PHASE_SPELL_TARGETING:
+        self.select_spell_target_ref(SpellTargetRef("player", player_id=item_id))
         return
     if area == "player_resources" and self.phase == PHASE_RECYCLE_PAYMENT:
         self.toggle_recycle_resource_selection(item_id)
+        return
+    if area == "player_resources" and self.phase == PHASE_SPELL_TARGETING:
+        self.toggle_pending_spell_recycle_resource(item_id)
         return
     if area == "order_blockers" and self.pending_order is not None:
         self.choose_next_block_order_item(item_id)
@@ -141,6 +248,7 @@ def end_turn(self) -> None:
     if self.phase == PHASE_GAME_OVER:
         return
     self.resolve_end_of_turn_returns(self.active_player)
+    self.clear_end_of_turn_temporary_effects()
     self.check_for_game_over()
     if self.phase == PHASE_GAME_OVER:
         return
@@ -197,7 +305,9 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_RESOURCE:
         return "Lege bis zu 2 Handkarten als Ressource."
     if self.phase == PHASE_SUMMONING:
-        return "Spiele Kreaturen aus, beginne den Kampf oder beende den Zug."
+        return "Spiele Kreaturen, Rituale oder Zauber aus, beginne den Kampf oder beende den Zug."
+    if self.phase == PHASE_SPELL_TARGETING:
+        return self.describe_pending_spell_requirements()
     if self.phase == PHASE_RECYCLE_PAYMENT:
         pending = self.pending_recycle_payment
         if pending is None:
@@ -217,9 +327,19 @@ def current_prompt(self) -> str:
             f"Ausgewählt: {len(pending.selected_card_ids)}/{pending.required_count}."
         )
     if self.phase == PHASE_DECLARE_ATTACKERS:
+        if self.selected_provoke_attacker_id is not None:
+            attacker = self.get_unit_by_id(self.selected_provoke_attacker_id)
+            if attacker is not None and attacker.has_ability(Ability.PROVOKE):
+                return f"Wähle Angreifer. {attacker.name} kann eine gegnerische Kreatur provozieren."
         return "Wähle Angreifer und bestätige."
     if self.phase == PHASE_DECLARE_BLOCKERS:
         return "Wähle einen Angreifer und ordne dann eigene Blocker zu."
+    if self.phase == PHASE_REACTION:
+        trigger = self.get_reaction_window_title()
+        detail = self.get_reaction_window_description()
+        player = self.get_player_by_id(self.reaction_priority_player_id) if self.reaction_priority_player_id is not None else None
+        name = player.name if player is not None else "-"
+        return f"{trigger}. {detail} {name} ist als Nächstes mit Reagieren oder Passen am Zug."
     if self.phase == PHASE_ORDER_BLOCKERS:
         return "Lege die Reihenfolge für mehrere Blocker fest."
     if self.phase == PHASE_DICE_BATTLE:
@@ -253,8 +373,28 @@ def get_button_specs(self) -> List[ButtonSpec]:
     if self.phase == PHASE_RESOURCE:
         buttons.append(ButtonSpec("Zur Beschwörungsphase", True, "to_summoning"))
     elif self.phase == PHASE_SUMMONING:
+        card = self.get_selected_hand_card()
+        if card is not None:
+            if card.template.card_type == CardType.CREATURE:
+                buttons.append(ButtonSpec("Kreatur spielen", self.can_play_card(self.active_player, card), "play_creature"))
+            elif card.template.card_type in {CardType.RITUAL, CardType.SPELL}:
+                buttons.append(ButtonSpec(f"{card.template.card_type.value} spielen", self.can_play_card(self.active_player, card), "play_spell"))
         buttons.append(ButtonSpec("Kampfphase", True, "to_combat"))
         buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
+    elif self.phase == PHASE_SPELL_TARGETING:
+        pending = self.pending_spell_cast
+        pending_card = self.get_card_from_pending_spell(pending) if pending is not None else None
+        if (
+            pending_card is not None
+            and pending_card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN
+            and pending is not None
+            and pending.selected_targets
+            and pending.selected_keyword_ability is None
+        ):
+            buttons.append(ButtonSpec("Schnell", True, "choose_tailwind_haste"))
+            buttons.append(ButtonSpec("Fliegend", True, "choose_tailwind_flying"))
+        buttons.append(ButtonSpec("Zauber bestätigen", self.pending_spell_ready(), "confirm_spell_target"))
+        buttons.append(ButtonSpec("Abbrechen", True, "cancel_spell_target"))
     elif self.phase == PHASE_RECYCLE_PAYMENT:
         ready = (
             self.pending_recycle_payment is not None
@@ -288,4 +428,9 @@ def get_button_specs(self) -> List[ButtonSpec]:
         if self.pending_dice_battle is not None and self.pending_dice_battle.resolution_complete:
             button_label = "Nächster Kampf" if self.has_more_dice_battles_after_current() else "Kampf abschließen"
             buttons.append(ButtonSpec(button_label, True, "end_dice_battle"))
+    elif self.phase == PHASE_REACTION:
+        selected = self.get_selected_hand_card()
+        legal = selected is not None and self.can_react_with_card(self.human_player, selected)
+        buttons.append(ButtonSpec("Zauber spielen", legal, "play_reaction_spell"))
+        buttons.append(ButtonSpec("Passen", True, "pass_reaction"))
     return buttons

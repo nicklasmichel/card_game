@@ -5,7 +5,7 @@ from core.models import Ability, CardCost, CardTemplate, Element
 
 FIRE_CREATURES = [
     CardTemplate(
-        template_id="fire_bombenwicht",
+        template_id="fire_creature_bombenwicht",
         name="Bombenwicht",
         cost=CardCost(resources=1),
         aw=1,
@@ -15,7 +15,7 @@ FIRE_CREATURES = [
         self_damage_on_play=2,
     ),
     CardTemplate(
-        template_id="fire_funkenwicht",
+        template_id="fire_creature_funkenwicht",
         name="Funkenwicht",
         cost=CardCost(resources=1),
         aw=1,
@@ -25,7 +25,7 @@ FIRE_CREATURES = [
         cannot_block=True,
     ),
     CardTemplate(
-        template_id="fire_funkenkobold",
+        template_id="fire_creature_funkenkobold",
         name="Funkenkobold",
         cost=CardCost(resources=2),
         aw=2,
@@ -36,7 +36,7 @@ FIRE_CREATURES = [
         opponent_damage_on_play=1,
     ),
     CardTemplate(
-        template_id="fire_flammenrekrut",
+        template_id="fire_creature_flammenrekrut",
         name="Flammenrekrut",
         cost=CardCost(resources=3),
         aw=3,
@@ -46,7 +46,7 @@ FIRE_CREATURES = [
         opponent_damage_on_play=1,
     ),
     CardTemplate(
-        template_id="fire_lavakrieger",
+        template_id="fire_creature_lavakrieger",
         name="Lavakrieger",
         cost=CardCost(resources=4),
         aw=4,
@@ -57,7 +57,7 @@ FIRE_CREATURES = [
         opponent_damage_on_play=3,
     ),
     CardTemplate(
-        template_id="fire_brandstifter",
+        template_id="fire_creature_brandstifter",
         name="Brandstifter",
         cost=CardCost(resources=2, recycle=1),
         aw=2,
@@ -66,7 +66,7 @@ FIRE_CREATURES = [
         abilities=frozenset({Ability.IGNITE}),
     ),
     CardTemplate(
-        template_id="fire_flammenmagier",
+        template_id="fire_creature_flammenmagier",
         name="Flammenmagier",
         cost=CardCost(resources=2, recycle=2),
         aw=3,
@@ -75,7 +75,7 @@ FIRE_CREATURES = [
         abilities=frozenset({Ability.IGNITE}),
     ),
     CardTemplate(
-        template_id="fire_feuerwidder",
+        template_id="fire_creature_feuerwidder",
         name="Feuerwidder",
         cost=CardCost(resources=4, recycle=1),
         aw=4,
@@ -84,7 +84,7 @@ FIRE_CREATURES = [
         abilities=frozenset({Ability.TRAMPLE}),
     ),
     CardTemplate(
-        template_id="fire_magmabestie",
+        template_id="fire_creature_magmabestie",
         name="Magmabestie",
         cost=CardCost(resources=5, recycle=2),
         aw=5,
@@ -93,7 +93,7 @@ FIRE_CREATURES = [
         abilities=frozenset({Ability.TRAMPLE}),
     ),
     CardTemplate(
-        template_id="fire_infernodrache",
+        template_id="fire_creature_infernodrache",
         name="Infernodrache",
         cost=CardCost(resources=6, recycle=3),
         aw=6,

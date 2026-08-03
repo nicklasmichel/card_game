@@ -6,12 +6,15 @@ from tests.helpers import EngineTestCase
 
 class ResourceAndRecycleTests(EngineTestCase):
     def test_mixed_cost_can_recycle_one_of_the_tapped_resources(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_brandstifter"])
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_brandstifter"])
         self.engine.human_player.hand = [card]
+        self.engine.ai_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])
+        ]
         self.engine.human_player.resources = [
-            self.make_resource("fire_funkenkobold"),
-            self.make_resource("water_wassertropfen"),
-            self.make_resource("earth_steinkobold"),
+            self.make_resource("fire_creature_funkenkobold"),
+            self.make_resource("water_creature_wassertropfen"),
+            self.make_resource("earth_creature_steinkobold"),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -36,11 +39,11 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(self.engine.pending_visual_events[-1]["type"], "recycle_reveal")
 
     def test_recycle_play_requires_enough_total_resources(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_lavakrieger"])
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_lavakrieger"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_funkenkobold"),
-            self.make_resource("water_wassertropfen"),
+            self.make_resource("fire_creature_funkenkobold"),
+            self.make_resource("water_creature_wassertropfen"),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -50,9 +53,9 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_SUMMONING)
 
     def test_human_can_play_two_resources_in_resource_phase(self) -> None:
-        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"])
-        second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_wassertropfen"])
-        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_steinkobold"])
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
         self.engine.human_player.hand = [first, second, third]
         self.engine.phase = PHASE_RESOURCE
 
@@ -72,7 +75,7 @@ class ResourceAndRecycleTests(EngineTestCase):
 
     def test_summoner_can_tap_to_draw_once_per_turn(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_funkenkobold"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         ]
         self.engine.human_player.hand = []
         self.engine.human_player.summoner_tapped = False

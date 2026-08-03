@@ -1,17 +1,30 @@
-from .cards import CardCost, CardInstance, CardTemplate, PendingForcedDiscard, PendingRecyclePayment, ResourceCard
-from .combat import CombatUnitSnapshot, DiceRoundRecord, DieResult, PendingBlockOrder, PendingComparison, PendingDiceBattle
-from .enums import Ability, Element
+from .cards import (
+    CardCost,
+    CardInstance,
+    CardTemplate,
+    PendingForcedDiscard,
+    PendingRecyclePayment,
+    PendingSpellCast,
+    ReactionContext,
+    ResourceCard,
+    SpellTargetRef,
+    StackItem,
+)
+from .combat import CombatUnitSnapshot, DiceRoundRecord, DieResult, PendingBlockOrder, PendingComparison, PendingDiceBattle, PendingDirectAttack
+from .enums import Ability, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode
 from .phases import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
-    PHASE_SUMMONING,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
+    PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
+    PHASE_SUMMONING,
 )
 from .players import BattlefieldCreature, PlayerState
 from .ui import ButtonSpec
@@ -23,8 +36,7 @@ __all__ = [
     "CardCost",
     "CardInstance",
     "CardTemplate",
-    "PendingRecyclePayment",
-    "PendingForcedDiscard",
+    "CardType",
     "CombatUnitSnapshot",
     "DiceRoundRecord",
     "DieResult",
@@ -32,16 +44,28 @@ __all__ = [
     "PendingBlockOrder",
     "PendingComparison",
     "PendingDiceBattle",
+    "PendingDirectAttack",
+    "PendingForcedDiscard",
+    "PendingRecyclePayment",
+    "PendingSpellCast",
     "PHASE_DECLARE_ATTACKERS",
     "PHASE_DECLARE_BLOCKERS",
     "PHASE_DICE_BATTLE",
     "PHASE_FORCED_DISCARD",
     "PHASE_GAME_OVER",
-    "PHASE_SUMMONING",
     "PHASE_MULLIGAN",
     "PHASE_ORDER_BLOCKERS",
+    "PHASE_REACTION",
     "PHASE_RECYCLE_PAYMENT",
     "PHASE_RESOURCE",
+    "PHASE_SPELL_TARGETING",
+    "PHASE_SUMMONING",
     "PlayerState",
+    "ReactionContext",
+    "ReactionTrigger",
     "ResourceCard",
+    "SpellEffect",
+    "SpellTargetMode",
+    "SpellTargetRef",
+    "StackItem",
 ]

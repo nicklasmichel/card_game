@@ -9,6 +9,18 @@ from core.models import CardInstance, Element
 from ui.style import CARD_BORDER
 
 
+def normalize_asset_stem(stem: str) -> str:
+    return (
+        stem.replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("Ä", "Ae")
+        .replace("Ö", "Oe")
+        .replace("Ü", "Ue")
+        .replace("ß", "ss")
+    )
+
+
 def load_resource_back_images(self) -> dict[str, pygame.Surface]:
     resources_dir = Path(__file__).resolve().parent.parent / "ressources"
     image_map: dict[str, pygame.Surface] = {}
@@ -47,15 +59,31 @@ def load_ui_symbol_images(self) -> dict[str, pygame.Surface]:
     return image_map
 
 
-def load_creature_art_images(self) -> dict[str, pygame.Surface]:
+def load_card_art_images(self) -> dict[str, pygame.Surface]:
     image_map: dict[str, pygame.Surface] = {}
     base_dir = Path(__file__).resolve().parent.parent / "ressources"
-    for folder_name in ("fire_creatures", "water_creatures", "earth_creatures", "air_creatures"):
+    folder_prefixes = {
+        "fire_creatures": "fire_creature_",
+        "fire_rituals": "fire_ritual_",
+        "fire_spells": "fire_spell_",
+        "water_creatures": "water_creature_",
+        "earth_creatures": "earth_creature_",
+        "air_creatures": "air_creature_",
+        "air_rituals": "air_ritual_",
+        "air_spells": "air_spell_",
+    }
+    for folder_name, template_prefix in folder_prefixes.items():
         resources_dir = base_dir / folder_name
         if not resources_dir.exists():
             continue
         for image_path in resources_dir.glob("*.png"):
-            image_map[image_path.stem] = pygame.image.load(str(image_path)).convert_alpha()
+            surface = pygame.image.load(str(image_path)).convert_alpha()
+            image_map[image_path.stem] = surface
+            normalized_stem = normalize_asset_stem(image_path.stem)
+            image_map[normalized_stem] = surface
+            stem_parts = normalized_stem.split("_", maxsplit=1)
+            if len(stem_parts) == 2:
+                image_map[f"{template_prefix}{stem_parts[1]}"] = surface
     return image_map
 
 
@@ -79,14 +107,18 @@ def render_scaled_card_surface(self, scale: float, render_fn: Callable[[], pygam
 
 def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surface:
     line_one, line_two = self.get_card_ability_lines(card.template)
+    display_cost = card.template.cost
+    is_creature = card.template.card_type.value == "Kreatur"
+    if is_creature and any(existing.instance_id == card.instance_id for existing in self.engine.active_player.hand):
+        display_cost = self.engine.get_card_cost_to_pay(self.engine.active_player, card)
     return self.render_scaled_card_surface(
         2.0,
         lambda: self.build_card_surface(
             template_id=card.template.template_id,
             title=card.template.name,
-            cost=card.template.cost,
-            stats=f"{card.template.aw}/{card.template.vw}",
-            defense_text=f"{card.template.vw}/{card.template.vw}",
+            cost=display_cost,
+            stats=f"{card.template.aw}/{card.template.vw}" if is_creature else "",
+            defense_text=f"{card.template.vw}/{card.template.vw}" if is_creature else None,
             element=card.template.element,
             type_line=self.get_creature_type_line(card.template),
             line_one=line_one,

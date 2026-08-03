@@ -8,8 +8,10 @@ from core.models import (
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
+    PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_RESOURCE,
+    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
 )
 from ui.style import BG_COLOR, FPS
@@ -23,6 +25,8 @@ def run(self) -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                self.handle_ui_action("ui_toggle_pause")
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_log_scroll(-event.y * 36)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -65,6 +69,10 @@ def get_decision_marker(self) -> tuple[int, str, str] | None:
         return (self.engine.active_player.player_id, self.engine.phase, "summoning")
     if self.engine.phase == PHASE_RECYCLE_PAYMENT:
         return (self.engine.active_player.player_id, self.engine.phase, "recycle")
+    if self.engine.phase == PHASE_SPELL_TARGETING:
+        return (self.engine.active_player.player_id, self.engine.phase, "spell_target")
+    if self.engine.phase == PHASE_REACTION and self.engine.reaction_priority_player_id is not None:
+        return (self.engine.reaction_priority_player_id, self.engine.phase, "reaction")
     if self.engine.phase == PHASE_FORCED_DISCARD:
         return (self.engine.human_player.player_id, self.engine.phase, "forced_discard")
     if self.engine.phase == PHASE_DECLARE_ATTACKERS:
@@ -190,6 +198,10 @@ def handle_mouse_click(self, position: tuple[int, int]) -> None:
                 self.engine.handle_action(spec.action)
                 self.update_decision_timer(force_reset=True)
             return
+    enemy_deck_target = self.get_target_at_position("enemy_deck", position)
+    if enemy_deck_target is not None:
+        self.handle_ui_action("ui_toggle_enemy_hand")
+        return
     for area in self.click_targets:
         target = self.get_target_at_position(area, position)
         if target is not None:
@@ -231,6 +243,8 @@ def draw(self) -> None:
         self.draw_block_order_overlay()
     if self.engine.pending_dice_battle is not None:
         self.draw_dice_battle_overlay()
+    self.draw_reaction_focus_preview()
+    self.draw_pause_overlay()
     if self.engine.phase == PHASE_GAME_OVER:
         self.draw_game_over_overlay()
     self.draw_card_preview_overlay()

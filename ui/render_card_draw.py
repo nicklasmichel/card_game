@@ -4,12 +4,21 @@ import math
 
 import pygame
 
+from core.models import PHASE_REACTION, PHASE_SUMMONING
 from ui.render_helpers import blit_text_with_shadow
 from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLOR
 
 
 def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -> pygame.Rect:
     surface = self.build_hand_card_surface(card, selected, note)
+    if any(existing.instance_id == card.instance_id for existing in self.engine.human_player.hand):
+        in_priority_window = self.engine.phase in {PHASE_SUMMONING, PHASE_REACTION}
+        legal = self.engine.can_play_card(self.engine.active_player if self.engine.phase == PHASE_SUMMONING else self.engine.human_player, card)
+        if in_priority_window and not legal:
+            dim = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+            dim.fill((18, 18, 22, 120))
+            surface = surface.copy()
+            surface.blit(dim, (0, 0))
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda card=card, note=note: self.build_preview_hand_card_surface(card, note)

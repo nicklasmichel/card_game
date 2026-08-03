@@ -257,6 +257,8 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
             self.preview_targets.append((summoner_rect.copy(), self.last_preview_builder))
         if target_key == "player_resources":
             self.click_targets["player_summoner"].append((summoner_rect.copy(), player.player_id))
+        elif target_key is None and player is not None and player.player_id == self.engine.ai_player.player_id:
+            self.click_targets["enemy_summoner"].append((summoner_rect.copy(), player.player_id))
     if not resources:
         return
     left_resources = resources[: (len(resources) + 1) // 2]
@@ -301,10 +303,20 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
             target_key == "player_resources"
             and player is not None
             and player.player_id == self.engine.human_player.player_id
-            and self.engine.pending_recycle_payment is not None
             and resource.resource_id is not None
+            and (
+                self.engine.pending_recycle_payment is not None
+                or (
+                    self.engine.pending_spell_cast is not None
+                    and self.engine.get_card_from_pending_spell() is not None
+                    and self.engine.get_card_from_pending_spell().template.recycle_cost > 0
+                )
+            )
         ):
-            selected = resource.resource_id in self.engine.pending_recycle_payment.selected_resource_ids
+            if self.engine.pending_recycle_payment is not None:
+                selected = resource.resource_id in self.engine.pending_recycle_payment.selected_resource_ids
+            else:
+                selected = resource.resource_id in self.engine.pending_spell_cast.selected_recycle_resource_ids
             badge_rect = pygame.Rect(rect.x + 6, rect.y + 6, 28, 28)
             pygame.draw.circle(self.screen, HIGHLIGHT if selected else (18, 18, 20), badge_rect.center, 14)
             pygame.draw.circle(self.screen, CARD_BORDER, badge_rect.center, 12, 2)

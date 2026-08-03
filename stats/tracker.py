@@ -30,6 +30,10 @@ class GameStatistics:
     current_pending_combat: PendingCombatStats | None = None
     creature_records: List[CreatureCombatRecord] = field(default_factory=list)
     winner: str = ""
+    reaction_chains_started: int = 0
+    reaction_chain_total_length: int = 0
+    reaction_chain_max_length: int = 0
+    reaction_passes: int = 0
 
     def register_turn_count(self, turn_number: int) -> None:
         self.current_turns = turn_number
@@ -65,6 +69,55 @@ class GameStatistics:
 
     def register_player_damage(self, player_id: int, damage: int) -> None:
         self.player_stats[player_id].player_damage_dealt += damage
+
+    def register_ritual_played(self, player_id: int) -> None:
+        self.player_stats[player_id].rituals_played += 1
+
+    def register_spell_played(self, player_id: int) -> None:
+        self.player_stats[player_id].spells_played += 1
+
+    def register_reaction_chain_started(self) -> None:
+        self.reaction_chains_started += 1
+
+    def register_reaction_chain_length(self, length: int) -> None:
+        self.reaction_chain_total_length += length
+        self.reaction_chain_max_length = max(self.reaction_chain_max_length, length)
+
+    def register_reaction_pass(self) -> None:
+        self.reaction_passes += 1
+
+    def register_spell_damage(self, player_id: int, damage: int) -> None:
+        self.player_stats[player_id].spell_damage_dealt += damage
+
+    def register_spell_self_damage(self, player_id: int, damage: int) -> None:
+        self.player_stats[player_id].spell_self_damage_taken += damage
+
+    def register_feuerball_player_damage(self, player_id: int, damage: int) -> None:
+        self.player_stats[player_id].spell_damage_dealt += 0
+
+    def register_flammenwelle_resolution(self, player_id: int) -> None:
+        self.player_stats[player_id].flammenwelle_destroyed_creatures += 0
+
+    def register_brandopfer_sacrifice(self, player_id: int) -> None:
+        self.player_stats[player_id].brandopfer_sacrificed_creatures += 1
+
+    def register_verbotene_glut_draw(self, player_id: int) -> None:
+        self.player_stats[player_id].forbidden_glut_cards_drawn += 1
+
+    def register_hitzeschub_play(self, player_id: int) -> None:
+        self.player_stats[player_id].hitzeschub_swung_comparisons += 1
+
+    def register_letzter_funke_damage(self, player_id: int, damage: int) -> None:
+        self.player_stats[player_id].letzter_funke_damage += damage
+
+    def register_brandzeichen_resolution(self, player_id: int) -> None:
+        self.player_stats[player_id].brandzeichen_destroyed_blockers += 0
+
+    def register_gegenfeuer_damage(self, player_id: int, damage: int) -> None:
+        self.player_stats[player_id].gegenfeuer_damage += damage
+
+    def register_flammenzorn_resolution(self, player_id: int) -> None:
+        self.player_stats[player_id].flammenzorn_destroyed_creatures += 0
 
     def register_block_assignment(self, blocker_count: int) -> None:
         if blocker_count == 1:
@@ -228,6 +281,20 @@ class GameStatistics:
             "ai_player_damage_dealt": str(self.player_stats[1].player_damage_dealt),
             "human_creature_damage_dealt": str(self.player_stats[0].creature_damage_dealt),
             "ai_creature_damage_dealt": str(self.player_stats[1].creature_damage_dealt),
+            "human_rituals_played": str(self.player_stats[0].rituals_played),
+            "ai_rituals_played": str(self.player_stats[1].rituals_played),
+            "human_spells_played": str(self.player_stats[0].spells_played),
+            "ai_spells_played": str(self.player_stats[1].spells_played),
+            "reaction_chains_started": str(self.reaction_chains_started),
+            "avg_reaction_chain_length": f"{(self.reaction_chain_total_length / self.reaction_chains_started) if self.reaction_chains_started else 0.0:.2f}",
+            "max_reaction_chain_length": str(self.reaction_chain_max_length),
+            "reaction_passes": str(self.reaction_passes),
+            "human_spell_damage_dealt": str(self.player_stats[0].spell_damage_dealt),
+            "ai_spell_damage_dealt": str(self.player_stats[1].spell_damage_dealt),
+            "human_spell_self_damage_taken": str(self.player_stats[0].spell_self_damage_taken),
+            "ai_spell_self_damage_taken": str(self.player_stats[1].spell_self_damage_taken),
+            "human_verbotene_glut_cards_drawn": str(self.player_stats[0].forbidden_glut_cards_drawn),
+            "ai_verbotene_glut_cards_drawn": str(self.player_stats[1].forbidden_glut_cards_drawn),
             "avg_dice_comparisons_per_combat": f"{average:.2f}",
             "start_player": self.start_player,
         }

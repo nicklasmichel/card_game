@@ -4,6 +4,7 @@ from typing import List
 
 from core.models import (
     BattlefieldCreature,
+    CardType,
     CardCost,
     CardInstance,
     PendingRecyclePayment,
@@ -18,6 +19,8 @@ from core.models import (
 
 
 def format_card_cost(self, cost: CardCost) -> str:
+    if cost.resources <= 0 and cost.recycle <= 0:
+        return "0"
     if cost.resources > 0 and cost.recycle > 0:
         return f"{cost.resources} + Recycle {cost.recycle}"
     if cost.resources > 0:
@@ -25,8 +28,17 @@ def format_card_cost(self, cost: CardCost) -> str:
     return f"Recycle {cost.recycle}"
 
 
+def get_card_cost_to_pay(self, player: PlayerState, card: CardInstance) -> CardCost:
+    if card.template.card_type != CardType.CREATURE:
+        return card.template.cost
+    return CardCost(
+        resources=max(0, card.template.resource_cost - getattr(player, "creature_cost_reduction_this_turn", 0)),
+        recycle=card.template.recycle_cost,
+    )
+
+
 def can_play_card(self, player: PlayerState, card: CardInstance) -> bool:
-    return player.can_pay(card.template.cost)
+    return player.can_pay(self.get_card_cost_to_pay(player, card))
 
 
 def begin_recycle_payment(self, card_instance_id: int) -> bool:
@@ -108,7 +120,7 @@ def confirm_recycle_payment(self) -> None:
 
 
 def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[int] | None = None) -> bool:
-    cost = card.template.cost
+    cost = self.get_card_cost_to_pay(self.active_player, card)
     if not self.can_play_card(self.active_player, card):
         self.log("Nicht genügend Ressourcen oder Recyclekosten können nicht bezahlt werden.")
         return False
@@ -172,10 +184,10 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             self.active_player.player_id,
             card.template.recycle_cost,
         )
-    self.log(
-        f"{self.active_player.name} spielt {card.template.name} "
-        f"({card.template.aw}/{card.template.vw}) für {self.format_card_cost(card.template.cost)}."
-    )
+        self.log(
+            f"{self.active_player.name} spielt {card.template.name} "
+            f"({card.template.aw}/{card.template.vw}) für {self.format_card_cost(cost)}."
+        )
     if card.template.self_damage_on_play > 0:
         self.active_player.life -= card.template.self_damage_on_play
         self.queue_player_damage_event(
@@ -271,19 +283,13 @@ def activate_summoner_draw(self, player: PlayerState) -> bool:
     if self.phase not in {PHASE_RESOURCE, PHASE_SUMMONING}:
         self.log("Der Beschwörer kann gerade nicht aktiviert werden.")
         return False
-    if not player.deck:
-        self.log("Es kann keine Karte gezogen werden.")
-        return False
     player.summoner_tapped = True
-    drawn = player.draw_card()
+    drawn = self.draw_card_for_player(player, "Beschwörer")
     if drawn is not None:
-        if self.statistics is not None:
-            self.statistics.register_draw(player.player_id)
-            if drawn.was_recycled:
-                self.statistics.register_recycled_card_drawn(player.player_id)
         self.log(f"{player.name} tappt den Beschwörer und zieht eine Karte.")
         return True
-    self.log("Es kann keine Karte gezogen werden.")
+    if self.phase != PHASE_GAME_OVER:
+        self.log("Es kann keine Karte gezogen werden.")
     return False
 
 

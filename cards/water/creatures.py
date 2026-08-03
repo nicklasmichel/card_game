@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from core.models import Ability, CardCost, CardTemplate, Element
 
 
 WATER_CREATURES = [
     CardTemplate(
-        template_id="water_wassertropfen",
+        template_id="water_creature_wassertropfen",
         name="Wassertropfen",
         cost=CardCost(resources=1),
         aw=1,
@@ -13,7 +13,7 @@ WATER_CREATURES = [
         element=Element.WATER,
     ),
     CardTemplate(
-        template_id="water_kuestenkaempfer",
+        template_id="water_creature_kuestenkaempfer",
         name="Küstenkämpfer",
         cost=CardCost(resources=2),
         aw=2,
@@ -21,7 +21,7 @@ WATER_CREATURES = [
         element=Element.WATER,
     ),
     CardTemplate(
-        template_id="water_flusskrieger",
+        template_id="water_creature_flusskrieger",
         name="Flusskrieger",
         cost=CardCost(resources=2, recycle=1),
         aw=3,
@@ -29,7 +29,7 @@ WATER_CREATURES = [
         element=Element.WATER,
     ),
     CardTemplate(
-        template_id="water_quellnymphe",
+        template_id="water_creature_quellnymphe",
         name="Quellnymphe",
         cost=CardCost(resources=2),
         aw=1,
@@ -38,7 +38,7 @@ WATER_CREATURES = [
         abilities=frozenset({Ability.REGENERATION}),
     ),
     CardTemplate(
-        template_id="water_gezeitenheiler",
+        template_id="water_creature_gezeitenheiler",
         name="Gezeitenheiler",
         cost=CardCost(resources=4),
         aw=3,
@@ -47,7 +47,7 @@ WATER_CREATURES = [
         abilities=frozenset({Ability.REGENERATION}),
     ),
     CardTemplate(
-        template_id="water_wellenformer",
+        template_id="water_creature_wellenformer",
         name="Wellenformer",
         cost=CardCost(resources=3),
         aw=3,
@@ -56,7 +56,7 @@ WATER_CREATURES = [
         abilities=frozenset({Ability.ADAPTATION}),
     ),
     CardTemplate(
-        template_id="water_tiefenjaeger",
+        template_id="water_creature_tiefenjaeger",
         name="Tiefenjäger",
         cost=CardCost(resources=5),
         aw=5,
@@ -65,7 +65,7 @@ WATER_CREATURES = [
         abilities=frozenset({Ability.ADAPTATION}),
     ),
     CardTemplate(
-        template_id="water_uralter_leviathan",
+        template_id="water_creature_uralter_leviathan",
         name="Uralter Leviathan",
         cost=CardCost(resources=6),
         aw=4,

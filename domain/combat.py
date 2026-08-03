@@ -32,13 +32,23 @@ class DieResult:
     aw_bonus: int
     used: bool = False
     comparison_label: Optional[str] = None
+    bonus_breakdown: list[tuple[str, int]] = field(default_factory=list)
 
     @property
     def total(self) -> int:
         return self.base_roll + self.aw_bonus
 
     def display(self) -> str:
+        if self.bonus_breakdown:
+            parts = [str(self.base_roll)] + [f"{label} {amount}" for label, amount in self.bonus_breakdown if amount]
+            return f"{' + '.join(parts)} = {self.total}"
         return f"{self.base_roll} + {self.aw_bonus} = {self.total}"
+
+    def add_bonus(self, label: str, amount: int) -> None:
+        if amount <= 0:
+            return
+        self.aw_bonus += amount
+        self.bonus_breakdown.append((label, amount))
 
 
 @dataclass
@@ -77,6 +87,15 @@ class PendingDiceBattle:
     blocker_used_adaptation: bool = False
     pending_comparison: Optional[PendingComparison] = None
     resolution_complete: bool = False
+
+
+@dataclass
+class PendingDirectAttack:
+    attacker_id: int
+    attacker_owner: int
+    defending_player_id: int
+    base_damage: int
+    damage_multiplier: int = 1
 
 
 @dataclass

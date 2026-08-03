@@ -69,7 +69,7 @@ from ui.assets import (
     draw_card_preview_overlay,
     handle_preview_start,
     handle_preview_stop,
-    load_creature_art_images,
+    load_card_art_images,
     load_resource_back_images,
     load_summoner_images,
     load_ui_symbol_images,
@@ -103,6 +103,8 @@ from ui.overlays import (
     draw_dice_battle_overlay,
     draw_game_over_overlay,
     draw_mulligan_overlay,
+    draw_pause_overlay,
+    draw_reaction_focus_preview,
 )
 from ui.runtime import (
     draw,
@@ -190,12 +192,14 @@ class TcgPrototypeApp:
     draw_block_order_overlay = draw_block_order_overlay
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
+    draw_pause_overlay = draw_pause_overlay
+    draw_reaction_focus_preview = draw_reaction_focus_preview
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
     load_summoner_images = load_summoner_images
     load_ui_symbol_images = load_ui_symbol_images
-    load_creature_art_images = load_creature_art_images
+    load_card_art_images = load_card_art_images
     render_scaled_card_surface = render_scaled_card_surface
     build_preview_hand_card_surface = build_preview_hand_card_surface
     build_preview_hidden_hand_surface = build_preview_hidden_hand_surface
@@ -260,7 +264,7 @@ class TcgPrototypeApp:
         self.resource_back_images = self.load_resource_back_images()
         self.summoner_images = self.load_summoner_images()
         self.ui_symbol_images = self.load_ui_symbol_images()
-        self.creature_art_images = self.load_creature_art_images()
+        self.card_art_images = self.load_card_art_images()
         self.log_scroll_offset = 0
         self.log_viewport_rect = pygame.Rect(0, 0, 0, 0)
         self.buttons: List[Tuple[pygame.Rect, ButtonSpec]] = []
@@ -292,7 +296,9 @@ class TcgPrototypeApp:
         self.summoner_rects: Dict[int, pygame.Rect] = {}
         self.click_targets: Dict[str, List[Tuple[pygame.Rect, int]]] = {
             "hand": [],
+            "enemy_deck": [],
             "player_summoner": [],
+            "enemy_summoner": [],
             "player_creatures": [],
             "enemy_creatures": [],
             "combat_lane": [],

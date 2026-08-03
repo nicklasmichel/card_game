@@ -4,7 +4,7 @@ from typing import List
 
 import pygame
 
-from core.models import Ability, CardTemplate, Element
+from core.models import Ability, CardTemplate, CardType, Element
 from ui.style import CARD_BADGE_LIGHT, CARD_BORDER
 
 
@@ -32,33 +32,23 @@ def get_element_symbol_key(element: Element) -> str:
 
 
 def get_creature_type_line(self, template: CardTemplate) -> str:
-    return f"Kreatur - {template.element.value}"
+    if template.card_type == CardType.CREATURE:
+        return f"Kreatur - {template.element.value}"
+    return f"{template.card_type.value} - {template.element.value}"
 
 
 def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
     names = self.get_ability_names(template.abilities)
     line_one = ", ".join(names)
-    line_two = getattr(template, "rules_text", "")
-    if line_one and line_two:
-        return line_one, line_two
-    if line_one:
-        return line_one, ""
-    if line_two:
-        return line_two, ""
-    return "", ""
+    line_two = normalize_rules_text(getattr(template, "rules_text", ""), names)
+    return line_one, line_two
 
 
 def get_card_ability_lines_from_creature(self, creature) -> tuple[str, str]:
     names = self.get_ability_names(creature.abilities)
     line_one = ", ".join(names)
-    line_two = getattr(creature, "rules_text", "")
-    if line_one and line_two:
-        return line_one, line_two
-    if line_one:
-        return line_one, ""
-    if line_two:
-        return line_two, ""
-    return "", ""
+    line_two = normalize_rules_text(getattr(creature, "rules_text", ""), names)
+    return line_one, line_two
 
 
 def get_ability_names(self, abilities) -> List[str]:
@@ -66,13 +56,29 @@ def get_ability_names(self, abilities) -> List[str]:
         Ability.IGNITE,
         Ability.TRAMPLE,
         Ability.HASTE,
-        Ability.VIGILANCE,
+        Ability.FLYING,
         Ability.DEFENDER,
-        Ability.STEADFAST,
+        Ability.PROVOKE,
         Ability.REGENERATION,
         Ability.ADAPTATION,
     ]
     return [ability.value for ability in order if ability in abilities]
+
+
+def normalize_rules_text(rules_text: str, ability_names: List[str]) -> str:
+    normalized = rules_text.strip()
+    if not normalized or not ability_names:
+        return normalized
+    changed = True
+    while changed and normalized:
+        changed = False
+        for ability_name in ability_names:
+            prefix = f"{ability_name}."
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix):].lstrip()
+                changed = True
+                break
+    return normalized
 
 
 def blit_text_to_surface(self, surface: pygame.Surface, font: pygame.font.Font, text: str, color, x: int, y: int) -> None:
