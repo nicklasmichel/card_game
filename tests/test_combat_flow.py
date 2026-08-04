@@ -10,11 +10,35 @@ from core.models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_RESOURCE,
 )
 from tests.helpers import EngineTestCase
 
 
 class CombatFlowTests(EngineTestCase):
+    def test_unblocked_multi_attack_advances_turn_only_once_without_reactions(self) -> None:
+        attacker_one = self.make_creature("air_creature_sturmfalke", owner_id=1)
+        attacker_two = self.make_creature("air_creature_boeengeist", owner_id=1)
+        self.engine.human_player.hand = []
+        self.engine.ai_player.hand = []
+        self.engine.human_player.battlefield = []
+        self.engine.ai_player.battlefield = [attacker_one, attacker_two]
+        self.engine.active_player_index = 1
+        self.engine.turn_number = 3
+        self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.block_assignments = {
+            attacker_one.unit_id: [],
+            attacker_two.unit_id: [],
+        }
+
+        self.engine.finish_block_assignment()
+
+        self.assertEqual(self.engine.turn_number, 4)
+        self.assertEqual(self.engine.active_player, self.engine.human_player)
+        self.assertEqual(self.engine.phase, PHASE_RESOURCE)
+        self.assertIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
+        self.assertNotIn("Zug 5: Gegner ist am Zug.", self.engine.log_messages)
+
     def test_flying_attacker_can_only_be_blocked_by_flying_creature(self) -> None:
         attacker = self.make_creature("air_creature_sturmfalke", owner_id=1)
         ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
@@ -33,21 +57,47 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertEqual(self.engine.block_assignments[attacker.unit_id], [flying_blocker.unit_id])
 
-    def test_sturmfuerst_bonus_increases_only_attacker_die_results(self) -> None:
-        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        self.make_creature("air_creature_sturmfuerst", owner_id=1)
+    def test_sturmfuerst_increases_haste_attack_and_flying_defense_values(self) -> None:
+        sturmfuerst = self.make_creature("air_creature_sturmfuerst", owner_id=0)
+        haste_creature = self.make_creature("air_creature_windhuscher", owner_id=0)
+        flying_creature = self.make_creature("air_creature_sturmfalke", owner_id=0)
+
+        self.assertEqual(self.engine.get_creature_attack_value(sturmfuerst), 2)
+        self.assertEqual(self.engine.get_creature_defense_value(sturmfuerst), 2)
+        self.assertEqual(self.engine.get_creature_attack_value(haste_creature), 2)
+        self.assertEqual(self.engine.get_creature_defense_value(flying_creature), 3)
+
+    def test_sturmfuerst_buffed_haste_creature_deals_more_direct_damage(self) -> None:
+        self.make_creature("air_creature_sturmfuerst", owner_id=0)
+        attacker = self.make_creature("air_creature_windhuscher", owner_id=0)
 
         self.engine.active_player_index = 0
+        self.engine.block_assignments = {attacker.unit_id: []}
+        self.engine.begin_combat_resolution()
 
-        with patch.object(self.engine.rng, "randint", side_effect=[10, 11, 12, 13, 14]):
-            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+        self.assertEqual(self.engine.ai_player.life, 18)
 
-        battle = self.engine.pending_dice_battle
+    def test_flying_creature_survives_one_extra_damage_with_sturmfuerst(self) -> None:
+        self.make_creature("air_creature_sturmfuerst", owner_id=0)
+        flyer = self.make_creature("air_creature_sturmfalke", owner_id=0)
 
-        self.assertIsNotNone(battle)
-        self.assertEqual([die.aw_bonus for die in battle.attacker_dice], [attacker.aw + 2, attacker.aw + 2])
-        self.assertEqual([die.aw_bonus for die in battle.blocker_dice], [blocker.aw, blocker.aw, blocker.aw])
+        flyer.current_hp -= 2
+
+        self.assertEqual(self.engine.get_creature_current_hp(flyer), 1)
+        self.assertFalse(self.engine.is_creature_destroyed(flyer))
+
+    def test_flying_creature_dies_when_sturmfuerst_leaves_and_only_aura_kept_it_alive(self) -> None:
+        owner = self.engine.human_player
+        sturmfuerst = self.make_creature("air_creature_sturmfuerst", owner_id=0)
+        flyer = self.make_creature("air_creature_sturmfalke", owner_id=0)
+        flyer.current_hp = 0
+
+        self.assertFalse(self.engine.is_creature_destroyed(flyer))
+
+        self.engine.destroy_creature_immediately(owner, sturmfuerst, "Test")
+        self.engine.cleanup_destroyed_units_for_spells()
+
+        self.assertNotIn(flyer, owner.battlefield)
 
     def test_human_provoke_assigns_selected_blocker_to_attacker(self) -> None:
         attacker = self.make_creature("earth_creature_granitkrieger", owner_id=0)
@@ -275,6 +325,20 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertIs(self.engine.pending_dice_battle, battle)
         self.assertEqual(self.engine.log_messages, [])
+
+    def test_combat_queue_uses_battlefield_order_for_attackers(self) -> None:
+        attacker_left = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        attacker_right = self.make_creature("fire_creature_flammenrekrut", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        self.engine.active_player_index = 0
+        self.engine.block_assignments = {
+            attacker_right.unit_id: [],
+            attacker_left.unit_id: [blocker.unit_id],
+        }
+        self.engine.begin_combat_resolution()
+
+        self.assertEqual(self.engine.combat_queue, [attacker_left.unit_id, attacker_right.unit_id])
 
     def test_ignite_attacker_deals_two_damage_on_first_won_comparison(self) -> None:
         attacker = self.make_creature("fire_creature_brandstifter", owner_id=0)

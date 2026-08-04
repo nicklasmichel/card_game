@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from random import Random
 from typing import Dict, List, Optional
 
@@ -44,7 +43,7 @@ from core.models import (
     SpellTargetRef,
     StackItem,
 )
-from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, GameStatistics
+from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatistics
 
 
 class GameEngine:
@@ -87,11 +86,15 @@ class GameEngine:
         ai_play_creatures,
         ai_play_resource,
         check_for_game_over,
+        clear_pending_ai_action,
         current_prompt,
+        execute_prepared_ai_action,
         end_turn,
         get_button_specs,
         handle_click,
+        has_pending_ai_action,
         persist_game_results_once,
+        prepare_ai_turn_action,
         process_ai_turn,
     )
     from engine.flow import (
@@ -132,10 +135,12 @@ class GameEngine:
         confirm_recycle_payment,
         format_card_cost,
         get_card_cost_to_pay,
+        play_hand_card_in_summoning_zone,
         play_hand_card_as_creature,
         play_hand_card_as_resource,
         play_selected_card_as_resource,
         play_selected_creature_card,
+        register_hand_card_played,
         resolve_creature_play,
         resolve_end_of_turn_returns,
         toggle_recycle_resource_selection,
@@ -197,8 +202,9 @@ class GameEngine:
         self.game_over_text = ""
         self.log_messages: List[str] = []
         self.game_over_summary_lines: List[str] = []
-        self.results_path = Path.cwd() / GAME_RESULTS_PATH
-        self.creature_results_path = Path.cwd() / CREATURE_RESULTS_PATH
+        self.results_path = GAME_RESULTS_PATH
+        self.creature_results_path = CREATURE_RESULTS_PATH
+        self.log_path = LOG_PATH
 
         self.rng = Random()
         self.ai = SimpleAI(self.rng)
@@ -240,6 +246,7 @@ class GameEngine:
         self.blocked_attackers: set[int] = set()
         self.combat_id_counter = 0
         self.ai_turn_initialized = False
+        self.pending_ai_action: Optional[dict] = None
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
@@ -258,6 +265,39 @@ class GameEngine:
     def active_player(self) -> PlayerState:
         return self.players[self.active_player_index]
 
+    def get_sturmfuerst_bonus_count(self, player: PlayerState) -> int:
+        return sum(
+            1
+            for creature in player.battlefield
+            if creature.current_hp > 0 and getattr(creature, "template_id", "") == "air_creature_sturmfuerst"
+        )
+
+    def get_creature_stat_bonuses(self, creature: BattlefieldCreature) -> tuple[int, int]:
+        owner = self.get_unit_owner(creature.unit_id)
+        if owner is None:
+            return 0, 0
+        sturmfuerst_count = self.get_sturmfuerst_bonus_count(owner)
+        if sturmfuerst_count <= 0:
+            return 0, 0
+        aw_bonus = sturmfuerst_count if creature.has_ability(Ability.HASTE) else 0
+        vw_bonus = sturmfuerst_count if creature.has_ability(Ability.FLYING) else 0
+        return aw_bonus, vw_bonus
+
+    def get_creature_attack_value(self, creature: BattlefieldCreature) -> int:
+        aw_bonus, _ = self.get_creature_stat_bonuses(creature)
+        return creature.aw + getattr(creature, "temporary_aw_bonus", 0) + aw_bonus
+
+    def get_creature_defense_value(self, creature: BattlefieldCreature) -> int:
+        _, vw_bonus = self.get_creature_stat_bonuses(creature)
+        return creature.vw + vw_bonus
+
+    def get_creature_current_hp(self, creature: BattlefieldCreature) -> int:
+        _, vw_bonus = self.get_creature_stat_bonuses(creature)
+        return creature.current_hp + vw_bonus
+
+    def is_creature_destroyed(self, creature: BattlefieldCreature) -> bool:
+        return self.get_creature_current_hp(creature) <= 0
+
     @property
     def defending_player(self) -> PlayerState:
         return self.players[1 - self.active_player_index]
@@ -269,6 +309,9 @@ class GameEngine:
 
     def log(self, message: str) -> None:
         self.log_messages.append(message)
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(message + "\n")
 
     def queue_player_damage_event(
         self,
@@ -348,6 +391,8 @@ class GameEngine:
             player.battlefield.clear()
             player.resources.clear()
             player.resources_played_this_turn = 0
+            player.hand_cards_played_this_turn = 0
+            player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
             player.attackers_die_bonus_this_turn = 0
             player.direct_attack_damage_multiplier_this_turn.clear()
@@ -388,6 +433,8 @@ class GameEngine:
             player.battlefield.clear()
             player.resources.clear()
             player.resources_played_this_turn = 0
+            player.hand_cards_played_this_turn = 0
+            player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
             player.attackers_die_bonus_this_turn = 0
             player.direct_attack_damage_multiplier_this_turn.clear()
@@ -455,4 +502,5 @@ class GameEngine:
         self.current_blocker_order = []
         self.current_blocker_index = 0
         self.blocked_attackers = set()
+        self.pending_ai_action = None
 

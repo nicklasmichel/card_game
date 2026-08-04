@@ -309,12 +309,4 @@ def draw_reaction_focus_preview(self) -> None:
     scaled = pygame.transform.smoothscale(preview_surface, preview_size)
     playfield_center_x = 10 + playfield_width // 2
     rect = scaled.get_rect(center=(playfield_center_x, (self.window_height // 2) + 24))
-
-    panel_rect = rect.inflate(36, 84)
-    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
-    panel.fill((10, 12, 16, 205))
-    self.screen.blit(panel, panel_rect.topleft)
-    pygame.draw.rect(self.screen, CARD_BORDER, panel_rect, 2, border_radius=10)
-
     self.screen.blit(scaled, rect.topleft)
-    draw_reaction_context_boxes(self, panel_rect)

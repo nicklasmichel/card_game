@@ -40,6 +40,8 @@ def get_creature_type_line(self, template: CardTemplate) -> str:
 def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
     names = self.get_ability_names(template.abilities)
     line_one = ", ".join(names)
+    if not line_one and template.card_type in {CardType.RITUAL, CardType.SPELL}:
+        line_one = template.card_type.value
     line_two = normalize_rules_text(getattr(template, "rules_text", ""), names)
     return line_one, line_two
 
@@ -49,6 +51,13 @@ def get_card_ability_lines_from_creature(self, creature) -> tuple[str, str]:
     line_one = ", ".join(names)
     line_two = normalize_rules_text(getattr(creature, "rules_text", ""), names)
     return line_one, line_two
+
+
+def get_display_creature_stats(self, creature) -> tuple[str, str]:
+    display_aw = self.engine.get_creature_attack_value(creature)
+    display_vw = self.engine.get_creature_defense_value(creature)
+    display_hp = self.engine.get_creature_current_hp(creature)
+    return f"{display_aw}/{display_vw}", f"{display_hp}/{display_vw}"
 
 
 def get_ability_names(self, abilities) -> List[str]:

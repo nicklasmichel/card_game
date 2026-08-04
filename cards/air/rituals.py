@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import Ability, CardCost, CardTemplate, CardType, Element, SpellEffect, SpellTargetMode
+from core.models import CardCost, CardTemplate, CardType, Element, SpellEffect, SpellTargetMode
 
 
 AIR_RITUALS = [
@@ -19,15 +19,16 @@ AIR_RITUALS = [
     ),
     CardTemplate(
         template_id="air_ritual_rueckenwind",
-        name="Rückenwind",
+        name="Rueckenwind",
         cost=CardCost(resources=1),
         aw=0,
         vw=0,
         element=Element.AIR,
         card_type=CardType.RITUAL,
-        spell_effect=SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN,
+        spell_effect=SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         target_mode=SpellTargetMode.CREATURE,
-        rules_text="Eine Kreatur erhält bis zum Ende des Zuges Schnell oder Fliegend.",
+        spell_amount=3,
+        rules_text="Eine Kreatur erhaelt bis zum Ende des Zuges +3 AW.",
     ),
     CardTemplate(
         template_id="air_ritual_windwechsel",
@@ -50,21 +51,21 @@ AIR_RITUALS = [
         vw=0,
         element=Element.AIR,
         card_type=CardType.RITUAL,
-        spell_effect=SpellEffect.BUFF_ATTACKERS_DICE_THIS_TURN,
+        spell_effect=SpellEffect.DISCARD_HAND_AND_DRAW_THREE,
         target_mode=SpellTargetMode.NONE,
-        spell_amount=2,
-        rules_text="Angreifende Kreaturen erhalten in diesem Zug +2 auf ihre Würfelergebnisse.",
+        spell_draw_count=3,
+        rules_text="Lege deine Hand auf den Ablagestapel. Ziehe 3 Karten.",
     ),
     CardTemplate(
         template_id="air_ritual_turbulenz",
         name="Turbulenz",
-        cost=CardCost(resources=3),
+        cost=CardCost(recycle=2),
         aw=0,
         vw=0,
         element=Element.AIR,
         card_type=CardType.RITUAL,
-        spell_effect=SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND,
+        spell_effect=SpellEffect.RETURN_TWO_CREATURES_TO_HAND,
         target_mode=SpellTargetMode.CREATURE,
-        rules_text="Nimm eine eigene und eine gegnerische Kreatur auf die Hand ihrer Besitzer zurück.",
+        rules_text="Nimm zwei Kreaturen auf die Haende ihrer Besitzer zurueck.",
     ),
 ]

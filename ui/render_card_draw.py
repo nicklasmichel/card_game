@@ -106,6 +106,15 @@ def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     scale = getattr(self, "layout_scale", 1.0)
     s = lambda value: max(1, int(round(value * scale)))
     card_number_font = pygame.font.SysFont("arial", max(self.small_font.get_height() + s(2), self.small_font.get_height() + 2))
+    rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
+    rules_text = "Wenn du in deinem Zug deine vierte Handkarte ausspielst, ziehe 1 Karte."
+    rules_rect = pygame.Rect(s(10), self.card_height - s(86), self.card_width - s(20), s(54))
+    rule_lines = self.wrap_text(rules_font, rules_text, rules_rect.width)
+    rule_line_height = rules_font.get_height() + s(1)
+    rule_y = rules_rect.y
+    for line in rule_lines:
+        blit_text_with_shadow(surface, rules_font, line, (255, 255, 255), rules_rect.x, rule_y)
+        rule_y += rule_line_height
     shield_text = f"{life}/20"
     shield_text_color = (255, 142, 142) if life <= 0 else (255, 255, 255)
     shield_icon_size = s(22)
@@ -157,6 +166,7 @@ def draw_creature_card(
 ) -> pygame.Rect:
     visually_tapped = self.is_creature_visually_tapped(creature)
     accent = PLAYER_CARD_COLOR if is_human else ENEMY_CARD_COLOR
+    stats_text, defense_text = self.get_display_creature_stats(creature)
     line_one = ""
     line_two = ""
     if extra_line:
@@ -170,8 +180,8 @@ def draw_creature_card(
         template_id=getattr(creature, "template_id", None),
         title=creature.name,
         cost=creature.cost,
-        stats=creature.aw_vw,
-        defense_text=f"{creature.current_hp}/{creature.vw}",
+        stats=stats_text,
+        defense_text=defense_text,
         element=creature.element,
         type_line=f"Kreatur - {creature.element.value}",
         line_one=line_one,

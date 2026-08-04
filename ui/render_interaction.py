@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.models import PHASE_RESOURCE, PHASE_SUMMONING
+from core.models import CardType, PHASE_RESOURCE, PHASE_SUMMONING
 from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
 
 
@@ -55,11 +55,28 @@ def can_drag_hand_card(self, card_id: int | None = None) -> bool:
 
 
 def can_drag_hand_card_to_resource(self) -> bool:
-    return (
+    if (
         self.engine.phase == PHASE_RESOURCE
         and self.engine.active_player.is_human
         and self.engine.active_player.resources_played_this_turn < 2
         and self.engine.pending_recycle_payment is None
+    ):
+        return True
+    if (
+        self.engine.phase != PHASE_SUMMONING
+        or not self.engine.active_player.is_human
+        or self.engine.pending_recycle_payment is not None
+        or self.dragged_hand_card_id is None
+    ):
+        return False
+    card = next(
+        (existing for existing in self.engine.human_player.hand if existing.instance_id == self.dragged_hand_card_id),
+        None,
+    )
+    return (
+        card is not None
+        and card.template.card_type in {CardType.RITUAL, CardType.SPELL}
+        and self.engine.can_play_card(self.engine.active_player, card)
     )
 
 
@@ -83,7 +100,7 @@ def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
     )
     return (
         card is not None
-        and getattr(card.template, "card_type", None).value == "Kreatur"
+        and card.template.card_type in {CardType.CREATURE, CardType.RITUAL, CardType.SPELL}
         and self.engine.can_play_card(self.engine.active_player, card)
     )
 

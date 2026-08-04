@@ -17,15 +17,15 @@ from core.models import (
 )
 
 
-def make_combat_unit_snapshot(creature: BattlefieldCreature) -> CombatUnitSnapshot:
+def make_combat_unit_snapshot(self, creature: BattlefieldCreature) -> CombatUnitSnapshot:
     return CombatUnitSnapshot(
         unit_id=creature.unit_id,
         template_id=getattr(creature, "template_id", None),
         name=creature.name,
         cost=creature.cost,
-        aw=creature.aw,
-        vw=creature.vw,
-        current_hp=creature.current_hp,
+        aw=self.get_creature_attack_value(creature),
+        vw=self.get_creature_defense_value(creature),
+        current_hp=self.get_creature_current_hp(creature),
         element=creature.element,
         abilities=creature.abilities,
         rules_text=getattr(creature, "rules_text", ""),
@@ -34,27 +34,14 @@ def make_combat_unit_snapshot(creature: BattlefieldCreature) -> CombatUnitSnapsh
 
 
 def get_attackers_die_bonus(self) -> int:
-    return sum(
-        getattr(creature, "all_attackers_die_bonus", 0)
-        for player in self.players
-        for creature in player.battlefield
-        if creature.current_hp > 0
-    )
+    return 0
 
 
 def get_attacker_die_bonus_sources(self, attacker: BattlefieldCreature, attacker_owner) -> list[tuple[str, int]]:
-    sources: list[tuple[str, int]] = [("AW", attacker.aw)]
+    sources: list[tuple[str, int]] = [("AW", self.get_creature_attack_value(attacker))]
     sturmformation_bonus = getattr(attacker_owner, "attackers_die_bonus_this_turn", 0)
     if sturmformation_bonus > 0:
         sources.append(("Sturmformation", sturmformation_bonus))
-    sturmfuerst_bonus = sum(
-        getattr(creature, "all_attackers_die_bonus", 0)
-        for player in self.players
-        for creature in player.battlefield
-        if creature.current_hp > 0
-    )
-    if sturmfuerst_bonus > 0:
-        sources.append(("Sturmfürst", sturmfuerst_bonus))
     return sources
 
 
@@ -74,12 +61,12 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
             blocker_owner=blocker_owner.player_id,
             attacker_creature_name=attacker.name,
             blocker_creature_name=blocker.name,
-            attacker_aw=attacker.aw,
-            attacker_vw=attacker.vw,
-            blocker_aw=blocker.aw,
-            blocker_vw=blocker.vw,
-            attacker_hp_before=attacker.current_hp,
-            blocker_hp_before=blocker.current_hp,
+            attacker_aw=self.get_creature_attack_value(attacker),
+            attacker_vw=self.get_creature_defense_value(attacker),
+            blocker_aw=self.get_creature_attack_value(blocker),
+            blocker_vw=self.get_creature_defense_value(blocker),
+            attacker_hp_before=self.get_creature_current_hp(attacker),
+            blocker_hp_before=self.get_creature_current_hp(blocker),
         )
     self.pending_dice_battle = PendingDiceBattle(
         attacker_id=attacker_id,
@@ -92,18 +79,22 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
                 sum(amount for _label, amount in get_attacker_die_bonus_sources(self, attacker, attacker_owner)),
                 bonus_breakdown=get_attacker_die_bonus_sources(self, attacker, attacker_owner),
             )
-            for _ in range(attacker.aw)
+            for _ in range(self.get_creature_attack_value(attacker))
         ],
         blocker_dice=[
-            DieResult(self.rng.randint(1, 20), blocker.aw, bonus_breakdown=[("AW", blocker.aw)])
-            for _ in range(blocker.vw)
+            DieResult(
+                self.rng.randint(1, 20),
+                self.get_creature_attack_value(blocker),
+                bonus_breakdown=[("AW", self.get_creature_attack_value(blocker))],
+            )
+            for _ in range(self.get_creature_defense_value(blocker))
         ],
-        attacker_snapshot=make_combat_unit_snapshot(attacker),
-        blocker_snapshot=make_combat_unit_snapshot(blocker),
+        attacker_snapshot=make_combat_unit_snapshot(self, attacker),
+        blocker_snapshot=make_combat_unit_snapshot(self, blocker),
         ai_strategy_name=strategy.name,
         ai_choose_die=lambda dice, strategy=strategy: strategy.choose(dice, self.rng),
     )
-    self.log(f"Würfelkampf startet: {attacker.name} gegen {blocker.name}.")
+    self.log(f"Wuerfelkampf startet: {attacker.name} gegen {blocker.name}.")
 
 
 def choose_human_die(self, visible_index: int) -> None:
@@ -192,7 +183,7 @@ def apply_ai_adaptation_if_needed(self, battle: PendingDiceBattle, comparison: P
     own_loses = own_die.total < enemy_die.total
     tie = own_die.total == enemy_die.total
     would_take_damage = own_loses or tie
-    would_be_destroyed = ai_unit.current_hp <= 1 and would_take_damage
+    would_be_destroyed = self.get_creature_current_hp(ai_unit) <= 1 and would_take_damage
     if not self.ai.should_use_adaptation(ai_unit, own_die, enemy_die, would_take_damage, would_be_destroyed, tie):
         return
 
@@ -239,7 +230,7 @@ def continue_pending_comparison_after_reaction(self) -> None:
     self.apply_ai_adaptation_if_needed(battle, comparison)
     if self.human_can_use_adaptation(battle, comparison):
         comparison.human_can_adapt = True
-        self.log("Anpassung verfügbar. Entscheide über Neu Würfeln oder Auflösen.")
+        self.log("Anpassung verfuegbar. Entscheide ueber Neu Wuerfeln oder Aufloesen.")
         return
     self.resolve_pending_comparison(use_human_adaptation=False)
 
@@ -262,14 +253,14 @@ def apply_comparison_result(self, battle: PendingDiceBattle, comparison: Pending
         attacker_damage = 1 + (1 if round_number == 1 and attacker.has_ability(Ability.IGNITE) else 0)
         blocker.current_hp -= attacker_damage
         self.queue_creature_damage_event("blocker", attacker_damage, attacker.element)
-        outcome = f"{attacker.name} gewinnt den Würfelvergleich und verursacht {attacker_damage} Schaden."
+        outcome = f"{attacker.name} gewinnt den Wuerfelvergleich und verursacht {attacker_damage} Schaden."
         attacker_label = f"{comparison.attacker_die.display()} | Runde {round_number}: Gewonnen"
         blocker_label = f"{comparison.blocker_die.display()} | Runde {round_number}: Verloren"
     elif comparison.attacker_die.total < comparison.blocker_die.total:
         blocker_damage = 1
         attacker.current_hp -= blocker_damage
         self.queue_creature_damage_event("attacker", blocker_damage, blocker.element)
-        outcome = f"{blocker.name} gewinnt den Würfelvergleich und verursacht {blocker_damage} Schaden."
+        outcome = f"{blocker.name} gewinnt den Wuerfelvergleich und verursacht {blocker_damage} Schaden."
         attacker_label = f"{comparison.attacker_die.display()} | Runde {round_number}: Verloren"
         blocker_label = f"{comparison.blocker_die.display()} | Runde {round_number}: Gewonnen"
     else:
@@ -287,8 +278,8 @@ def apply_comparison_result(self, battle: PendingDiceBattle, comparison: Pending
         self.statistics.register_dice_comparison(attacker_damage=attacker_damage, blocker_damage=blocker_damage)
     comparison.attacker_die.comparison_label = attacker_label
     comparison.blocker_die.comparison_label = blocker_label
-    battle.attacker_snapshot.current_hp = attacker.current_hp
-    battle.blocker_snapshot.current_hp = blocker.current_hp
+    battle.attacker_snapshot.current_hp = self.get_creature_current_hp(attacker)
+    battle.blocker_snapshot.current_hp = self.get_creature_current_hp(blocker)
     human_unit = attacker if comparison.human_is_attacker else blocker
     enemy_unit = blocker if comparison.human_is_attacker else attacker
     human_result = comparison.attacker_die.display() if comparison.human_is_attacker else comparison.blocker_die.display()
@@ -332,9 +323,9 @@ def apply_comparison_result(self, battle: PendingDiceBattle, comparison: Pending
             )
         )
     destroyed = []
-    if attacker.current_hp <= 0:
+    if self.is_creature_destroyed(attacker):
         destroyed.append((self.get_player_by_id(battle.attacker_owner), attacker))
-    if blocker.current_hp <= 0:
+    if self.is_creature_destroyed(blocker):
         destroyed.append((self.get_player_by_id(battle.blocker_owner), blocker))
     for owner, creature in destroyed:
         setattr(creature, "owner_id", owner.player_id)
@@ -397,10 +388,10 @@ def finalize_or_continue_dice_battle(
     attacker: BattlefieldCreature,
     blocker: BattlefieldCreature,
 ) -> None:
-    attacker_hp_after = attacker.current_hp
-    blocker_hp_after = blocker.current_hp
-    attacker_alive = attacker.current_hp > 0
-    blocker_alive = blocker.current_hp > 0
+    attacker_hp_after = self.get_creature_current_hp(attacker)
+    blocker_hp_after = self.get_creature_current_hp(blocker)
+    attacker_alive = not self.is_creature_destroyed(attacker)
+    blocker_alive = not self.is_creature_destroyed(blocker)
     attacker_dice_left = any(not die.used for die in battle.attacker_dice)
     blocker_dice_left = any(not die.used for die in battle.blocker_dice)
 
@@ -415,14 +406,14 @@ def finalize_or_continue_dice_battle(
             blocker_owner=battle.blocker_owner,
             attacker_creature_name=attacker.name,
             blocker_creature_name=blocker.name,
-            attacker_aw=attacker.aw,
-            attacker_vw=attacker.vw,
-            blocker_aw=blocker.aw,
-            blocker_vw=blocker.vw,
+            attacker_aw=self.get_creature_attack_value(attacker),
+            attacker_vw=self.get_creature_defense_value(attacker),
+            blocker_aw=self.get_creature_attack_value(blocker),
+            blocker_vw=self.get_creature_defense_value(blocker),
             attacker_hp_after=attacker_hp_after,
             blocker_hp_after=blocker_hp_after,
         )
-    self.log(f"Gegnerische Würfelstrategie: {battle.ai_strategy_name}.")
+    self.log(f"Gegnerische Wuerfelstrategie: {battle.ai_strategy_name}.")
     battle.resolution_complete = True
 
 
@@ -461,13 +452,20 @@ def apply_trample_if_needed(self, battle: PendingDiceBattle, attacker_alive: boo
 
 
 def cleanup_destroyed_units(self) -> None:
-    for player in self.players:
-        destroyed = [creature for creature in player.battlefield if creature.current_hp <= 0]
-        for creature in destroyed:
-            self.remove_creature_from_combat(creature.unit_id)
-            self.creatures_died_this_turn += 1
-            template = self.templates.get(creature.template_id)
-            if template is not None:
-                player.discard_pile.append(CardInstance(self.make_instance_id(), template))
-            self.log(f"{creature.name} wird zerstört und auf den Ablagestapel gelegt.")
-        player.battlefield = [creature for creature in player.battlefield if creature.current_hp > 0]
+    changed = True
+    while changed:
+        changed = False
+        for player in self.players:
+            destroyed = [creature for creature in list(player.battlefield) if self.is_creature_destroyed(creature)]
+            if not destroyed:
+                continue
+            changed = True
+            for creature in destroyed:
+                self.remove_creature_from_combat(creature.unit_id)
+                self.creatures_died_this_turn += 1
+                template = self.templates.get(creature.template_id)
+                if template is not None:
+                    player.discard_pile.append(CardInstance(self.make_instance_id(), template))
+                self.log(f"{creature.name} wird zerstoert und auf den Ablagestapel gelegt.")
+                if creature in player.battlefield:
+                    player.battlefield.remove(creature)

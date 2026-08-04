@@ -13,6 +13,23 @@ def consume_visual_events(self) -> None:
         return
     now = pygame.time.get_ticks()
     popup_totals: Dict[int, dict] = {}
+    next_direct_attack_start_by_target: Dict[int, int] = {}
+
+    for popup in self.damage_popups:
+        if popup.get("type") != "player_damage" or popup.get("attacker_id") is None:
+            continue
+        target_player_id = popup["target_player_id"]
+        next_direct_attack_start_by_target[target_player_id] = max(
+            next_direct_attack_start_by_target.get(target_player_id, now),
+            popup["started_at_ms"] + 1550,
+        )
+    for animation in self.creature_lunges.values():
+        target_player_id = animation["target_player_id"]
+        next_direct_attack_start_by_target[target_player_id] = max(
+            next_direct_attack_start_by_target.get(target_player_id, now),
+            animation["started_at_ms"] + 1550,
+        )
+
     for event in self.engine.pending_visual_events:
         if event.get("type") == "creature_damage":
             source_element = event.get("source_element")
@@ -28,19 +45,31 @@ def consume_visual_events(self) -> None:
             )
             continue
         if event.get("type") == "recycle_reveal":
-            self.recycle_reveals.append(
-                {
-                    "player_id": event["player_id"],
-                    "template_ids": event["template_ids"],
-                    "started_at_ms": now,
-                }
-            )
             continue
         if event.get("type") != "player_damage":
             continue
         source_element = event.get("source_element")
         color = self.get_element_color(source_element) if source_element is not None else (255, 255, 255)
         target_player_id = event["target_player_id"]
+        attacker_id = event.get("attacker_id")
+        if attacker_id is not None:
+            started_at_ms = next_direct_attack_start_by_target.get(target_player_id, now)
+            next_direct_attack_start_by_target[target_player_id] = started_at_ms + 1550
+            self.damage_popups.append(
+                {
+                    "type": "player_damage",
+                    "target_player_id": target_player_id,
+                    "amount": event["amount"],
+                    "color": color,
+                    "started_at_ms": started_at_ms,
+                    "attacker_id": attacker_id,
+                }
+            )
+            self.creature_lunges[attacker_id] = {
+                "target_player_id": target_player_id,
+                "started_at_ms": started_at_ms,
+            }
+            continue
         popup_entry = popup_totals.setdefault(
             target_player_id,
             {
@@ -52,12 +81,6 @@ def consume_visual_events(self) -> None:
             },
         )
         popup_entry["amount"] += event["amount"]
-        attacker_id = event.get("attacker_id")
-        if attacker_id is not None:
-            self.creature_lunges[attacker_id] = {
-                "target_player_id": target_player_id,
-                "started_at_ms": now,
-            }
     self.damage_popups.extend(popup_totals.values())
     self.engine.pending_visual_events.clear()
     self.prune_finished_visuals()
@@ -132,28 +155,4 @@ def draw_creature_overlays(self) -> None:
 
 
 def draw_recycle_reveals(self) -> None:
-    if not self.recycle_reveals:
-        return
-    latest = self.recycle_reveals[-1]
-    surfaces = self.build_recycle_reveal_surfaces(latest["template_ids"])
-    if not surfaces:
-        return
-    scale = 0.6
-    scaled_surfaces = [
-        pygame.transform.smoothscale(surface, (max(1, int(surface.get_width() * scale)), max(1, int(surface.get_height() * scale))))
-        for surface in surfaces
-    ]
-    gap = 12
-    total_width = sum(surface.get_width() for surface in scaled_surfaces) + gap * max(0, len(scaled_surfaces) - 1)
-    panel_width = total_width + 28
-    panel_height = max(surface.get_height() for surface in scaled_surfaces) + 36
-    panel = pygame.Rect((self.window_width - panel_width) // 2, 24, panel_width, panel_height)
-    overlay = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
-    overlay.fill((12, 14, 18, 220))
-    self.screen.blit(overlay, panel.topleft)
-    pygame.draw.rect(self.screen, (56, 58, 66), panel, 2, border_radius=10)
-    x = panel.x + 14
-    y = panel.y + 18
-    for surface in scaled_surfaces:
-        self.screen.blit(surface, (x, y))
-        x += surface.get_width() + gap
+    return

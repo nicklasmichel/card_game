@@ -50,6 +50,7 @@ from ui.card_rendering import (
     draw_summoner_footer,
     draw_summoner_life_circle,
     fit_text,
+    get_display_creature_stats,
     get_ability_names,
     get_card_ability_lines,
     get_card_ability_lines_from_creature,
@@ -93,6 +94,7 @@ from ui.layout import (
     draw_side_log,
     draw_side_overview,
     draw_side_panel,
+    format_target_ref,
     get_creature_screen_positions,
     get_playfield_sections,
     get_side_panel_layout,
@@ -108,7 +110,6 @@ from ui.overlays import (
 )
 from ui.runtime import (
     draw,
-    get_decision_duration_ms,
     get_decision_marker,
     get_think_progress,
     handle_mouse_click,
@@ -116,8 +117,6 @@ from ui.runtime import (
     handle_mouse_motion,
     handle_mouse_up,
     handle_ui_action,
-    is_timed_decision_ready,
-    process_timed_decision,
     run,
     trigger_primary_action_button,
     update_decision_timer,
@@ -130,7 +129,7 @@ from ui.visuals import (
     draw_recycle_reveals,
     prune_finished_visuals,
 )
-from ui.style import AI_THINK_DURATION_MS, HUMAN_THINK_DURATION_MS
+
 
 
 class TcgPrototypeApp:
@@ -154,6 +153,7 @@ class TcgPrototypeApp:
     blit_text_to_surface = blit_text_to_surface
     blit_centered_text_to_surface = blit_centered_text_to_surface
     fit_text = fit_text
+    get_display_creature_stats = get_display_creature_stats
     draw_art_panel = draw_art_panel
     draw_resource_backdrop = draw_resource_backdrop
     build_resource_back_surface = build_resource_back_surface
@@ -188,6 +188,7 @@ class TcgPrototypeApp:
     draw_side_log = draw_side_log
     draw_side_actions = draw_side_actions
     draw_side_piles = draw_side_piles
+    format_target_ref = format_target_ref
     handle_log_scroll = handle_log_scroll
     draw_mulligan_overlay = draw_mulligan_overlay
     draw_block_order_overlay = draw_block_order_overlay
@@ -221,9 +222,6 @@ class TcgPrototypeApp:
     run = run
     get_decision_marker = get_decision_marker
     update_decision_timer = update_decision_timer
-    get_decision_duration_ms = get_decision_duration_ms
-    is_timed_decision_ready = is_timed_decision_ready
-    process_timed_decision = process_timed_decision
     get_think_progress = get_think_progress
     handle_ui_action = handle_ui_action
     trigger_primary_action_button = trigger_primary_action_button
@@ -270,10 +268,6 @@ class TcgPrototypeApp:
         self.log_scroll_offset = 0
         self.log_viewport_rect = pygame.Rect(0, 0, 0, 0)
         self.buttons: List[Tuple[pygame.Rect, ButtonSpec]] = []
-        self.ai_think_duration_ms = AI_THINK_DURATION_MS
-        self.human_think_duration_ms = HUMAN_THINK_DURATION_MS
-        self.decision_started_at_ms = pygame.time.get_ticks()
-        self.decision_marker: tuple[int, str, str] | None = None
         self.show_enemy_hand_cards = False
         self.paused = False
         self.pause_started_at_ms: int | None = None

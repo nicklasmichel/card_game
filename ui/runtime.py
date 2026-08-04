@@ -3,15 +3,8 @@ from __future__ import annotations
 import pygame
 
 from core.models import (
-    PHASE_DECLARE_ATTACKERS,
-    PHASE_DECLARE_BLOCKERS,
-    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MULLIGAN,
-    PHASE_REACTION,
-    PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
-    PHASE_SPELL_TARGETING,
     PHASE_SUMMONING,
 )
 from ui.style import BG_COLOR, FPS
@@ -46,10 +39,8 @@ def run(self) -> None:
                 self.handle_log_scroll(direction)
 
         self.consume_visual_events()
-        if not self.paused:
-            self.update_decision_timer()
-            if self.is_timed_decision_ready():
-                self.process_timed_decision()
+        if not self.paused and not self.engine.has_pending_ai_action():
+            self.engine.prepare_ai_turn_action()
         self.engine.auto_resolve_human_no_blockers_if_needed()
         self.engine.resolve_stalled_dice_battle_if_needed()
         if self.engine.exit_requested:
@@ -61,75 +52,27 @@ def run(self) -> None:
 
 
 def get_decision_marker(self) -> tuple[int, str, str] | None:
-    if self.engine.phase == PHASE_MULLIGAN:
-        return (self.engine.human_player.player_id, self.engine.phase, "mulligan")
-    if self.engine.phase == PHASE_GAME_OVER:
-        return None
-    if self.engine.phase == PHASE_RESOURCE:
-        return (self.engine.active_player.player_id, self.engine.phase, "resource")
-    if self.engine.phase == PHASE_SUMMONING:
-        return (self.engine.active_player.player_id, self.engine.phase, "summoning")
-    if self.engine.phase == PHASE_RECYCLE_PAYMENT:
-        return (self.engine.active_player.player_id, self.engine.phase, "recycle")
-    if self.engine.phase == PHASE_SPELL_TARGETING:
-        return (self.engine.active_player.player_id, self.engine.phase, "spell_target")
-    if self.engine.phase == PHASE_REACTION and self.engine.reaction_priority_player_id is not None:
-        return (self.engine.reaction_priority_player_id, self.engine.phase, "reaction")
-    if self.engine.phase == PHASE_FORCED_DISCARD:
-        return (self.engine.human_player.player_id, self.engine.phase, "forced_discard")
-    if self.engine.phase == PHASE_DECLARE_ATTACKERS:
-        return (self.engine.active_player.player_id, self.engine.phase, "attackers")
-    if self.engine.phase == PHASE_DECLARE_BLOCKERS and self.engine.defending_player.is_human:
-        return (self.engine.human_player.player_id, self.engine.phase, "blockers")
-    if self.engine.phase == PHASE_DECLARE_BLOCKERS and not self.engine.defending_player.is_human:
-        return (self.engine.defending_player.player_id, self.engine.phase, "blocks_ai")
     return None
 
 
 def update_decision_timer(self, force_reset: bool = False) -> None:
-    marker = self.get_decision_marker()
-    if force_reset or marker != self.decision_marker:
-        self.decision_marker = marker
-        self.decision_started_at_ms = pygame.time.get_ticks()
+    return
 
 
 def get_decision_duration_ms(self, marker: tuple[int, str, str] | None) -> int:
-    if marker is None:
-        return 0
-    if marker[0] == self.engine.human_player.player_id:
-        return self.human_think_duration_ms
-    return self.ai_think_duration_ms
+    return 0
 
 
 def is_timed_decision_ready(self) -> bool:
-    marker = self.get_decision_marker()
-    if marker is None:
-        return False
-    elapsed = pygame.time.get_ticks() - self.decision_started_at_ms
-    return elapsed >= self.get_decision_duration_ms(marker)
+    return False
 
 
 def process_timed_decision(self) -> None:
-    marker = self.get_decision_marker()
-    if marker is None:
-        return
-    if marker[0] == self.engine.human_player.player_id:
-        self.engine.handle_human_timeout()
-    else:
-        self.engine.process_ai_turn()
-    self.update_decision_timer(force_reset=True)
+    return
 
 
 def get_think_progress(self, player) -> float | None:
-    marker = self.get_decision_marker()
-    if marker is None or player.player_id != marker[0]:
-        return None
-    duration_ms = self.get_decision_duration_ms(marker)
-    if duration_ms <= 0:
-        return None
-    now = self.pause_started_at_ms if self.paused and self.pause_started_at_ms is not None else pygame.time.get_ticks()
-    elapsed = now - self.decision_started_at_ms
-    return max(0.0, min(1.0, elapsed / duration_ms))
+    return None
 
 
 def handle_ui_action(self, action: str) -> bool:
@@ -141,7 +84,6 @@ def handle_ui_action(self, action: str) -> bool:
         if self.paused:
             if self.pause_started_at_ms is not None:
                 paused_duration = now - self.pause_started_at_ms
-                self.decision_started_at_ms += paused_duration
                 for popup in self.damage_popups:
                     popup["started_at_ms"] += paused_duration
                 for reveal in self.recycle_reveals:
@@ -182,9 +124,12 @@ def handle_mouse_up(self, position: tuple[int, int]) -> None:
     if self.dragged_hand_card_id is None:
         return
     if self.drag_active and self.can_drag_hand_card_to_resource() and self.can_drop_on_resource_area(position):
-        self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
+        if self.engine.phase == PHASE_SUMMONING:
+            self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
+        else:
+            self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
     elif self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
-        self.engine.play_hand_card_as_creature(self.dragged_hand_card_id)
+        self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
     else:
         self.engine.handle_click("hand", self.dragged_hand_card_id)
     self.clear_drag_state()

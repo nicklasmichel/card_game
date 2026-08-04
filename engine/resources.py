@@ -41,6 +41,20 @@ def can_play_card(self, player: PlayerState, card: CardInstance) -> bool:
     return player.can_pay(self.get_card_cost_to_pay(player, card))
 
 
+def register_hand_card_played(self, player: PlayerState) -> None:
+    if player != self.active_player:
+        return
+    player.hand_cards_played_this_turn += 1
+    if player.summoner_passive_draw_used_this_turn or player.hand_cards_played_this_turn != 4:
+        return
+    player.summoner_passive_draw_used_this_turn = True
+    drawn = self.draw_card_for_player(player, "Beschwoerer-Passiv")
+    if drawn is not None:
+        self.log(f"{player.name} zieht 1 Karte durch den Beschwoerer.")
+    elif self.phase != PHASE_GAME_OVER:
+        self.log("Es kann keine Karte durch den Beschwoerer gezogen werden.")
+
+
 def begin_recycle_payment(self, card_instance_id: int) -> bool:
     if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
         return False
@@ -188,6 +202,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             f"{self.active_player.name} spielt {card.template.name} "
             f"({card.template.aw}/{card.template.vw}) für {self.format_card_cost(cost)}."
         )
+    self.register_hand_card_played(self.active_player)
     if card.template.self_damage_on_play > 0:
         self.active_player.life -= card.template.self_damage_on_play
         self.queue_player_damage_event(
@@ -263,33 +278,12 @@ def resolve_end_of_turn_returns(self, player: PlayerState) -> None:
 
 
 def can_activate_summoner_draw(self, player: PlayerState) -> bool:
-    return (
-        player == self.active_player
-        and player.is_human
-        and self.phase in {PHASE_RESOURCE, PHASE_SUMMONING}
-        and not player.summoner_tapped
-        and bool(player.deck)
-        and self.pending_recycle_payment is None
-        and self.pending_forced_discard is None
-    )
+    return False
 
 
 def activate_summoner_draw(self, player: PlayerState) -> bool:
-    if player != self.active_player:
-        return False
-    if player.summoner_tapped:
-        self.log("Der Beschwörer ist bereits getappt.")
-        return False
-    if self.phase not in {PHASE_RESOURCE, PHASE_SUMMONING}:
-        self.log("Der Beschwörer kann gerade nicht aktiviert werden.")
-        return False
-    player.summoner_tapped = True
-    drawn = self.draw_card_for_player(player, "Beschwörer")
-    if drawn is not None:
-        self.log(f"{player.name} tappt den Beschwörer und zieht eine Karte.")
-        return True
-    if self.phase != PHASE_GAME_OVER:
-        self.log("Es kann keine Karte gezogen werden.")
+    if player == self.active_player and player.is_human:
+        self.log("Der Beschwoerer besitzt derzeit keine aktivierbare Faehigkeit.")
     return False
 
 
@@ -319,6 +313,7 @@ def play_hand_card_as_resource(self, card_id: int) -> None:
     if self.statistics is not None:
         self.statistics.register_resource_played(self.active_player.player_id)
     self.log(f"{self.active_player.name} legt {card.template.name} als Ressource.")
+    self.register_hand_card_played(self.active_player)
     if self.active_player.resources_played_this_turn >= 2:
         self.enter_summoning_phase()
 
@@ -333,7 +328,21 @@ def play_selected_creature_card(self) -> None:
     self.begin_recycle_payment(card.instance_id)
 
 
+def play_hand_card_in_summoning_zone(self, card_id: int) -> None:
+    if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
+        return
+    card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
+    if card is None:
+        self.log("Diese Handkarte kann gerade nicht gespielt werden.")
+        return
+    if card.template.card_type == CardType.CREATURE:
+        self.begin_recycle_payment(card_id)
+        return
+    if card.template.card_type in {CardType.RITUAL, CardType.SPELL}:
+        self.begin_spell_cast(card_id)
+
+
 def play_hand_card_as_creature(self, card_id: int) -> None:
     if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
         return
-    self.begin_recycle_payment(card_id)
+    self.play_hand_card_in_summoning_zone(card_id)

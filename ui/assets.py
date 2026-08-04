@@ -21,6 +21,10 @@ def normalize_asset_stem(stem: str) -> str:
     )
 
 
+def normalize_card_art_name(name: str) -> str:
+    return normalize_asset_stem(name).replace(" ", "_").lower()
+
+
 def load_resource_back_images(self) -> dict[str, pygame.Surface]:
     resources_dir = Path(__file__).resolve().parent.parent / "ressources"
     image_map: dict[str, pygame.Surface] = {}
@@ -84,6 +88,10 @@ def load_card_art_images(self) -> dict[str, pygame.Surface]:
             stem_parts = normalized_stem.split("_", maxsplit=1)
             if len(stem_parts) == 2:
                 image_map[f"{template_prefix}{stem_parts[1]}"] = surface
+    for template_id, template in getattr(self.engine, "templates", {}).items():
+        normalized_name = normalize_card_art_name(template.name)
+        if normalized_name in image_map:
+            image_map[template_id] = image_map[normalized_name]
     return image_map
 
 
@@ -163,6 +171,7 @@ def build_preview_deck_surface(self, player) -> pygame.Surface:
 
 def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
     accent = (98, 151, 109) if is_human else (177, 98, 98)
+    stats_text, defense_text = self.get_display_creature_stats(creature)
     line_one = ""
     line_two = extra_line
     ability_line_one, ability_line_two = self.get_card_ability_lines_from_creature(creature)
@@ -176,8 +185,8 @@ def build_preview_creature_surface(self, creature, is_human: bool, extra_line: s
             template_id=getattr(creature, "template_id", None),
             title=creature.name,
             cost=creature.cost,
-            stats=creature.aw_vw,
-            defense_text=f"{creature.current_hp}/{creature.vw}",
+            stats=stats_text,
+            defense_text=defense_text,
             element=creature.element,
             type_line=f"Kreatur - {creature.element.value}",
             line_one=line_one,

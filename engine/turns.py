@@ -103,11 +103,14 @@ def start_turn(self) -> None:
         self.log(f"{player.name} ist Startspieler und zieht im ersten Zug keine Karte.")
     player.turns_started += 1
     player.resources_played_this_turn = 0
+    player.hand_cards_played_this_turn = 0
+    player.summoner_passive_draw_used_this_turn = False
     self.phase = PHASE_RESOURCE
     self.selected_hand_ids.clear()
     self.selected_attackers.clear()
     self.selected_blocker_id = None
     self.ai_turn_initialized = False
+    self.pending_ai_action = None
     if self.statistics is not None:
         self.statistics.register_turn_count(self.turn_number)
     self.log(f"Zug {self.turn_number}: {player.name} ist am Zug.")
@@ -247,19 +250,19 @@ def has_more_dice_battles_after_current(self) -> bool:
         return False
 
     attacker = self.get_unit_by_id(battle.attacker_id)
-    if attacker is not None and attacker.current_hp > 0:
+    if attacker is not None and not self.is_creature_destroyed(attacker):
         for blocker_id in self.current_blocker_order[self.current_blocker_index:]:
             blocker = self.get_unit_by_id(blocker_id)
-            if blocker is not None and blocker.current_hp > 0:
+            if blocker is not None and not self.is_creature_destroyed(blocker):
                 return True
 
     for attacker_id in self.combat_queue[self.current_attack_index + 1:]:
         next_attacker = self.get_unit_by_id(attacker_id)
-        if next_attacker is None or next_attacker.current_hp <= 0:
+        if next_attacker is None or self.is_creature_destroyed(next_attacker):
             continue
         for blocker_id in self.block_assignments.get(attacker_id, []):
             blocker = self.get_unit_by_id(blocker_id)
-            if blocker is not None and blocker.current_hp > 0:
+            if blocker is not None and not self.is_creature_destroyed(blocker):
                 return True
     return False
 
@@ -270,4 +273,5 @@ def clear_end_of_turn_temporary_effects(self) -> None:
     self.active_player.direct_attack_damage_multiplier_this_turn.clear()
     for player in self.players:
         for creature in player.battlefield:
+            creature.temporary_aw_bonus = 0
             creature.temporary_abilities.clear()

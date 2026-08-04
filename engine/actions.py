@@ -24,14 +24,7 @@ from core.models import (
 def choose_cards_to_discard_for_ai(self, player: PlayerState, count: int) -> List[CardInstance]:
     if count <= 0 or not player.hand:
         return []
-    return sorted(
-        player.hand,
-        key=lambda card: (
-            card.template.cost.total_value,
-            card.template.aw + card.template.vw,
-            len(card.template.abilities),
-        ),
-    )[:count]
+    return self.ai.choose_cards_to_discard(player, self, count)
 
 
 def discard_cards(self, player: PlayerState, cards: List[CardInstance], source_card_name: str) -> None:
@@ -143,6 +136,9 @@ def toggle_hand_card(self, card_id: int) -> None:
 
 
 def handle_action(self, action: str) -> None:
+    if action == "confirm_ai_action":
+        self.execute_prepared_ai_action()
+        return
     if action == "exit_game":
         self.exit_requested = True
         return

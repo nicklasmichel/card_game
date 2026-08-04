@@ -24,6 +24,7 @@ class BattlefieldCreature:
     must_attack_each_turn: bool
     all_attackers_die_bonus: int
     current_hp: int
+    temporary_aw_bonus: int = 0
     temporary_abilities: set[Ability] = field(default_factory=set)
     tapped: bool = True
     summoning_sick: bool = True
@@ -47,6 +48,7 @@ class BattlefieldCreature:
             must_attack_each_turn=card.template.must_attack_each_turn,
             all_attackers_die_bonus=card.template.all_attackers_die_bonus,
             current_hp=card.template.vw,
+            temporary_aw_bonus=0,
             tapped=not has_haste,
             summoning_sick=not has_haste,
         )
@@ -87,6 +89,8 @@ class PlayerState:
     battlefield: List[BattlefieldCreature] = field(default_factory=list)
     resources: List[ResourceCard] = field(default_factory=list)
     resources_played_this_turn: int = 0
+    hand_cards_played_this_turn: int = 0
+    summoner_passive_draw_used_this_turn: bool = False
     creature_cost_reduction_this_turn: int = 0
     attackers_die_bonus_this_turn: int = 0
     direct_attack_damage_multiplier_this_turn: dict[int, int] = field(default_factory=dict)
@@ -103,6 +107,8 @@ class PlayerState:
             creature.tapped = False
             creature.summoning_sick = False
         self.resources_played_this_turn = 0
+        self.hand_cards_played_this_turn = 0
+        self.summoner_passive_draw_used_this_turn = False
         self.summoner_tapped = False
 
     def draw_card(self) -> Optional[CardInstance]:

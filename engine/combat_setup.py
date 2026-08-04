@@ -316,7 +316,13 @@ def ai_assign_blocks(self) -> None:
 
 
 def begin_combat_resolution(self) -> None:
-    self.combat_queue = list(self.block_assignments.keys())
+    attacker_ids = set(self.block_assignments.keys())
+    ordered_attackers = [
+        creature.unit_id
+        for creature in self.active_player.battlefield
+        if creature.unit_id in attacker_ids
+    ]
+    self.combat_queue = ordered_attackers
     self.blocked_attackers = {
         attacker_id for attacker_id, blocker_ids in self.block_assignments.items() if blocker_ids
     }
@@ -341,7 +347,7 @@ def advance_combat_resolution(self) -> None:
             return
         if self.current_blocker_order:
             attacker = self.get_unit_by_id(self.combat_queue[self.current_attack_index])
-            if attacker is None or attacker.current_hp <= 0:
+            if attacker is None or self.is_creature_destroyed(attacker):
                 self.current_blocker_order = []
                 self.current_blocker_index = 0
                 self.current_attack_index += 1
@@ -350,7 +356,7 @@ def advance_combat_resolution(self) -> None:
                 blocker_id = self.current_blocker_order[self.current_blocker_index]
                 blocker = self.get_unit_by_id(blocker_id)
                 self.current_blocker_index += 1
-                if blocker is None or blocker.current_hp <= 0:
+                if blocker is None or self.is_creature_destroyed(blocker):
                     continue
                 self.start_dice_battle(attacker.unit_id, blocker.unit_id)
                 if self.pending_dice_battle is not None:
@@ -366,7 +372,7 @@ def advance_combat_resolution(self) -> None:
 
         attacker_id = self.combat_queue[self.current_attack_index]
         attacker = self.get_unit_by_id(attacker_id)
-        if attacker is None or attacker.current_hp <= 0:
+        if attacker is None or self.is_creature_destroyed(attacker):
             self.current_attack_index += 1
             continue
 
@@ -384,7 +390,7 @@ def advance_combat_resolution(self) -> None:
                 attacker_id=attacker.unit_id,
                 attacker_owner=self.active_player.player_id,
                 defending_player_id=self.defending_player.player_id,
-                base_damage=attacker.aw,
+                base_damage=self.get_creature_attack_value(attacker),
             )
             self.begin_general_spell_window(
                 trigger=ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE,
@@ -392,10 +398,10 @@ def advance_combat_resolution(self) -> None:
                 resume_phase=PHASE_REACTION,
                 continuation=self.resolve_pending_direct_attack_after_reaction,
                 attacker_creature=attacker,
-                damage_amount=attacker.aw,
+                damage_amount=self.get_creature_attack_value(attacker),
                 pending_damage_attacker_id=attacker.unit_id,
             )
-            continue
+            return
 
         if len(blockers) == 1:
             self.current_blocker_order = blockers
@@ -423,7 +429,6 @@ def advance_combat_resolution(self) -> None:
 def resolve_pending_direct_attack_after_reaction(self) -> None:
     pending = self.pending_direct_attack
     if pending is None:
-        self.advance_combat_resolution()
         return
     self.pending_direct_attack = None
     attacker = self.get_unit_by_id(pending.attacker_id)
