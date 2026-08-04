@@ -1,6 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from core.ai.air.registry import get_air_card_handler
+from core.ai.air.registry import get_air_card_handler, get_air_creature_handler
 from core.ai import ActionCandidate, BoundPlan, DecisionReason, build_ai_context
 from core.ai_logic import SimpleAI
 from tests.helpers import EngineTestCase
@@ -14,14 +14,41 @@ class AiArchitectureTests(EngineTestCase):
         self.assertIsNotNone(DecisionReason)
 
     def test_air_registry_exposes_specialized_handlers(self) -> None:
-        self.assertIsNotNone(get_air_card_handler("air_spell_windstoss"))
-        self.assertIsNotNone(get_air_card_handler("air_spell_ausweichen"))
-        self.assertIsNotNone(get_air_card_handler("air_ritual_turbulenz"))
+        for template_id in (
+            "air_ritual_aufwind",
+            "air_ritual_rueckenwind",
+            "air_ritual_windwechsel",
+            "air_ritual_sturmformation",
+            "air_ritual_turbulenz",
+            "air_spell_windstoss",
+            "air_spell_ausweichen",
+            "air_spell_boeenschub",
+            "air_spell_windrausch",
+            "air_spell_nachwehen",
+        ):
+            with self.subTest(template_id=template_id):
+                self.assertIsNotNone(get_air_card_handler(template_id))
+
+    def test_air_creature_registry_exposes_final_air_creature_handlers(self) -> None:
+        for template_id in (
+            "air_creature_sturmkrieger",
+            "air_creature_sturmfalke",
+            "air_creature_wolkenkrieger",
+            "air_creature_wolkenfalke",
+            "air_creature_windkrieger",
+            "air_creature_windfalke",
+            "air_creature_himmelskrieger",
+            "air_creature_himmelsfalke",
+            "air_creature_orkanreiter",
+            "air_creature_orkanfuerst",
+        ):
+            with self.subTest(template_id=template_id):
+                self.assertIsNotNone(get_air_creature_handler(template_id))
 
     def test_build_ai_context_exposes_visible_state_only(self) -> None:
         self.engine.phase = "summoning"
         self.engine.creatures_died_this_turn = 3
-        wolkenfalke_resource = self.make_resource("air_creature_windgeist")
+        wolkenfalke_resource = self.make_resource("air_creature_wolkenfalke")
         wolkenfalke_resource.tapped = True
         self.engine.ai_player.resources = [wolkenfalke_resource]
 
@@ -50,3 +77,4 @@ class AiArchitectureTests(EngineTestCase):
         self.assertEqual(candidate.reason.reason_code, "resource_loss_too_high")
         self.assertEqual(candidate.reason.metrics["remaining_resources"], 1)
         self.assertEqual(plan.sequence, (42,))
+

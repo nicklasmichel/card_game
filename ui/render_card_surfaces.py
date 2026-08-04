@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import pygame
 
 from core.models import CardCost, Element
@@ -9,10 +7,8 @@ from ui.render_helpers import accent_light, blit_text_with_shadow, get_element_s
 from ui.style import (
     CARD_BADGE_LIGHT,
     CARD_BORDER,
-    CARD_COLOR,
     CARD_FRAME_GOLD,
     CARD_SHADOW,
-    CARD_TEXT_DARK,
     HIGHLIGHT,
 )
 
@@ -27,10 +23,11 @@ def build_rule_text_lines(self, font: pygame.font.Font, max_width: int, text: st
 def get_card_text_fonts(self) -> tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font, pygame.font.Font]:
     title_size = max(self.small_font.get_height() + 3, 15)
     body_size = max(self.small_font.get_height(), 12)
+    number_size = max(body_size + 8, title_size + 5, 22)
     title_font = pygame.font.SysFont("arial", title_size, bold=True)
     body_font = pygame.font.SysFont("arial", body_size)
     body_italic_font = pygame.font.SysFont("arial", body_size, italic=True)
-    number_font = pygame.font.SysFont("arial", max(body_size + 2, title_size - 1), bold=True)
+    number_font = pygame.font.SysFont("arial", number_size, bold=True)
     return title_font, body_font, body_italic_font, number_font
 
 
@@ -74,99 +71,22 @@ def build_card_surface(
     selected: bool,
     attacking: bool = False,
 ) -> pygame.Surface:
-    s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
-    if template_id is not None and template_id in getattr(self, "card_art_images", {}):
-        return build_full_art_card_surface(
-            self,
-            template_id,
-            title,
-            cost,
-            stats,
-            defense_text,
-            element,
-            line_one,
-            line_two,
-            tapped,
-            selected,
-            attacking,
-        )
-
-    base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
-    title_font, body_font, body_italic_font, number_font = get_card_text_fonts(self)
-
-    outer_rect = pygame.Rect(0, 0, self.card_width, self.card_height)
-    header_y = max(s(4), int(self.card_height * 0.02))
-    header_rect = pygame.Rect(s(7), header_y, self.card_width - s(14), s(24))
-    keyword_lines = self.wrap_text(body_italic_font, line_one, self.card_width - s(20)) if line_one else []
-    keyword_line_height = body_font.get_height() + s(1)
-    keyword_height = len(keyword_lines) * keyword_line_height
-    title_keyword_gap = s(7)
-    art_top = header_rect.bottom + title_keyword_gap + keyword_height
-    art_rect = pygame.Rect(s(9), art_top, self.card_width - s(18), int(self.card_height * 0.34))
-    rules_rect = pygame.Rect(s(10), art_rect.bottom + s(5), self.card_width - s(20), self.card_height - art_rect.bottom - s(42))
-    pygame.draw.rect(base, CARD_COLOR, outer_rect, border_radius=s(9))
-    pygame.draw.rect(base, accent_color, art_rect, border_radius=s(4))
-
-    self.draw_art_panel(base, art_rect, accent_color)
-
-    aw_text = ""
-    vw_text = ""
-    shield_text = ""
-    shield_text_color = CARD_TEXT_DARK
-    if stats:
-        aw_text, vw_text = stats.split("/", maxsplit=1)
-        shield_text = defense_text or vw_text
-        shield_text_color = (224, 116, 116) if shield_text.startswith("0/") else CARD_TEXT_DARK
-    cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
-    cost_text = str(cost_value.resources) if cost_value.resources > 0 else ""
-    cost_width = number_font.size(cost_text)[0] if cost_text else 0
-    cost_x = self.card_width - s(8) - cost_width
-    title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
-    self.blit_text_to_surface(base, title_font, title_text, CARD_TEXT_DARK, s(10), header_y + s(3))
-    if cost_text:
-        self.blit_text_to_surface(base, number_font, cost_text, CARD_TEXT_DARK, cost_x, header_y + s(3))
-    keyword_y = header_rect.bottom + title_keyword_gap
-    for keyword_line in keyword_lines:
-        self.blit_text_to_surface(base, body_italic_font, keyword_line, CARD_TEXT_DARK, s(10), keyword_y)
-        keyword_y += keyword_line_height
-    rule_lines = build_rule_text_lines(self, body_font, rules_rect.width, line_two)
-    rule_line_height = body_font.get_height() + s(1)
-    rule_y = rules_rect.y
-    for line in rule_lines:
-        self.blit_text_to_surface(base, body_font, line, CARD_TEXT_DARK, rules_rect.x, rule_y)
-        rule_y += rule_line_height
-    footer_y = self.card_height - s(14)
-    aw_x = s(12)
-    shield_icon_size = s(22)
-    if stats:
-        shield_width = number_font.size(shield_text)[0]
-        shield_x = self.card_width - s(6) - shield_width - shield_icon_size
-        self.blit_text_to_surface(base, number_font, aw_text, CARD_TEXT_DARK, aw_x, self.card_height - s(25))
-        self.blit_text_to_surface(base, number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
-    recycle_icon_gap = 0
-    recycle_icon_size = s(22)
-    recycle_width = cost_value.recycle * recycle_icon_size + max(0, cost_value.recycle - 1) * recycle_icon_gap
-    recycle_x = (self.card_width - recycle_width) // 2
-    recycle_y = self.card_height - s(25)
-    for recycle_index in range(cost_value.recycle):
-        icon_rect = pygame.Rect(
-            recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),
-            recycle_y,
-            recycle_icon_size,
-            recycle_icon_size,
-        )
-        self.blit_symbol_image(base, get_element_symbol_key(element), icon_rect)
-    if stats:
-        aw_width = number_font.size(aw_text)[0]
-        self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(3), footer_y - s(12), s(22), s(22)))
-        self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(12), shield_icon_size, shield_icon_size))
-
-    if selected:
-        pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
-
-    if tapped:
-        return pygame.transform.rotate(base, -90)
-    return base
+    if template_id is None:
+        raise ValueError(f"Full-art rendering requires a template_id for card '{title}'.")
+    return build_full_art_card_surface(
+        self,
+        template_id,
+        title,
+        cost,
+        stats,
+        defense_text,
+        element,
+        line_one,
+        line_two,
+        tapped,
+        selected,
+        attacking,
+    )
 
 
 def build_full_art_card_surface(
@@ -188,23 +108,7 @@ def build_full_art_card_surface(
     title_font, body_font, body_italic_font, number_font = get_card_text_fonts(self)
     image = self.card_art_images.get(template_id)
     if image is None:
-        return build_card_surface(
-            self,
-            None,
-            title,
-            cost,
-            stats,
-            defense_text,
-            element,
-            "",
-            line_one,
-            line_two,
-            (186, 177, 154),
-            CARD_FRAME_GOLD,
-            tapped,
-            selected,
-            attacking,
-        )
+        raise KeyError(f"Missing full-art image for template_id '{template_id}'.")
 
     scaled = pygame.transform.smoothscale(image, (self.card_width, self.card_height))
     clipped = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
@@ -235,7 +139,8 @@ def build_full_art_card_surface(
     for keyword_line in keyword_lines:
         blit_text_with_shadow(base, body_italic_font, keyword_line, (255, 255, 255), s(10), keyword_y)
         keyword_y += keyword_line_height
-    rules_rect = pygame.Rect(s(10), self.card_height - s(86), self.card_width - s(20), s(54))
+    rules_start_y = int(self.card_height * 0.5)
+    rules_rect = pygame.Rect(s(10), rules_start_y, self.card_width - s(20), self.card_height - rules_start_y - s(32))
     rule_lines = build_rule_text_lines(self, body_font, rules_rect.width, line_two)
     rule_line_height = body_font.get_height() + s(1)
     rule_y = rules_rect.y

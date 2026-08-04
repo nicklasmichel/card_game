@@ -134,7 +134,7 @@ def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
 
 def enter_summoning_phase(self) -> None:
     self.phase = PHASE_SUMMONING
-    self.log("Beschwoerungsphase begonnen.")
+    self.log("Beschwörungsphase begonnen.")
     self.auto_advance_human_summoning_phase_if_needed()
 
 
@@ -154,7 +154,7 @@ def auto_resolve_human_no_blockers_if_needed(self) -> None:
         return
     if self.available_blockers(self.defending_player):
         return
-    self.log("Keine Kreaturen koennen blocken. Schaden geht automatisch durch.")
+    self.log("Keine Kreaturen kÃƒÆ’Ã‚Â¶nnen blocken. Schaden geht automatisch durch.")
     self.finish_block_assignment()
 
 

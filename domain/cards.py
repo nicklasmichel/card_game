@@ -51,6 +51,10 @@ class CardTemplate:
     draw_on_play: int = 0
     draw_on_attack: int = 0
     draw_on_death: int = 0
+    draw_on_player_damage: int = 0
+    tap_enemy_creature_on_play: int = 0
+    return_other_own_haste_on_combat_death: bool = False
+    own_flying_attack_aura: int = 0
 
     def has_ability(self, ability) -> bool:
         return ability in self.abilities

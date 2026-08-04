@@ -4,6 +4,7 @@ from random import Random
 from typing import List, Optional
 
 from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
+from .registry import get_air_creature_handler
 
 class AirAssessmentMixin:
     def _air_template_is_generally_draw_worthy(
@@ -176,6 +177,10 @@ class AirAssessmentMixin:
             all_attackers_die_bonus=creature.all_attackers_die_bonus,
             draw_on_attack=creature.draw_on_attack,
             draw_on_death=creature.draw_on_death,
+            draw_on_player_damage=creature.draw_on_player_damage,
+            tap_enemy_creature_on_play=creature.tap_enemy_creature_on_play,
+            return_other_own_haste_on_combat_death=creature.return_other_own_haste_on_combat_death,
+            own_flying_attack_aura=creature.own_flying_attack_aura,
             current_hp=creature.current_hp,
             temporary_aw_bonus=creature.temporary_aw_bonus,
             tapped=creature.tapped,
@@ -251,18 +256,19 @@ class AirAssessmentMixin:
         flying_blockers = len([creature for creature in enemy.battlefield if creature.has_ability(Ability.FLYING)])
         probable_damage = 0
         no_blockers = not enemy.battlefield
+        aura_bonus = sum(getattr(creature, "own_flying_attack_aura", 0) for creature in player.battlefield if creature.current_hp > 0)
         for creature in player.battlefield:
             if not creature.is_ready():
                 continue
             if no_blockers or (creature.has_ability(Ability.FLYING) and flying_blockers == 0):
-                probable_damage += creature.aw
+                probable_damage += creature.aw + creature.temporary_aw_bonus + (aura_bonus if creature.has_ability(Ability.FLYING) else 0)
         for card in hand:
             if card.template.card_type != CardType.CREATURE:
                 continue
             if not card.template.has_ability(Ability.HASTE):
                 continue
             if no_blockers or (card.template.has_ability(Ability.FLYING) and flying_blockers == 0):
-                probable_damage += card.template.aw
+                probable_damage += card.template.aw + (aura_bonus if card.template.has_ability(Ability.FLYING) else 0)
         return probable_damage
 
     def _find_air_lethal_enabler(self, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> Optional[CardInstance]:
@@ -304,49 +310,18 @@ class AirAssessmentMixin:
         projected_available_resources: int,
         projected_total_resources: int,
     ) -> float:
-        template = card.template
-        if template.template_id == "air_creature_windgeist":
-            if not player.battlefield:
-                return 1.6
-            better_creatures = [
-                other for other in hand
-                if other.instance_id != card.instance_id
-                and other.template.card_type == CardType.CREATURE
-                and other.template.aw + other.template.vw > template.aw + template.vw
-            ]
-            return -0.8 if better_creatures else 0.2
-        if template.template_id == "air_creature_boeengeist":
-            remaining_after_recycle = projected_total_resources - template.recycle_cost
-            if remaining_after_recycle <= 1:
-                return -1.4
-            return 1.4 if not player.battlefield else 0.5
-        if template.template_id == "air_creature_windhuscher":
-            return 2.0 if self._find_probable_unblocked_damage(player, enemy, hand) > 0 else -1.2
-        if template.template_id in {"air_creature_boeenreiter", "air_creature_windklinge"}:
-            immediate_attack = template.has_ability(Ability.HASTE)
-            adjustment = 1.8 if immediate_attack else 0.4
-            if template.recycle_cost > 0 and projected_total_resources - template.recycle_cost <= 1:
-                adjustment -= 1.6
-            return adjustment
-        if template.template_id in {"air_creature_sturmfalke", "air_creature_himmelsgreif"}:
-            adjustment = 1.6 if not any(creature.has_ability(Ability.FLYING) for creature in enemy.battlefield) else 0.5
-            if any(card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE for card in hand):
-                adjustment += 1.2
-            if template.recycle_cost > 0 and projected_total_resources - template.recycle_cost <= 1:
-                adjustment -= 1.2
-            return adjustment
-        if template.template_id == "air_creature_himmelsspaeher":
-            return -0.8 if enemy.battlefield and max(creature.aw for creature in enemy.battlefield) >= template.vw else 1.0
-        if template.template_id == "air_creature_wolkenwaechter":
-            return -1.4 if enemy.battlefield and not player.battlefield else 0.8
-        if template.template_id == "air_creature_sturmfuerst":
-            attackers = self._count_probable_attackers(player, hand)
-            if projected_total_resources >= 4 and attackers >= 2:
-                return 4.2
-            if projected_total_resources <= 2:
-                return -1.2
-            return 1.2
-        return 0.0
+        handler = get_air_creature_handler(card.template.template_id)
+        if handler is None:
+            return 0.0
+        return handler.keep_adjustment(
+            self,
+            player,
+            enemy,
+            card,
+            hand,
+            projected_available_resources=projected_available_resources,
+            projected_total_resources=projected_total_resources,
+        )
 
     def _air_specific_spell_keep_adjustment(
         self,
@@ -360,6 +335,23 @@ class AirAssessmentMixin:
         projected_total_resources: int,
     ) -> float:
         effect = card.template.spell_effect
+        handler = self._get_air_card_handler(card)
+        if handler is not None:
+            specialized = handler.keep_adjustment(
+                self,
+                player,
+                enemy,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            if specialized is not None:
+                return specialized
         if effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             comparison = self._evaluate_air_cost_reduction_support_plan(
                 player,

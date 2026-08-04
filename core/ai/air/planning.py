@@ -549,11 +549,11 @@ class AirPlanningMixin:
         if template.return_to_deck_end_of_turn:
             value += 0.7
         if template.must_attack_each_turn:
-            value += 0.2
+            value -= 0.3
         if template.cannot_block:
-            value -= 0.5
+            value -= 0.8
         if template.recycle_cost > 0:
-            value += 0.6
+            value += 0.2
         if template.all_attackers_die_bonus > 0:
             value += 2.2
         if template.draw_on_play > 0:
@@ -562,6 +562,14 @@ class AirPlanningMixin:
             value += template.draw_on_attack * 1.5
         if template.draw_on_death > 0:
             value += template.draw_on_death * 1.2
+        if getattr(template, "draw_on_player_damage", 0) > 0:
+            value += template.draw_on_player_damage * 1.8
+        if getattr(template, "tap_enemy_creature_on_play", 0) > 0:
+            value += template.tap_enemy_creature_on_play * 1.5
+        if getattr(template, "return_other_own_haste_on_combat_death", False):
+            value += 2.3
+        if getattr(template, "own_flying_attack_aura", 0) > 0:
+            value += template.own_flying_attack_aura * 2.6
         return value
 
     def _air_main_phase_spell_has_value(
@@ -575,6 +583,22 @@ class AirPlanningMixin:
         ready_attacker_count: int,
     ) -> bool:
         effect = card.template.spell_effect
+        handler = self._get_air_card_handler(card)
+        if handler is not None:
+            specialized = handler.has_live_use(
+                self,
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                own_creature_count=own_creature_count,
+                ready_attacker_count=ready_attacker_count,
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            if specialized is not None:
+                return specialized
         if effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             comparison = self._evaluate_air_cost_reduction_support_plan(
                 player,
@@ -687,6 +711,22 @@ class AirPlanningMixin:
         creature_discount: int,
     ) -> float:
         effect = card.template.spell_effect
+        handler = self._get_air_card_handler(card)
+        if handler is not None:
+            specialized = handler.play_value(
+                self,
+                player,
+                engine,
+                card,
+                hand=[card] + remaining_hand,
+                available_resources=available_resources + card.template.resource_cost,
+                total_resources=total_resources + card.template.recycle_cost,
+                own_creature_count=own_creature_count,
+                ready_attacker_count=ready_attacker_count,
+                creature_discount=creature_discount,
+            )
+            if specialized is not None:
+                return specialized
         if effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             comparison = self._evaluate_air_cost_reduction_support_plan(
                 player,
@@ -940,6 +980,22 @@ class AirPlanningMixin:
         template = card.template
         if template.card_type == CardType.CREATURE:
             return projected_available_resources >= template.resource_cost and projected_total_resources >= template.recycle_cost
+        handler = self._get_air_card_handler(card)
+        if handler is not None:
+            specialized = handler.has_live_use(
+                self,
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            if specialized is not None:
+                return specialized
         if template.spell_effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             comparison = self._evaluate_air_cost_reduction_support_plan(
                 player,

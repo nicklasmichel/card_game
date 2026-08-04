@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 from core.models import (
+    Ability,
     BattlefieldCreature,
     CardType,
     CardCost,
@@ -16,6 +17,59 @@ from core.models import (
     PlayerState,
     ResourceCard,
 )
+
+
+def choose_enemy_creature_to_tap_on_play(self, controller: PlayerState, source_creature: BattlefieldCreature):
+    opponent = self.players[1 - controller.player_id]
+    candidates = [creature for creature in opponent.battlefield if creature.current_hp > 0]
+    if not candidates:
+        return None
+    untapped_candidates = [creature for creature in candidates if not creature.tapped]
+    pool = untapped_candidates or candidates
+    likely_attackers = [creature for creature in controller.battlefield if creature.current_hp > 0 and creature.is_ready()]
+    if source_creature.has_ability(Ability.HASTE):
+        likely_attackers = [*likely_attackers, source_creature]
+
+    def score(creature: BattlefieldCreature) -> tuple[float, int, int, int]:
+        blocks_likely_attack = sum(
+            1
+            for attacker in likely_attackers
+            if self.can_creature_block_attacker(creature, attacker)
+        )
+        threat = self.get_creature_attack_value(creature) * 1.4 + self.get_creature_current_hp(creature)
+        return (
+            blocks_likely_attack * 3.0 + threat,
+            0 if creature.tapped else 1,
+            self.get_creature_attack_value(creature),
+            self.get_creature_current_hp(creature),
+        )
+
+    return max(pool, key=score)
+
+
+def apply_creature_enter_play_effects(self, controller: PlayerState, creature: BattlefieldCreature) -> None:
+    tap_count = getattr(creature, "tap_enemy_creature_on_play", 0)
+    for _ in range(tap_count):
+        target = choose_enemy_creature_to_tap_on_play(self, controller, creature)
+        if target is None:
+            break
+        if not target.tapped:
+            target.tapped = True
+        self.log(f"{creature.name} tappt {target.name}.")
+
+
+def handle_creature_player_damage_triggers(self, controller: PlayerState, creature: BattlefieldCreature, damage: int) -> None:
+    if damage <= 0:
+        return
+    draw_count = getattr(creature, "draw_on_player_damage", 0)
+    if draw_count <= 0:
+        return
+    for _ in range(draw_count):
+        drawn = self.draw_card_for_player(controller, creature.name)
+        if drawn is None and self.phase == PHASE_GAME_OVER:
+            break
+    if self.phase != PHASE_GAME_OVER:
+        self.log(f"{creature.name} lässt {controller.name} durch Spielerschaden {draw_count} Karte(n) ziehen.")
 
 
 def format_card_cost(self, cost: CardCost) -> str:
@@ -53,7 +107,7 @@ def begin_recycle_payment(self, card_instance_id: int) -> bool:
         self.log("Diese Handkarte kann nicht gespielt werden.")
         return False
     if not self.can_play_card(self.active_player, card):
-        self.log("Nicht genügend Ressourcen oder Recyclekosten können nicht bezahlt werden.")
+        self.log("Nicht genÃ¼gend Ressourcen oder Recyclekosten kÃ¶nnen nicht bezahlt werden.")
         return False
     if card.template.recycle_cost <= 0:
         return self.resolve_creature_play(card)
@@ -65,7 +119,7 @@ def begin_recycle_payment(self, card_instance_id: int) -> bool:
     self.phase = PHASE_RECYCLE_PAYMENT
     self.selected_hand_ids = [card.instance_id]
     self.log(
-        f"Wähle {card.template.recycle_cost} Ressourcen für Recycle von {card.template.name} und bestätige dann."
+        f"WÃ¤hle {card.template.recycle_cost} Ressourcen fÃ¼r Recycle von {card.template.name} und bestÃ¤tige dann."
     )
     return True
 
@@ -88,7 +142,7 @@ def toggle_recycle_resource_selection(self, resource_id: int) -> None:
         selected.remove(resource_id)
         return
     if len(selected) >= self.pending_recycle_payment.required_count:
-        self.log("Es wurden bereits genug Ressourcen für Recycle ausgewählt.")
+        self.log("Es wurden bereits genug Ressourcen fÃ¼r Recycle ausgewÃ¤hlt.")
         return
     selected.append(resource_id)
 
@@ -111,10 +165,10 @@ def confirm_recycle_payment(self) -> None:
         self.cancel_recycle_payment()
         return
     if len(pending.selected_resource_ids) != pending.required_count:
-        self.log("Wähle genau die benötigte Anzahl an Ressourcen für Recycle.")
+        self.log("WÃ¤hle genau die benÃ¶tigte Anzahl an Ressourcen fÃ¼r Recycle.")
         return
     if not self.can_play_card(self.active_player, card):
-        self.log("Die Kosten können nicht mehr vollständig bezahlt werden.")
+        self.log("Die Kosten kÃ¶nnen nicht mehr vollstÃ¤ndig bezahlt werden.")
         return
     self.pending_recycle_payment = None
     self.phase = PHASE_SUMMONING
@@ -126,16 +180,16 @@ def confirm_recycle_payment(self) -> None:
 def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[int] | None = None) -> bool:
     cost = self.get_card_cost_to_pay(self.active_player, card)
     if not self.can_play_card(self.active_player, card):
-        self.log("Nicht genügend Ressourcen oder Recyclekosten können nicht bezahlt werden.")
+        self.log("Nicht genÃ¼gend Ressourcen oder Recyclekosten kÃ¶nnen nicht bezahlt werden.")
         return False
     if cost.recycle > 0 and recycle_resource_ids is None:
-        self.log("Recycle-Ressourcen wurden nicht ausgewählt.")
+        self.log("Recycle-Ressourcen wurden nicht ausgewÃ¤hlt.")
         return False
     if recycle_resource_ids is not None and len(recycle_resource_ids) != cost.recycle:
-        self.log("Die Anzahl ausgewählter Recycle-Ressourcen ist ungültig.")
+        self.log("Die Anzahl ausgewÃ¤hlter Recycle-Ressourcen ist ungÃ¼ltig.")
         return False
     if recycle_resource_ids is not None and len(set(recycle_resource_ids)) != len(recycle_resource_ids):
-        self.log("Eine Ressource kann für Recycle nicht mehrfach ausgewählt werden.")
+        self.log("Eine Ressource kann fÃ¼r Recycle nicht mehrfach ausgewÃ¤hlt werden.")
         return False
 
     available_resource_ids = {
@@ -144,12 +198,12 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         if resource.resource_id is not None
     }
     if recycle_resource_ids is not None and any(resource_id not in available_resource_ids for resource_id in recycle_resource_ids):
-        self.log("Mindestens eine ausgewählte Recycle-Ressource ist nicht mehr verfügbar.")
+        self.log("Mindestens eine ausgewÃ¤hlte Recycle-Ressource ist nicht mehr verfÃ¼gbar.")
         return False
 
     tapped_resources = self.active_player.tap_resources_for_cost(cost.resources)
     if len(tapped_resources) != cost.resources:
-        self.log("Nicht genügend bereite Ressourcen.")
+        self.log("Nicht genÃ¼gend bereite Ressourcen.")
         return False
 
     recycled_templates: List[str] = []
@@ -160,7 +214,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             if resource.resource_id in recycle_resource_ids
         ]
         if len(resources_to_recycle) != len(recycle_resource_ids):
-            self.log("Recycle konnte nicht vollständig bezahlt werden.")
+            self.log("Recycle konnte nicht vollstÃ¤ndig bezahlt werden.")
             return False
         self.active_player.resources = [
             resource
@@ -181,7 +235,8 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
     self.active_player.hand = [
         existing for existing in self.active_player.hand if existing.instance_id != card.instance_id
     ]
-    self.active_player.battlefield.append(BattlefieldCreature.from_card(card))
+    created_creature = BattlefieldCreature.from_card(card)
+    self.active_player.battlefield.append(created_creature)
     self.selected_hand_ids.clear()
     if self.statistics is not None:
         self.statistics.register_creature_played(
@@ -190,7 +245,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         )
         self.log(
             f"{self.active_player.name} spielt {card.template.name} "
-            f"({card.template.aw}/{card.template.vw}) für {self.format_card_cost(cost)}."
+            f"({card.template.aw}/{card.template.vw}) fÃ¼r {self.format_card_cost(cost)}."
         )
     self.register_hand_card_played(self.active_player)
     if card.template.draw_on_play > 0:
@@ -199,8 +254,9 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             if drawn is None and self.phase == PHASE_GAME_OVER:
                 return True
         self.log(
-            f"{card.template.name} laesst {self.active_player.name} beim Ausspielen {card.template.draw_on_play} Karte(n) ziehen."
+            f"{card.template.name} lässt {self.active_player.name} beim Ausspielen {card.template.draw_on_play} Karte(n) ziehen."
         )
+    apply_creature_enter_play_effects(self, self.active_player, created_creature)
     if card.template.self_damage_on_play > 0:
         self.active_player.life -= card.template.self_damage_on_play
         self.queue_player_damage_event(
@@ -251,7 +307,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         return True
     if recycled_templates:
         recycled_names = ", ".join(self.templates[template_id].name for template_id in recycled_templates)
-        self.log(f"Recycle aufgedeckt und zurück ins Deck gemischt: {recycled_names}.")
+        self.log(f"Recycle aufgedeckt und zurÃ¼ck ins Deck gemischt: {recycled_names}.")
     self.auto_advance_human_summoning_phase_if_needed()
     return True
 
@@ -272,7 +328,7 @@ def resolve_end_of_turn_returns(self, player: PlayerState) -> None:
         player.deck.append(CardInstance(self.make_instance_id(), self.templates[creature.template_id]))
     self.rng.shuffle(player.deck)
     names = ", ".join(creature.name for creature in returning)
-    self.log(f"{names} wird/werden am Ende des Zuges zurück ins Deck gemischt.")
+    self.log(f"{names} wird/werden am Ende des Zuges zurÃ¼ck ins Deck gemischt.")
 
 
 def can_activate_summoner_draw(self, player: PlayerState) -> bool:
@@ -281,7 +337,7 @@ def can_activate_summoner_draw(self, player: PlayerState) -> bool:
 
 def activate_summoner_draw(self, player: PlayerState) -> bool:
     if player == self.active_player and player.is_human:
-        self.log("Der Beschwoerer besitzt derzeit keine aktivierbare Faehigkeit.")
+        self.log("Der Beschw?rer besitzt derzeit keine aktivierbare F?higkeit.")
     return False
 
 
@@ -290,7 +346,7 @@ def play_selected_card_as_resource(self) -> None:
         return
     card = self.get_selected_hand_card()
     if card is None:
-        self.log("Keine Handkarte als Ressource ausgewählt.")
+        self.log("Keine Handkarte als Ressource ausgewÃ¤hlt.")
         return
     self.play_hand_card_as_resource(card.instance_id)
 
@@ -321,7 +377,7 @@ def play_selected_creature_card(self) -> None:
         return
     card = self.get_selected_hand_card()
     if card is None:
-        self.log("Keine Kreatur-Karte ausgewählt.")
+        self.log("Keine Kreatur-Karte ausgewÃ¤hlt.")
         return
     self.begin_recycle_payment(card.instance_id)
 

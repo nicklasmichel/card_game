@@ -31,7 +31,7 @@ def begin_attack_declaration(self) -> None:
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("Keine Kreaturen koennen angreifen. Kampfphase endet automatisch.")
+        self.log("Keine Kreaturen kÃ¶nnen angreifen. Kampfphase endet automatisch.")
         self.end_turn()
         return
     self.phase = PHASE_DECLARE_ATTACKERS
@@ -44,8 +44,8 @@ def begin_attack_declaration(self) -> None:
             for creature in (self.get_unit_by_id(creature_id) for creature_id in self.selected_attackers)
             if creature is not None
         )
-        self.log(f"Diese Kreaturen muessen angreifen: {names}.")
-    self.log("Waehle deine Angreifer.")
+        self.log(f"Diese Kreaturen mÃ¼ssen angreifen: {names}.")
+    self.log("WÃ¤hle deine Angreifer.")
 
 
 def toggle_attacker(self, creature_id: int) -> None:
@@ -76,7 +76,7 @@ def toggle_provoke_target(self, creature_id: int) -> None:
         return
     attacker_id = self.selected_provoke_attacker_id
     if attacker_id is None or attacker_id not in self.selected_attackers:
-        self.log("Waehle zuerst einen eigenen Angreifer mit Provozieren aus.")
+        self.log("WÃ¤hle zuerst einen eigenen Angreifer mit Provozieren aus.")
         return
     attacker = self.get_unit_by_id(attacker_id)
     target = self.get_unit_by_id(creature_id)
@@ -171,16 +171,16 @@ def confirm_attackers(self) -> None:
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
-        self.log("Keine Angreifer gewaehlt.")
+        self.log("Keine Angreifer gew?hlt.")
         self.end_turn()
         return
     if not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
-        drawn = self.draw_card_for_player(self.active_player, "Beschwoerer-Passiv")
+        drawn = self.draw_card_for_player(self.active_player, "Beschwörer-Passiv")
         if drawn is not None:
-            self.log(f"{self.active_player.name} zieht 1 Karte durch den Beschwoerer.")
+            self.log(f"{self.active_player.name} zieht 1 Karte durch den Beschwörer.")
         elif self.phase != PHASE_GAME_OVER:
-            self.log("Es kann keine Karte durch den Beschwoerer gezogen werden.")
+            self.log("Es kann keine Karte durch den Beschwörer gezogen werden.")
         if self.phase == PHASE_GAME_OVER:
             return
     for attacker in attackers:
@@ -190,7 +190,7 @@ def confirm_attackers(self) -> None:
             drawn = self.draw_card_for_player(self.active_player, attacker.name)
             if drawn is None and self.phase == PHASE_GAME_OVER:
                 return
-        self.log(f"{attacker.name} laesst {self.active_player.name} beim Angriff {attacker.draw_on_attack} Karte(n) ziehen.")
+        self.log(f"{attacker.name} lÃ¤sst {self.active_player.name} beim Angriff {attacker.draw_on_attack} Karte(n) ziehen.")
     self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
     self.blocker_to_attackers.clear()
     self.prepare_provoke_assignments(attackers)
@@ -210,7 +210,7 @@ def advance_after_attackers_declared(self) -> None:
     ]
     if self.defending_player.is_human:
         if not self.available_blockers(self.defending_player):
-            self.log("Keine Kreaturen koennen blocken. Schaden geht automatisch durch.")
+            self.log("Keine Kreaturen kÃ¶nnen blocken. Schaden geht automatisch durch.")
             self.begin_pre_first_combat_window()
             return
         self.phase = PHASE_DECLARE_BLOCKERS
@@ -218,7 +218,7 @@ def advance_after_attackers_declared(self) -> None:
         self.selected_provoke_attacker_id = None
         self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
         self.auto_assign_required_blockers()
-        self.log("Waehle einen Angreifer und ordne dann eigene Blocker zu.")
+        self.log("WÃ¤hle einen Angreifer und ordne dann eigene Blocker zu.")
         return
     if not self.available_blockers(self.defending_player):
         self.log("Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.")
@@ -229,7 +229,7 @@ def advance_after_attackers_declared(self) -> None:
     self.selected_provoke_attacker_id = None
     self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
     self.auto_assign_required_blockers()
-    self.log("Gegner ueberlegt seine Blocker.")
+    self.log("Gegner Ã¼berlegt seine Blocker.")
 
 
 def toggle_selected_attack_target(self, creature_id: int) -> None:
@@ -240,7 +240,7 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
     self.selected_attack_target_id = None if self.selected_attack_target_id == creature_id else creature_id
     attacker = self.get_unit_by_id(creature_id)
     if attacker is not None:
-        self.log(f"Blockziel ausgewaehlt: {attacker.name}.")
+        self.log(f"Blockziel ausgewÃ¤hlt: {attacker.name}.")
 
 
 def toggle_blocker_assignment(self, creature_id: int) -> None:
@@ -255,7 +255,7 @@ def toggle_blocker_assignment(self, creature_id: int) -> None:
         return
     if self.selected_attack_target_id is None:
         self.selected_blocker_id = creature_id
-        self.log("Waehle zuerst einen Angreifer als Blockziel aus.")
+        self.log("WÃ¤hle zuerst einen Angreifer als Blockziel aus.")
         return
     attacker_id = self.selected_attack_target_id
     if attacker_id not in self.block_assignments:
@@ -300,7 +300,7 @@ def clear_block_assignments(self) -> None:
     if len(self.block_assignments) != 1:
         self.selected_attack_target_id = None
     self.auto_assign_required_blockers()
-    self.log("Alle Blockzuweisungen wurden geloescht.")
+    self.log("Alle Blockzuweisungen wurden gelÃ¶scht.")
 
 
 def finish_block_assignment(self) -> None:
@@ -491,7 +491,7 @@ def advance_combat_resolution(self) -> None:
         )
         self.current_blocker_order = [blocker.unit_id for blocker in ordered]
         self.current_blocker_index = 0
-        self.log(f"KI legt die Blockreihenfolge fuer {attacker.name} fest.")
+        self.log(f"KI legt die Blockreihenfolge fÃ¼r {attacker.name} fest.")
 
 
 def resolve_pending_direct_attack_after_reaction(self) -> None:
@@ -512,6 +512,7 @@ def resolve_pending_direct_attack_after_reaction(self) -> None:
         if self.statistics is not None:
             self.statistics.register_unblocked_attack(self.active_player.player_id, damage)
         self.log(f"{attacker.name} ist ungeblockt und verursacht {damage} Schaden an {self.defending_player.name}.")
+        self.handle_creature_player_damage_triggers(self.active_player, attacker, damage)
         self.check_for_game_over()
         if self.phase == PHASE_GAME_OVER:
             return
@@ -523,7 +524,7 @@ def confirm_block_order(self) -> None:
     if self.pending_order is None:
         return
     if len(self.pending_order.chosen_order) != len(self.pending_order.blocker_ids):
-        self.log("Die Blockreihenfolge ist noch nicht vollstaendig.")
+        self.log("Die Blockreihenfolge ist noch nicht vollstÃ¤ndig.")
         return
     self.current_blocker_order = list(self.pending_order.chosen_order)
     self.current_blocker_index = 0

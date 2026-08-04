@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from core.models import CardInstance, PlayerState, SpellTargetRef
+from core.models import CardInstance, PlayerState, SpellEffect, SpellTargetRef
 
 
 class AirCardHandler(Protocol):
@@ -164,6 +164,245 @@ class WindstossHandler:
 
 
 @dataclass(slots=True)
+class ComparisonRitualHandler:
+    template_id: str
+    comparison_method_name: str
+    keep_positive: float
+    keep_negative: float
+    reaction_floor: int | None = None
+    reaction_bonus_metric: str | None = None
+    ritual_bonus_metric: str | None = None
+
+    def _comparison(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> dict[str, Any]:
+        method = getattr(ai, self.comparison_method_name)
+        if self.comparison_method_name in {
+            "_evaluate_air_cost_reduction_support_plan",
+            "_evaluate_air_attack_bonus_support_plan",
+            "_evaluate_air_windwechsel_plan",
+            "_evaluate_air_sturmformation_plan",
+            "_evaluate_air_turbulenz_plan",
+        }:
+            return method(
+                player,
+                engine,
+                card,
+                hand=kwargs["hand"],
+                available_resources=kwargs["available_resources"],
+                total_resources=kwargs["total_resources"],
+                own_creature_count=kwargs["own_creature_count"],
+                ready_attacker_count=kwargs["ready_attacker_count"],
+                creature_discount=kwargs["creature_discount"],
+            )
+        if self.comparison_method_name == "_evaluate_air_nachwehen_plan":
+            return method(
+                player,
+                engine,
+                card,
+                hand=kwargs["hand"],
+                available_resources=kwargs["available_resources"],
+                total_resources=kwargs["total_resources"],
+            )
+        if self.comparison_method_name in {
+            "_evaluate_air_boeenschub_reaction_plan",
+            "_evaluate_air_windrausch_reaction_plan",
+        }:
+            return method(player, engine, card)
+        raise ValueError(f"Unsupported comparison method for air handler: {self.comparison_method_name}")
+
+    def score_ritual(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int, int] | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        bonus = 0
+        if self.ritual_bonus_metric is not None:
+            metric = comparison.get(self.ritual_bonus_metric)
+            bonus = 1 if metric else 0
+        return (2 if comparison["is_useful"] else -2, int(comparison["value"] * 10), bonus)
+
+    def score_reaction(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int] | None:
+        if self.reaction_floor is None:
+            return None
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        bonus = 0
+        if self.reaction_bonus_metric is not None:
+            metric = comparison.get(self.reaction_bonus_metric)
+            if isinstance(metric, bool):
+                bonus = 1 if metric else 0
+            elif isinstance(metric, int):
+                bonus = 1 if metric > 0 else 0
+        return (max(self.reaction_floor, int(comparison["value"] * 2)), bonus)
+
+    def choose_target_ref(self, ai, player: PlayerState, engine, card: CardInstance, pending) -> SpellTargetRef | None:
+        return None
+
+    def play_value(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> float | None:
+        return self._comparison(ai, player, engine, card, **kwargs)["value"]
+
+    def has_live_use(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> bool | None:
+        return self._comparison(ai, player, engine, card, **kwargs)["is_useful"]
+
+    def keep_adjustment(self, ai, player: PlayerState, enemy: PlayerState, engine, card: CardInstance, **kwargs) -> float | None:
+        comparison = self._comparison(ai, player, engine, card, **kwargs)
+        return self.keep_positive if comparison["is_useful"] else self.keep_negative
+
+
+@dataclass(slots=True)
+class RueckenwindHandler(ComparisonRitualHandler):
+    template_id: str = "air_ritual_rueckenwind"
+    comparison_method_name: str = "_evaluate_air_attack_bonus_support_plan"
+    keep_positive: float = 2.4
+    keep_negative: float = -2.4
+
+    def score_ritual(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int, int] | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        return (
+            2 if comparison["is_useful"] else -2,
+            int(comparison["value"] * 10),
+            1 if comparison.get("target_id") is not None else 0,
+        )
+
+    def choose_target_ref(self, ai, player: PlayerState, engine, card: CardInstance, pending) -> SpellTargetRef | None:
+        if ai._planned_rueckenwind_target_id is not None:
+            chosen = next((creature for creature in player.battlefield if creature.unit_id == ai._planned_rueckenwind_target_id), None)
+            if chosen is not None:
+                return SpellTargetRef("creature", creature_id=chosen.unit_id)
+        enemy = engine.players[1 - player.player_id]
+        best_plan = ai._estimate_best_air_attack_plan(
+            player,
+            enemy,
+            list(player.hand),
+            [],
+            attack_bonus_amount=card.template.spell_amount,
+        )
+        if best_plan["target_id"] is None:
+            return None
+        return SpellTargetRef("creature", creature_id=best_plan["target_id"])
+
+
+@dataclass(slots=True)
+class BoeenschubHandler(ComparisonRitualHandler):
+    template_id: str = "air_spell_boeenschub"
+    comparison_method_name: str = "_evaluate_air_boeenschub_reaction_plan"
+    keep_positive: float = 2.6
+    keep_negative: float = -2.8
+    reaction_floor: int = -4
+    reaction_bonus_metric: str = "target_id"
+
+    def choose_target_ref(self, ai, player: PlayerState, engine, card: CardInstance, pending) -> SpellTargetRef | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        if comparison["target_id"] is None or not comparison["is_useful"]:
+            return None
+        return SpellTargetRef("creature", creature_id=comparison["target_id"])
+
+
+@dataclass(slots=True)
+class WindrauschHandler(ComparisonRitualHandler):
+    template_id: str = "air_spell_windrausch"
+    comparison_method_name: str = "_evaluate_air_windrausch_reaction_plan"
+    keep_positive: float = 2.4
+    keep_negative: float = -2.8
+    reaction_floor: int = -4
+    reaction_bonus_metric: str = "is_lethal"
+
+    def score_ritual(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int, int] | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        return (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 1 if comparison["is_lethal"] else 0)
+
+
+@dataclass(slots=True)
+class NachwehenHandler(ComparisonRitualHandler):
+    template_id: str = "air_spell_nachwehen"
+    comparison_method_name: str = "_evaluate_air_nachwehen_plan"
+    keep_positive: float = 2.3
+    keep_negative: float = -3.0
+    reaction_floor: int = -4
+    reaction_bonus_metric: str = "draw_count"
+
+    def score_ritual(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int, int] | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        return (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 1 if comparison["draw_count"] >= 6 else 0)
+
+    def score_reaction(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int] | None:
+        comparison = self._comparison(
+            ai,
+            player,
+            engine,
+            card,
+            hand=list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+            own_creature_count=len(player.battlefield),
+            ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+            creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+        )
+        return (max(-4, int(comparison["value"] * 2)), 1 if comparison["draw_count"] >= 6 else 0)
+
+
+@dataclass(slots=True)
 class AusweichenHandler:
     template_id: str = "air_spell_ausweichen"
 
@@ -208,21 +447,11 @@ class AusweichenHandler:
 
 
 @dataclass(slots=True)
-class TurbulenzHandler:
+class TurbulenzHandler(ComparisonRitualHandler):
     template_id: str = "air_ritual_turbulenz"
-
-    def _comparison(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> dict[str, Any]:
-        return ai._evaluate_air_turbulenz_plan(
-            player,
-            engine,
-            card,
-            hand=kwargs["hand"],
-            available_resources=kwargs["available_resources"],
-            total_resources=kwargs["total_resources"],
-            own_creature_count=kwargs["own_creature_count"],
-            ready_attacker_count=kwargs["ready_attacker_count"],
-            creature_discount=kwargs["creature_discount"],
-        )
+    comparison_method_name: str = "_evaluate_air_turbulenz_plan"
+    keep_positive: float = 3.0
+    keep_negative: float = -3.2
 
     def score_ritual(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int, int] | None:
         comparison = self._comparison(
@@ -246,9 +475,6 @@ class TurbulenzHandler:
                 if engine.get_unit_by_id(target_id) is not None
             ) else 0,
         )
-
-    def score_reaction(self, ai, player: PlayerState, engine, card: CardInstance) -> tuple[int, int] | None:
-        return None
 
     def choose_target_ref(self, ai, player: PlayerState, engine, card: CardInstance, pending) -> SpellTargetRef | None:
         if ai._planned_turbulenz_target_ids:
@@ -274,18 +500,31 @@ class TurbulenzHandler:
         )
         return SpellTargetRef("creature", creature_id=chosen.unit_id)
 
-    def play_value(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> float | None:
-        return self._comparison(ai, player, engine, card, **kwargs)["value"]
-
-    def has_live_use(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> bool | None:
-        return self._comparison(ai, player, engine, card, **kwargs)["is_useful"]
-
-    def keep_adjustment(self, ai, player: PlayerState, enemy: PlayerState, engine, card: CardInstance, **kwargs) -> float | None:
-        return 3.0 if self._comparison(ai, player, engine, card, **kwargs)["is_useful"] else -3.2
-
 
 SPECIALIZED_AIR_HANDLERS: tuple[AirCardHandler, ...] = (
+    ComparisonRitualHandler(
+        template_id="air_ritual_aufwind",
+        comparison_method_name="_evaluate_air_cost_reduction_support_plan",
+        keep_positive=2.8,
+        keep_negative=-3.2,
+    ),
+    RueckenwindHandler(),
+    ComparisonRitualHandler(
+        template_id="air_ritual_windwechsel",
+        comparison_method_name="_evaluate_air_windwechsel_plan",
+        keep_positive=2.3,
+        keep_negative=-2.2,
+    ),
+    ComparisonRitualHandler(
+        template_id="air_ritual_sturmformation",
+        comparison_method_name="_evaluate_air_sturmformation_plan",
+        keep_positive=2.8,
+        keep_negative=-3.0,
+    ),
+    TurbulenzHandler(),
     WindstossHandler(),
     AusweichenHandler(),
-    TurbulenzHandler(),
+    BoeenschubHandler(),
+    WindrauschHandler(),
+    NachwehenHandler(),
 )

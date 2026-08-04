@@ -95,7 +95,7 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
         ai_choose_die=lambda dice, strategy=strategy: strategy.choose(dice, self.rng),
     )
     battle = self.pending_dice_battle
-    self.log(f"Wuerfelkampf startet: {attacker.name} gegen {blocker.name}.")
+    self.log(f"WÃ¼rfelkampf startet: {attacker.name} gegen {blocker.name}.")
     setattr(attacker, "owner_id", battle.attacker_owner)
     setattr(blocker, "owner_id", battle.blocker_owner)
     self.set_open_die_targets(
@@ -297,7 +297,7 @@ def continue_pending_comparison_after_reaction(self) -> None:
     self.apply_ai_adaptation_if_needed(battle, comparison)
     if self.human_can_use_adaptation(battle, comparison):
         comparison.human_can_adapt = True
-        self.log("Anpassung verfuegbar. Entscheide ueber Neu Wuerfeln oder Aufloesen.")
+        self.log("Anpassung verfÃ¼gbar. Entscheide Ã¼ber Neu WÃ¼rfeln oder AuflÃ¶sen.")
         return
     self.resolve_pending_comparison(use_human_adaptation=False)
 
@@ -320,14 +320,14 @@ def apply_comparison_result(self, battle: PendingDiceBattle, comparison: Pending
         attacker_damage = 1 + (1 if round_number == 1 and attacker.has_ability(Ability.IGNITE) else 0)
         blocker.current_hp -= attacker_damage
         self.queue_creature_damage_event("blocker", attacker_damage, attacker.element)
-        outcome = f"{attacker.name} gewinnt den Wuerfelvergleich und verursacht {attacker_damage} Schaden."
+        outcome = f"{attacker.name} gewinnt den WÃ¼rfelvergleich und verursacht {attacker_damage} Schaden."
         attacker_label = f"{comparison.attacker_die.display()} | Runde {round_number}: Gewonnen"
         blocker_label = f"{comparison.blocker_die.display()} | Runde {round_number}: Verloren"
     elif comparison.attacker_die.total < comparison.blocker_die.total:
         blocker_damage = 1
         attacker.current_hp -= blocker_damage
         self.queue_creature_damage_event("attacker", blocker_damage, blocker.element)
-        outcome = f"{blocker.name} gewinnt den Wuerfelvergleich und verursacht {blocker_damage} Schaden."
+        outcome = f"{blocker.name} gewinnt den WÃ¼rfelvergleich und verursacht {blocker_damage} Schaden."
         attacker_label = f"{comparison.attacker_die.display()} | Runde {round_number}: Verloren"
         blocker_label = f"{comparison.blocker_die.display()} | Runde {round_number}: Gewonnen"
     else:
@@ -480,7 +480,7 @@ def finalize_or_continue_dice_battle(
             attacker_hp_after=attacker_hp_after,
             blocker_hp_after=blocker_hp_after,
         )
-    self.log(f"Gegnerische Wuerfelstrategie: {battle.ai_strategy_name}.")
+        self.log(f"Gegnerische WÃ¼rfelstrategie: {battle.ai_strategy_name}.")
     battle.resolution_complete = True
 
 
@@ -528,11 +528,4 @@ def cleanup_destroyed_units(self) -> None:
                 continue
             changed = True
             for creature in destroyed:
-                self.remove_creature_from_combat(creature.unit_id)
-                self.creatures_died_this_turn += 1
-                template = self.templates.get(creature.template_id)
-                if template is not None:
-                    player.discard_pile.append(CardInstance(self.make_instance_id(), template))
-                self.log(f"{creature.name} wird zerstoert und auf den Ablagestapel gelegt.")
-                if creature in player.battlefield:
-                    player.battlefield.remove(creature)
+                self.destroy_creature_immediately(player, creature, "Kampfschaden", died_in_combat=True)

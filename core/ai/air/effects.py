@@ -805,6 +805,12 @@ class AirEffectEvaluationMixin:
             value += creature.draw_on_attack * 1.3
         if getattr(creature, "draw_on_death", 0) > 0:
             value += creature.draw_on_death * 1.0
+        if getattr(creature, "draw_on_player_damage", 0) > 0:
+            value += creature.draw_on_player_damage * 1.4
+        if getattr(creature, "return_other_own_haste_on_combat_death", False):
+            value += 2.1
+        if getattr(creature, "own_flying_attack_aura", 0) > 0:
+            value += creature.own_flying_attack_aura * 2.4
         if creature.return_to_deck_end_of_turn:
             value -= 0.9
         return value

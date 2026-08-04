@@ -139,6 +139,7 @@ class GameEngine:
         confirm_recycle_payment,
         format_card_cost,
         get_card_cost_to_pay,
+        handle_creature_player_damage_triggers,
         play_hand_card_in_summoning_zone,
         play_hand_card_as_creature,
         play_hand_card_as_resource,
@@ -277,22 +278,22 @@ class GameEngine:
     def active_player(self) -> PlayerState:
         return self.players[self.active_player_index]
 
-    def get_sturmfuerst_bonus_count(self, player: PlayerState) -> int:
+    def get_own_flying_attack_aura_bonus(self, player: PlayerState) -> int:
         return sum(
-            1
+            getattr(creature, "own_flying_attack_aura", 0)
             for creature in player.battlefield
-            if creature.current_hp > 0 and getattr(creature, "template_id", "") == "air_creature_sturmfuerst"
+            if creature.current_hp > 0
         )
 
     def get_creature_stat_bonuses(self, creature: BattlefieldCreature) -> tuple[int, int]:
         owner = self.get_unit_owner(creature.unit_id)
         if owner is None:
             return 0, 0
-        sturmfuerst_count = self.get_sturmfuerst_bonus_count(owner)
-        if sturmfuerst_count <= 0:
+        flying_aw_bonus = self.get_own_flying_attack_aura_bonus(owner)
+        if flying_aw_bonus <= 0:
             return 0, 0
-        aw_bonus = sturmfuerst_count if creature.has_ability(Ability.HASTE) else 0
-        vw_bonus = sturmfuerst_count if creature.has_ability(Ability.FLYING) else 0
+        aw_bonus = flying_aw_bonus if creature.has_ability(Ability.FLYING) else 0
+        vw_bonus = 0
         return aw_bonus, vw_bonus
 
     def get_creature_attack_value(self, creature: BattlefieldCreature) -> int:

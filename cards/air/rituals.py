@@ -19,7 +19,7 @@ AIR_RITUALS = [
     ),
     CardTemplate(
         template_id="air_ritual_rueckenwind",
-        name="Rueckenwind",
+        name="Rückenwind",
         cost=CardCost(resources=1),
         aw=0,
         vw=0,
@@ -28,7 +28,7 @@ AIR_RITUALS = [
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=3,
-        rules_text="Eine Kreatur erhaelt bis zum Ende des Zuges +3 AW.",
+        rules_text="Eine Kreatur erhält bis zum Ende des Zuges +3 AW.",
     ),
     CardTemplate(
         template_id="air_ritual_windwechsel",
@@ -66,6 +66,6 @@ AIR_RITUALS = [
         card_type=CardType.RITUAL,
         spell_effect=SpellEffect.RETURN_TWO_CREATURES_TO_HAND,
         target_mode=SpellTargetMode.CREATURE,
-        rules_text="Nimm zwei Kreaturen auf die Haende ihrer Besitzer zurueck.",
+        rules_text="Nimm zwei Kreaturen auf die Hände ihrer Besitzer zurück.",
     ),
 ]

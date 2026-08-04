@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import pygame
 
 from core.models import PHASE_REACTION, PHASE_SUMMONING
@@ -133,25 +131,13 @@ def draw_card_badge(
     font: pygame.font.Font | None = None,
     think_progress: float | None = None,
 ) -> None:
-    pygame.draw.circle(surface, (18, 18, 20), badge_rect.center, badge_rect.width // 2)
-    ring_radius = max(4, badge_rect.width // 2 - 4)
-    ring_width = max(2, badge_rect.width // 12)
-    pygame.draw.circle(surface, (0, 0, 0), badge_rect.center, ring_radius, ring_width)
-    if think_progress is not None and think_progress > 0:
-        steps = max(8, int(96 * think_progress))
-        start_angle = -0.5 * math.pi
-        end_angle = start_angle + (2 * math.pi * think_progress)
-        points = []
-        for step in range(steps + 1):
-            angle = start_angle + (end_angle - start_angle) * (step / steps)
-            px = badge_rect.centerx + math.cos(angle) * ring_radius
-            py = badge_rect.centery + math.sin(angle) * ring_radius
-            points.append((round(px), round(py)))
-        if len(points) >= 2:
-            pygame.draw.lines(surface, (212, 170, 74), False, points, ring_width)
-        for point in points:
-            pygame.draw.circle(surface, (212, 170, 74), point, max(1, ring_width // 2))
-    self.blit_centered_text_to_surface(surface, font or self.font, text, (255, 255, 255), badge_rect)
+    base_font = font or self.font
+    badge_font_size = max(
+        base_font.get_height() + 12,
+        int(badge_rect.height * 0.9),
+    )
+    badge_font = pygame.font.Font(None, badge_font_size)
+    self.blit_centered_text_to_surface(surface, badge_font, text, (0, 0, 0), badge_rect)
 
 
 def draw_creature_card(

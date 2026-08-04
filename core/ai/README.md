@@ -8,7 +8,7 @@ Oeffentliche Einstiegspunkte:
 - `core.ai.types.ActionCandidate`
 
 Wichtige Dateien:
-- `common.py`: allgemeine Auswahlregeln, Blocken, Recycle, Wuerfelstrategie
+- `common.py`: allgemeine Auswahlregeln, Blocken, Recycle, Würfelstrategie
 - `air/planning.py`: Ressourcen- und Main-Phase-Planung der Luft-KI
 - `air/effects.py`: Luft-spezifische Effektbewertungen und Vergleichsplaene
 - `air/assessment.py`: Hand-/Kartenbewertung, Angriffsbewertung, Luft-spezifische Keep-Werte
@@ -20,6 +20,6 @@ Abhaengigkeiten:
 - `core.ai_logic` ist nur noch eine Kompatibilitaetsfassade.
 
 Typische Erweiterungen:
-- Neue Luftkarte: zuerst passendes Luftmodul waehlen, dann zugehoerigen Regressionstest ergaenzen.
+- Neue Luftkarte: zuerst passendes Luftmodul wählen, dann zugehörigen Regressionstest ergänzen.
 - Neue allgemeine Mechanik: zuerst in `common.py` oder einem neuen allgemeinen KI-Modul modellieren.
 - Neues Element: eigenes Unterverzeichnis neben `air/` anlegen, ohne Luftmodule zu veraendern.

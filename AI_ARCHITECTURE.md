@@ -4,13 +4,13 @@
 
 - `core.ai.simple_ai.SimpleAI`
 - `core.ai.context.build_ai_context`
-- `core.ai_logic` nur als Kompatibilitaetsfassade fuer bestehende Importe
+- `core.ai_logic` nur als Kompatibilit?tsfassade f?r bestehende Importe
 
 ## Verzeichnisstruktur
 
-- `core/ai/common.py`: allgemeine KI-Auswahl, Blocken, Recycle, Wuerfelstrategie
+- `core/ai/common.py`: allgemeine KI-Auswahl, Blocken, Recycle, W?rfelstrategie
 - `core/ai/air/planning.py`: Ressourcen- und Main-Phase-Planung der Luft-KI
-- `core/ai/air/effects.py`: kartennahe Effektvergleiche fuer Luft
+- `core/ai/air/effects.py`: kartennahe Effektvergleiche f?r Luft
 - `core/ai/air/assessment.py`: Handwert, Kartenwert, Angriffsbewertung, Luft-spezifische Keep-Heuristiken
 - `core/ai/air/reactions.py`: Reaktionsfenster, Zauberauswahl, Zielauswahl
 - `core/ai/context.py`: kompakter, regelkonformer KI-Kontext ohne verdeckte Informationen
@@ -25,22 +25,22 @@
 
 ## Allgemeine Mechanik vs. Elementstrategie vs. Kartenlogik
 
-- Allgemeine Mechanik: Recycle, Blockwahl, Wuerfelstrategie, konservative Fallbacks
+- Allgemeine Mechanik: Recycle, Blockwahl, W?rfelstrategie, konservative Fallbacks
 - Elementstrategie: Luft priorisiert Tempo, kleine Ressourcenbasis, vierte Handkarte, Fliegend/Schnell
-- Kartenlogik: `Aufwind`, `Rueckenwind`, `Sturmformation`, `Turbulenz`, `Ausweichen`, `Windstoss`, `Boeenschub`, `Windrausch`, `Nachwehen`
+- Kartenlogik: `Aufwind`, `R?ckenwind`, `Sturmformation`, `Turbulenz`, `Ausweichen`, `Windsto?`, `B?enschub`, `Windrausch`, `Nachwehen`
 
 ## Aktionskandidaten und Planbindung
 
-`core.ai.types` definiert kompakte Typen fuer:
+`core.ai.types` definiert kompakte Typen f?r:
 - `DecisionReason`
 - `ActionCandidate`
 - `BoundPlan`
 
-Bestehende Luftplaene bleiben aktuell noch als leichte Dictionaries in `SimpleAI` gebunden, damit das Verhalten stabil bleibt. Die neuen Typen sind die Zieloberflaeche fuer weitere inkrementelle Umstellungen.
+Bestehende Luftpl?ne bleiben aktuell noch als leichte Dictionaries in `SimpleAI` gebunden, damit das Verhalten stabil bleibt. Die neuen Typen sind die Zieloberfl?che f?r weitere inkrementelle Umstellungen.
 
 ## Neue Karte ergaenzen
 
-1. Passende allgemeine Mechanik oder Luftdatei waehlen.
+1. Passende allgemeine Mechanik oder Luftdatei w?hlen.
 2. Bewertungslogik im passenden Luftmodul ergaenzen.
 3. Falls noetig Ziel- oder Reaktionsauswahl in `air/reactions.py` ergaenzen.
 4. Regression in `tests/test_ai_confirmation.py` und Regeltest in `tests/test_spells.py` anlegen.
@@ -60,5 +60,5 @@ Bestehende Luftplaene bleiben aktuell noch als leichte Dictionaries in `SimpleAI
 ## Informationsgrenzen der KI
 
 - Keine Kenntnis verdeckter Karten
-- Keine Kenntnis zukuenftiger Wuerfelergebnisse
+- Keine Kenntnis zuk?nftiger W?rfelergebnisse
 - Bewertung nur aus sichtbarem Spielzustand, Deckstruktur und Wahrscheinlichkeiten

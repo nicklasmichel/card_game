@@ -64,7 +64,7 @@ FIRE_CREATURES = [
         vw=2,
         element=Element.FIRE,
         abilities=frozenset({Ability.IGNITE}),
-        rules_text="Entzuenden. Gewinnt diese Kreatur als Angreifer den ersten Wuerfelvergleich eines Kampfes, verursacht sie 1 zusaetzlichen Schaden.",
+        rules_text="Entzünden. Gewinnt diese Kreatur als Angreifer den ersten Würfelvergleich eines Kampfes, verursacht sie 1 zusätzlichen Schaden.",
     ),
     CardTemplate(
         template_id="fire_creature_flammenmagier",
@@ -74,7 +74,7 @@ FIRE_CREATURES = [
         vw=3,
         element=Element.FIRE,
         abilities=frozenset({Ability.IGNITE}),
-        rules_text="Entzuenden. Gewinnt diese Kreatur als Angreifer den ersten Wuerfelvergleich eines Kampfes, verursacht sie 1 zusaetzlichen Schaden.",
+        rules_text="Entzünden. Gewinnt diese Kreatur als Angreifer den ersten Würfelvergleich eines Kampfes, verursacht sie 1 zusätzlichen Schaden.",
     ),
     CardTemplate(
         template_id="fire_creature_feuerwidder",
@@ -102,6 +102,6 @@ FIRE_CREATURES = [
         vw=4,
         element=Element.FIRE,
         abilities=frozenset({Ability.IGNITE, Ability.TRAMPLE}),
-        rules_text="Entzuenden. Gewinnt diese Kreatur als Angreifer den ersten Wuerfelvergleich eines Kampfes, verursacht sie 1 zusaetzlichen Schaden.",
+        rules_text="Entzünden. Gewinnt diese Kreatur als Angreifer den ersten Würfelvergleich eines Kampfes, verursacht sie 1 zusätzlichen Schaden.",
     ),
 ]

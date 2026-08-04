@@ -25,6 +25,10 @@ class BattlefieldCreature:
     all_attackers_die_bonus: int
     draw_on_attack: int
     draw_on_death: int
+    draw_on_player_damage: int
+    tap_enemy_creature_on_play: int
+    return_other_own_haste_on_combat_death: bool
+    own_flying_attack_aura: int
     current_hp: int
     temporary_aw_bonus: int = 0
     temporary_abilities: set[Ability] = field(default_factory=set)
@@ -51,6 +55,10 @@ class BattlefieldCreature:
             all_attackers_die_bonus=card.template.all_attackers_die_bonus,
             draw_on_attack=card.template.draw_on_attack,
             draw_on_death=card.template.draw_on_death,
+            draw_on_player_damage=card.template.draw_on_player_damage,
+            tap_enemy_creature_on_play=card.template.tap_enemy_creature_on_play,
+            return_other_own_haste_on_combat_death=card.template.return_other_own_haste_on_combat_death,
+            own_flying_attack_aura=card.template.own_flying_attack_aura,
             current_hp=card.template.vw,
             temporary_aw_bonus=0,
             tapped=not has_haste,

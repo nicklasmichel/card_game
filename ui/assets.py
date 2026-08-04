@@ -162,7 +162,7 @@ def build_preview_deck_surface(self, player) -> pygame.Surface:
 
     def _render() -> pygame.Surface:
         surface = self.build_resource_back_surface(element, False)
-        deck_badge_rect = pygame.Rect(self.card_width // 2 - 23, int(self.card_height * 0.69) - 23, 46, 46)
+        deck_badge_rect = pygame.Rect(self.card_width // 2 - 34, self.card_height // 2 - 26, 68, 52)
         self.draw_card_badge(surface, deck_badge_rect, str(len(player.deck)), self.font, self.get_think_progress(player))
         return surface
 

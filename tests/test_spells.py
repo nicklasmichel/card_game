@@ -35,7 +35,7 @@ class SpellTests(EngineTestCase):
             "fire_creature_funkenkobold",
             "water_creature_wassertropfen",
             "earth_creature_steinkobold",
-            "air_creature_windgeist",
+            "air_creature_wolkenfalke",
             "fire_creature_brandstifter",
             "water_creature_flusskrieger",
         ]
@@ -112,7 +112,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 2)
         spell = self.give_card("fire_ritual_verbotene_glut")
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
         ]
         self.engine.human_player.life = 20
@@ -302,7 +302,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 3)
         spell = self.give_card("air_ritual_aufwind")
         creature_one = self.give_card("fire_creature_funkenkobold")
-        creature_two = self.give_card("air_creature_sturmfalke")
+        creature_two = self.give_card("air_creature_windfalke")
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell.instance_id)
@@ -325,8 +325,8 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 2)
         spell_one = self.give_card("air_ritual_aufwind")
         spell_two = self.give_card("air_ritual_aufwind")
-        zero_cost_creature = self.give_card("air_creature_boeengeist")
-        recycle_creature = self.give_card("air_creature_windklinge")
+        zero_cost_creature = self.give_card("air_creature_sturmkrieger")
+        recycle_creature = self.give_card("air_creature_himmelskrieger")
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell_one.instance_id)
@@ -345,7 +345,7 @@ class SpellTests(EngineTestCase):
     def test_rueckenwind_grants_plus_three_attack_until_end_of_turn(self) -> None:
         self.give_resources(0, 1)
         spell = self.give_card("air_ritual_rueckenwind")
-        target = self.make_creature("air_creature_windgeist", owner_id=0)
+        target = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell.instance_id)
@@ -362,7 +362,7 @@ class SpellTests(EngineTestCase):
     def test_sturmformation_discards_hand_and_draws_three(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_sturmformation")
-        extra_one = self.give_card("air_creature_windgeist")
+        extra_one = self.give_card("air_creature_wolkenfalke")
         extra_two = self.give_card("air_spell_windstoss")
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
@@ -383,7 +383,7 @@ class SpellTests(EngineTestCase):
     def test_turbulenz_returns_two_creatures_to_hand(self) -> None:
         spell = self.give_card("air_ritual_turbulenz")
         self.give_resources(0, 2)
-        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        own = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_SUMMONING
 
@@ -398,7 +398,7 @@ class SpellTests(EngineTestCase):
 
         self.assertIsNone(self.engine.get_unit_by_id(own.unit_id))
         self.assertIsNone(self.engine.get_unit_by_id(enemy.unit_id))
-        self.assertTrue(any(card.template.template_id == "air_creature_windgeist" for card in self.engine.human_player.hand))
+        self.assertTrue(any(card.template.template_id == "air_creature_wolkenfalke" for card in self.engine.human_player.hand))
         self.assertTrue(any(card.template.template_id == "earth_creature_felsensoldat" for card in self.engine.ai_player.hand))
 
     def test_turbulenz_can_recycle_tapped_resources(self) -> None:
@@ -406,7 +406,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 2)
         for resource in self.engine.human_player.resources:
             resource.tapped = True
-        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        own = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_SUMMONING
 
@@ -423,7 +423,7 @@ class SpellTests(EngineTestCase):
     def test_turbulenz_requires_at_least_two_resources_in_resource_area(self) -> None:
         spell = self.give_card("air_ritual_turbulenz")
         self.give_resources(0, 1)
-        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        own = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_SUMMONING
 
@@ -436,7 +436,7 @@ class SpellTests(EngineTestCase):
         spell = self.give_card("air_ritual_turbulenz")
         self.give_resources(0, 2)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        self.make_creature("air_creature_windgeist", owner_id=0)
+        self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell.instance_id)
@@ -449,7 +449,7 @@ class SpellTests(EngineTestCase):
         self.assertFalse(self.engine.pending_spell_ready())
 
     def test_selected_creature_in_summoning_shows_no_play_button(self) -> None:
-        creature = self.give_card("air_creature_windgeist")
+        creature = self.give_card("air_creature_wolkenfalke")
         self.give_resources(0, 2)
         self.engine.phase = PHASE_SUMMONING
 
@@ -535,7 +535,7 @@ class SpellTests(EngineTestCase):
     def test_rueckenwind_can_target_enemy_creature(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_rueckenwind")
-        self.give_card("air_creature_windgeist")
+        self.give_card("air_creature_wolkenfalke")
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_SUMMONING
 
@@ -549,7 +549,7 @@ class SpellTests(EngineTestCase):
     def test_windwechsel_draws_two_then_discards_one(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_windwechsel")
-        spare = self.give_card("air_creature_windgeist")
+        spare = self.give_card("air_creature_wolkenfalke")
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
@@ -566,7 +566,7 @@ class SpellTests(EngineTestCase):
         self.engine.confirm_forced_discard()
 
         self.assertEqual(len(self.engine.human_player.hand), 2)
-        self.assertEqual(self.engine.human_player.discard_pile[-1].template.template_id, "air_creature_windgeist")
+        self.assertEqual(self.engine.human_player.discard_pile[-1].template.template_id, "air_creature_wolkenfalke")
 
     def _legacy_test_windwechsel_can_be_fourth_play_and_trigger_summoner_passive(self) -> None:
         self.give_resources(0, 2)
@@ -575,7 +575,7 @@ class SpellTests(EngineTestCase):
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -584,7 +584,7 @@ class SpellTests(EngineTestCase):
 
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
-        self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
+        self.assertIn("Spieler zieht 1 Karte durch den Beschwörer.", self.engine.log_messages)
 
     def _legacy_test_windwechsel_drawn_card_only_counts_when_later_played(self) -> None:
         self.give_resources(0, 3)
@@ -593,7 +593,7 @@ class SpellTests(EngineTestCase):
         self.engine.human_player.hand_cards_played_this_turn = 2
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -608,7 +608,7 @@ class SpellTests(EngineTestCase):
         self.engine.confirm_forced_discard()
 
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
-        drawn_creature = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_windgeist")
+        drawn_creature = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_wolkenfalke")
         self.engine.resolve_creature_play(drawn_creature)
 
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
@@ -645,7 +645,7 @@ class SpellTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenrekrut"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_felsensoldat"]),
         ]
@@ -682,7 +682,7 @@ class SpellTests(EngineTestCase):
         self.give_card("air_spell_windstoss")
         self.engine.human_player.hand_cards_played_this_turn = 2
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
         ]
@@ -698,7 +698,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_sturmformation")
         self.engine.human_player.hand_cards_played_this_turn = 3
-        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])
+        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"])
         draw_two = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
         draw_three = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         passive_draw = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
@@ -710,7 +710,7 @@ class SpellTests(EngineTestCase):
 
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
-        self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
+        self.assertIn("Spieler zieht 1 Karte durch den Beschwörer.", self.engine.log_messages)
         discard_ids = [card.template.template_id for card in self.engine.human_player.discard_pile]
         self.assertIn(passive_draw.template.template_id, discard_ids)
         hand_ids = [card.template.template_id for card in self.engine.human_player.hand]
@@ -723,7 +723,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 3)
         spell = self.give_card("air_ritual_sturmformation")
         self.engine.human_player.hand_cards_played_this_turn = 2
-        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])
+        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"])
         draw_two = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
         draw_three = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         self.engine.human_player.deck = [draw_one, draw_two, draw_three]
@@ -744,7 +744,7 @@ class SpellTests(EngineTestCase):
     def test_turbulenz_returns_both_selected_creatures_to_hand(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_turbulenz")
-        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        own = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_SUMMONING
 
@@ -759,7 +759,7 @@ class SpellTests(EngineTestCase):
 
         self.assertIsNone(self.engine.get_unit_by_id(own.unit_id))
         self.assertIsNone(self.engine.get_unit_by_id(enemy.unit_id))
-        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_windgeist")
+        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_wolkenfalke")
         self.assertEqual(self.engine.ai_player.hand[-1].template.template_id, "earth_creature_felsensoldat")
 
     def test_turbulenz_requires_two_targets(self) -> None:
@@ -786,7 +786,7 @@ class SpellTests(EngineTestCase):
     def _legacy_test_turbulenz_returned_creatures_do_not_count_for_passive_until_replayed(self) -> None:
         self.give_resources(0, 3)
         spell = self.give_card("air_ritual_turbulenz")
-        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        own = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.human_player.hand_cards_played_this_turn = 2
         self.engine.phase = PHASE_SUMMONING
@@ -803,7 +803,7 @@ class SpellTests(EngineTestCase):
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-        returned_own = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_windgeist")
+        returned_own = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_wolkenfalke")
         self.engine.resolve_creature_play(returned_own)
 
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
@@ -848,7 +848,7 @@ class SpellTests(EngineTestCase):
     def test_general_spell_window_opens_after_completed_comparison(self) -> None:
         self.give_resources(0, 1)
         self.give_card("air_spell_ausweichen")
-        attacker = self.make_creature("air_creature_himmelsgreif", owner_id=0)
+        attacker = self.make_creature("air_creature_himmelsfalke", owner_id=0)
         blocker = self.make_creature("earth_creature_bastionshueter", owner_id=1)
         self.engine.pending_dice_battle = PendingDiceBattle(
             attacker_id=attacker.unit_id,
@@ -884,7 +884,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 4)
         spell = self.give_card("air_spell_windrausch")
         attacker_one = self.make_creature("fire_creature_funkenkobold", owner_id=0)
-        attacker_two = self.make_creature("air_creature_sturmfalke", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windfalke", owner_id=0)
         self.engine.ai_player.life = 20
         self.engine.block_assignments = {
             attacker_one.unit_id: [],
@@ -1020,7 +1020,7 @@ class SpellTests(EngineTestCase):
     def test_ausweichen_can_target_own_creature_in_own_summoning_phase(self) -> None:
         self.give_resources(0, 1)
         spell = self.give_card("air_spell_ausweichen")
-        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        creature = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell.instance_id)
@@ -1030,13 +1030,13 @@ class SpellTests(EngineTestCase):
         self.engine.pass_reaction()
 
         self.assertIsNone(self.engine.get_unit_by_id(creature.unit_id))
-        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_windgeist")
+        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_wolkenfalke")
 
     def test_ausweichen_can_target_non_fighting_creature_in_enemy_summoning_reaction_window(self) -> None:
         self.give_resources(0, 1)
         self.give_card("air_spell_ausweichen")
         self.engine.active_player_index = 1
-        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        creature = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.begin_reaction_window(
             context=ReactionContext(
                 trigger=ReactionTrigger.SPELL_CAST,
@@ -1055,12 +1055,12 @@ class SpellTests(EngineTestCase):
         self.engine.pass_reaction()
 
         self.assertIsNone(self.engine.get_unit_by_id(creature.unit_id))
-        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_windgeist")
+        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_wolkenfalke")
 
     def _legacy_test_ausweichen_counts_itself_for_passive_but_returned_creature_only_when_replayed(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_ausweichen")
-        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        creature = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.human_player.hand_cards_played_this_turn = 2
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
@@ -1076,7 +1076,7 @@ class SpellTests(EngineTestCase):
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-        returned = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_windgeist")
+        returned = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_wolkenfalke")
         self.engine.resolve_creature_play(returned)
 
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
@@ -1137,7 +1137,7 @@ class SpellTests(EngineTestCase):
         self.assertEqual(target_die.aw_bonus, old_bonus)
 
     def test_windstoss_card_text_is_universal_reroll(self) -> None:
-        self.assertEqual(self.engine.templates["air_spell_windstoss"].rules_text, "Wirf einen Wuerfel erneut.")
+        self.assertEqual(self.engine.templates["air_spell_windstoss"].rules_text, "Wirf einen Würfel erneut.")
 
     def test_windstoss_can_reroll_enemy_comparison_die_before_resolution(self) -> None:
         self.give_resources(0, 1)
@@ -1189,11 +1189,11 @@ class SpellTests(EngineTestCase):
 
     def test_nachwehen_uses_recycle_only_and_draws_per_death(self) -> None:
         spell = self.give_card("air_spell_nachwehen")
-        self.give_card("air_creature_windgeist")
+        self.give_card("air_creature_wolkenfalke")
         self.give_resources(0, 2)
         self.engine.creatures_died_this_turn = 2
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
@@ -1220,7 +1220,7 @@ class SpellTests(EngineTestCase):
         spell = self.give_card("air_spell_nachwehen")
         self.give_resources(0, 2)
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -1237,14 +1237,14 @@ class SpellTests(EngineTestCase):
         spell_two = self.give_card("air_spell_nachwehen")
         self.give_resources(0, 4)
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windhuscher"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenwaechter"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsgreif"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windfalke"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenkrieger"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanreiter"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsfalke"]),
         ]
         self.engine.phase = PHASE_SUMMONING
 
@@ -1299,7 +1299,7 @@ class SpellTests(EngineTestCase):
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_SUMMONING
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
         ]
 
         original = self.engine.ai.choose_main_phase_card
@@ -1319,14 +1319,14 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_card_text_and_effect_are_updated(self) -> None:
         card = self.engine.templates["air_spell_boeenschub"]
 
-        self.assertEqual(card.rules_text, "Eine angreifende Kreatur erhaelt fuer diesen Kampf +2 AW.")
+        self.assertEqual(card.rules_text, "Eine angreifende Kreatur erhält für diesen Kampf +2 AW.")
         self.assertEqual(card.spell_effect, SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT)
 
     def test_boeenschub_can_target_only_own_attacking_creature(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
-        own_non_attacker = self.make_creature("air_creature_sturmfalke", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
+        own_non_attacker = self.make_creature("air_creature_windfalke", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.toggle_attacker(attacker.unit_id)
@@ -1344,9 +1344,9 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_is_playable_after_attackers_declared(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windfalke"]),
         ]
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.toggle_attacker(attacker.unit_id)
@@ -1360,7 +1360,7 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_is_playable_after_blockers_declared(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.toggle_attacker(attacker.unit_id)
@@ -1378,9 +1378,9 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_is_playable_in_last_window_before_first_combat(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windfalke"]),
         ]
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.toggle_attacker(attacker.unit_id)
@@ -1394,7 +1394,7 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_is_not_playable_after_first_combat_begins(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
 
         self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
@@ -1404,7 +1404,7 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_grants_plus_two_aw_for_current_combat(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_spell_boeenschub")
-        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker = self.make_creature("air_creature_wolkenfalke", owner_id=0)
         self.engine.ai_player.life = 20
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.toggle_attacker(attacker.unit_id)
@@ -1458,7 +1458,7 @@ class SpellTests(EngineTestCase):
         self.give_resources(0, 2)
         self.engine.creatures_died_this_turn = 3
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
         ]
         self.engine.phase = PHASE_SUMMONING
@@ -1474,7 +1474,7 @@ class SpellTests(EngineTestCase):
 
     def test_creature_death_counter_resets_at_start_of_turn(self) -> None:
         self.engine.creatures_died_this_turn = 3
-        self.engine.human_player.deck = [CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])]
+        self.engine.human_player.deck = [CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"])]
         self.engine.human_player.turns_started = 1
 
         self.engine.start_turn()
@@ -1494,15 +1494,15 @@ class SpellTests(EngineTestCase):
         self.resolve_current_reaction_window_with_passes()
 
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
-        self.assertNotIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
+        self.assertNotIn("Spieler zieht 1 Karte durch den Beschwörer.", self.engine.log_messages)
 
     def test_blocked_attackers_still_count_for_summoner_passive(self) -> None:
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
         ]
-        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
-        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
-        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=0)
+        attacker_one = self.make_creature("air_creature_wolkenfalke", owner_id=0)
+        attacker_two = self.make_creature("air_creature_wolkenkrieger", owner_id=0)
+        attacker_three = self.make_creature("air_creature_windkrieger", owner_id=0)
         blocker = self.make_creature("earth_creature_bastionshueter", owner_id=1)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -1522,9 +1522,9 @@ class SpellTests(EngineTestCase):
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
         ]
-        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
-        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
-        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=0)
+        attacker_one = self.make_creature("air_creature_wolkenfalke", owner_id=0)
+        attacker_two = self.make_creature("air_creature_wolkenkrieger", owner_id=0)
+        attacker_three = self.make_creature("air_creature_windkrieger", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
 
@@ -1544,9 +1544,9 @@ class SpellTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
         ]
         attackers = [
-            self.make_creature("air_creature_windgeist", owner_id=0),
-            self.make_creature("air_creature_windhuscher", owner_id=0),
-            self.make_creature("air_creature_himmelsspaeher", owner_id=0),
+            self.make_creature("air_creature_wolkenfalke", owner_id=0),
+            self.make_creature("air_creature_wolkenkrieger", owner_id=0),
+            self.make_creature("air_creature_windkrieger", owner_id=0),
         ]
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [creature.unit_id for creature in attackers]
@@ -1562,3 +1562,4 @@ class SpellTests(EngineTestCase):
         self.engine.confirm_attackers()
 
         self.assertEqual(len(self.engine.human_player.hand), 1)
+

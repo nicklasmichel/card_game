@@ -36,7 +36,7 @@ def get_overview_phase_label(phase: str) -> str:
         return "Ressource"
     if phase == PHASE_SUMMONING:
         return "Beschwörung"
-    if phase == "Recycle auswaehlen":
+    if phase == "Recycle auswählen":
         return "Beschwörung"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
@@ -158,9 +158,9 @@ def get_spell_target_summary(self, card) -> str:
     if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         return "Eigene Kreatur und gegnerische Kreatur"
     if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        return "Eigene kaempfende Kreatur"
+        return "Eigene kämpfende Kreatur"
     if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-        return "Unbenutzter eigener Kampfwuerfel"
+        return "Unbenutzter eigener Kampfwürfel"
     if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
         return "Aktueller ungeblockter Angreifer"
     if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
@@ -174,7 +174,7 @@ def get_spell_target_summary(self, card) -> str:
     if mode_name == "CREATURE":
         return "Beliebige Kreatur"
     if mode_name == "CREATURE_OR_PLAYER":
-        return "Beliebige Kreatur oder Beschwoerer"
+        return "Beliebige Kreatur oder Beschwörer"
     return str(target_mode.value)
 
 
@@ -197,7 +197,7 @@ def format_target_ref(self, target) -> str:
         return creature.name if creature is not None else "Kreatur nicht mehr im Spiel"
     if target.target_type == "die":
         role = "Angreifer" if target.die_role == "attacker" else "Blocker"
-        return f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}"
+        return f"{role}-Würfel {0 if target.die_index is None else target.die_index + 1}"
     return target.target_type
 
 
@@ -208,7 +208,7 @@ def get_pending_target_summary(self) -> str:
     chosen: list[str] = []
     if pending.selected_sacrifice_creature_id is not None:
         creature = self.engine.get_unit_by_id(pending.selected_sacrifice_creature_id)
-        chosen.append(f"Opfer: {creature.name if creature is not None else 'ausgewaehlt'}")
+        chosen.append(f"Opfer: {creature.name if creature is not None else 'ausgewählt'}")
     for target in pending.selected_targets:
         chosen.append(f"Ziel: {self.format_target_ref(target)}")
     if pending.selected_recycle_resource_ids:
@@ -218,7 +218,7 @@ def get_pending_target_summary(self) -> str:
         )
     if pending.selected_keyword_ability is not None:
         chosen.append(f"Effekt: {pending.selected_keyword_ability.value}")
-    return " | ".join(chosen) if chosen else "Noch nichts ausgewaehlt"
+    return " | ".join(chosen) if chosen else "Noch nichts ausgewählt"
 
 
 def get_stack_lines(self) -> list[str]:
@@ -353,7 +353,7 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
         deck_rect = pygame.Rect(deck_x, card_y, card_width, card_height)
         self.screen.blit(deck_surface, deck_rect.topleft)
         pygame.draw.rect(self.screen, CARD_BORDER, deck_rect, 2, border_radius=9)
-        deck_badge_rect = pygame.Rect(deck_rect.centerx - 23, deck_rect.y + int(card_height * 0.69) - 23, 46, 46)
+        deck_badge_rect = pygame.Rect(deck_rect.centerx - 34, deck_rect.centery - 26, 68, 52)
         self.draw_card_badge(self.screen, deck_badge_rect, str(len(player.deck)), self.font, self.get_think_progress(player))
         self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player)))
         if player.player_id == self.engine.ai_player.player_id:

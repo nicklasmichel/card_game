@@ -16,7 +16,7 @@ def draw_mulligan_overlay(self) -> None:
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
     self.blit_text(self.title_font, "Starthand und Mulligan", TEXT_COLOR, panel.x + 30, panel.y + 26)
-    self.blit_text(self.font, "Klicke beliebige Karten an, um sie einmalig ins Deck zurückzumischen und neu zu ziehen.", MUTED_TEXT, panel.x + 30, panel.y + 58)
+    self.blit_text(self.font, "Klicke beliebige Karten an, um sie einmalig ins Deck zurÃ¼ckzumischen und neu zu ziehen.", MUTED_TEXT, panel.x + 30, panel.y + 58)
     for index, card in enumerate(self.engine.human_player.hand):
         mulligan_step = self.card_width + 32
         rect = self.draw_hand_card(card, panel.x + 30 + index * mulligan_step, panel.y + 140, card.instance_id in self.engine.selected_hand_ids)
@@ -32,8 +32,8 @@ def draw_block_order_overlay(self) -> None:
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
     attacker = self.engine.get_unit_by_id(self.engine.pending_order.attacker_id)
     name = attacker.name if attacker is not None else "Angreifer"
-    self.blit_text(self.title_font, f"Blockreihenfolge für {name}", TEXT_COLOR, panel.x + 26, panel.y + 28)
-    self.blit_text(self.font, "Klicke die Blocker in der gewünschten Reihenfolge an.", MUTED_TEXT, panel.x + 26, panel.y + 62)
+    self.blit_text(self.title_font, f"Blockreihenfolge fÃ¼r {name}", TEXT_COLOR, panel.x + 26, panel.y + 28)
+    self.blit_text(self.font, "Klicke die Blocker in der gewÃ¼nschten Reihenfolge an.", MUTED_TEXT, panel.x + 26, panel.y + 62)
     for index, blocker_id in enumerate(self.engine.pending_order.blocker_ids):
         blocker = self.engine.get_unit_by_id(blocker_id)
         if blocker is None:
@@ -108,7 +108,7 @@ def draw_dice_battle_overlay(self) -> None:
     if getattr(attacker_owner, "attackers_die_bonus_this_turn", 0) > 0:
         self.blit_text(
             self.font,
-            f"Sturmformation aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre Würfelergebnisse.",
+            f"Sturmformation aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre WÃ¼rfelergebnisse.",
             HIGHLIGHT,
             panel.x + 56,
             panel.y + 52,
@@ -244,7 +244,7 @@ def draw_reaction_context_boxes(self, preview_panel_rect: pygame.Rect) -> None:
                             target_parts.append(creature.name if creature is not None else "Kreatur nicht mehr im Spiel")
                         elif target.target_type == "die":
                             role = "Angreifer" if target.die_role == "attacker" else "Blocker"
-                            target_parts.append(f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}")
+                            target_parts.append(f"{role}-Würfel {0 if target.die_index is None else target.die_index + 1}")
                         else:
                             target_parts.append(target.target_type)
                     target_text = ", ".join(target_parts)

@@ -14,7 +14,7 @@ class RandomDieStrategy:
 
 
 class HighestFirstDieStrategy:
-    name = "Hoechster Wuerfel zuerst"
+    name = "Höchster Würfel zuerst"
 
     @staticmethod
     def choose(dice: List[DieResult], rng: Random) -> DieResult:
@@ -22,7 +22,7 @@ class HighestFirstDieStrategy:
 
 
 class LowestFirstDieStrategy:
-    name = "Niedrigster Wuerfel zuerst"
+    name = "Niedrigster Würfel zuerst"
 
     @staticmethod
     def choose(dice: List[DieResult], rng: Random) -> DieResult:
@@ -30,7 +30,7 @@ class LowestFirstDieStrategy:
 
 
 class SacrificeLowThenHighDieStrategy:
-    name = "Niedrigen Wuerfel opfern, dann hoch spielen"
+    name = "Niedrigen Würfel opfern, dann hoch spielen"
 
     @staticmethod
     def choose(dice: List[DieResult], rng: Random) -> DieResult:
