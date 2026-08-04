@@ -39,7 +39,7 @@ EARTH_CREATURES = [
     ),
     CardTemplate(
         template_id="earth_creature_bastionshueter",
-        name="Bastionshüter",
+        name="Bastionshueter",
         cost=CardCost(resources=4),
         aw=3,
         vw=5,

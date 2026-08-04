@@ -37,11 +37,11 @@ def _format_ai_target_name(self, target: SpellTargetRef) -> str:
         return self.get_player_by_id(target.player_id or 0).name
     if target.target_type == "creature":
         creature = self.get_unit_by_id(target.creature_id or -1)
-        return creature.name if creature is not None else "ungÃ¼ltiges Ziel"
+        return creature.name if creature is not None else "ungueltiges Ziel"
     if target.target_type == "die":
         role = "Angreifer" if target.die_role == "attacker" else "Blocker"
         index = 1 if target.die_index is None else target.die_index + 1
-        return f"{role}-WÃ¼rfel {index}"
+        return f"{role}-Wuerfel {index}"
     return target.target_type
 
 
@@ -97,7 +97,7 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
     target_names = ", ".join(_format_ai_target_name(self, target) for target in selected_targets) if selected_targets else "ohne Ziel"
     return {
         "kind": "spell_targeting",
-        "description": f"Gegner wird {card.template.name} bestÃ¤tigen ({target_names}).",
+        "description": f"Gegner wird {card.template.name} bestaetigen ({target_names}).",
         "recycle_resource_ids": recycle_ids,
         "selected_targets": selected_targets,
         "selected_sacrifice_creature_id": sacrifice_creature_id,
@@ -137,7 +137,7 @@ def prepare_ai_turn_action(self) -> bool:
             parts.append(f"als Ressourcen legen: {resource_names}")
         else:
             parts.append("keine weiteren Ressourcen legen")
-            parts.append("in die Beschwörungsphase wechseln")
+            parts.append("in die Beschwoerungsphase wechseln")
         self.pending_ai_action = {
             "kind": "resource_phase",
             "description": "Gegner wird " + ", ".join(parts) + ".",
@@ -230,7 +230,7 @@ def execute_prepared_ai_action(self) -> None:
                 continue
             self.ai_play_resource(chosen)
         self.phase = PHASE_SUMMONING
-        self.log("Gegner wechselt in die BeschwÃ¶rungsphase.")
+        self.log("Gegner wechselt in die Beschwoerungsphase.")
         return
     if kind == "cast_spell":
         card = next((card for card in self.ai_player.hand if card.instance_id == action["card_id"]), None)
@@ -420,12 +420,12 @@ def persist_game_results_once(self) -> None:
         f"Zuege: {row['turns_played']}",
         f"Lebenspunkte: Spieler {row['human_life_end']} | Gegner {row['ai_life_end']}",
         f"Ausgespielte Kreaturen: Spieler {row['human_creatures_played']} | Gegner {row['ai_creatures_played']}",
-        f"Kreaturen-KÃ¤mpfe: {row['creature_combats']}",
+        f"Kreaturen-Kaempfe: {row['creature_combats']}",
         f"Zerstoerte Kreaturen: Spieler {row['human_creatures_destroyed']} | Gegner {row['ai_creatures_destroyed']}",
         f"Spielerschaden: Spieler {row['human_player_damage_dealt']} | Gegner {row['ai_player_damage_dealt']}",
-                f"Durchschnittliche WÃ¼rfelvergleiche: {row['avg_dice_comparisons_per_combat']}",
+                f"Durchschnittliche Wuerfelvergleiche: {row['avg_dice_comparisons_per_combat']}",
         f"CSV Spielstatistik: {self.results_path}",
-        f"CSV Kreaturen-KÃ¤mpfe: {self.creature_results_path}",
+        f"CSV Kreaturen-Kaempfe: {self.creature_results_path}",
     ]
     self.game_over_summary_lines = summary
     print("\nSpielende")
@@ -435,9 +435,9 @@ def persist_game_results_once(self) -> None:
 
 def current_prompt(self) -> str:
     if self.pending_ai_action is not None:
-        return self.pending_ai_action.get("description", "Gegnerische Aktion wartet auf BestÃ¤tigung.")
+        return self.pending_ai_action.get("description", "Gegnerische Aktion wartet auf Bestaetigung.")
     if self.phase == PHASE_MULLIGAN:
-        return "WÃ¤hle Karten fÃ¼r den Mulligan oder behalte die Starthand."
+        return "Waehle Karten fuer den Mulligan oder behalte die Starthand."
     if self.phase == PHASE_RESOURCE:
         return "Lege bis zu 2 Handkarten als Ressource."
     if self.phase == PHASE_SUMMONING:
@@ -447,48 +447,48 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_RECYCLE_PAYMENT:
         pending = self.pending_recycle_payment
         if pending is None:
-            return "WÃ¤hle Recycle-Ressourcen aus."
+            return "Waehle Recycle-Ressourcen aus."
         card = next((existing for existing in self.active_player.hand if existing.instance_id == pending.card_instance_id), None)
         card_name = card.template.name if card is not None else "die Karte"
         return (
-            f"WÃ¤hle {pending.required_count} Ressourcen fÃ¼r {card_name}. "
-            f"AusgewÃ¤hlt: {len(pending.selected_resource_ids)}/{pending.required_count}."
+            f"Waehle {pending.required_count} Ressourcen fuer {card_name}. "
+            f"Ausgewaehlt: {len(pending.selected_resource_ids)}/{pending.required_count}."
         )
     if self.phase == PHASE_FORCED_DISCARD:
         pending = self.pending_forced_discard
         if pending is None:
-            return "WÃ¤hle Handkarten zum Abwerfen."
+            return "Waehle Handkarten zum Abwerfen."
         return (
-            f"WÃ¤hle {pending.required_count} Handkarte(n) fÃ¼r {pending.source_card_name}. "
-            f"AusgewÃ¤hlt: {len(pending.selected_card_ids)}/{pending.required_count}."
+            f"Waehle {pending.required_count} Handkarte(n) fuer {pending.source_card_name}. "
+            f"Ausgewaehlt: {len(pending.selected_card_ids)}/{pending.required_count}."
         )
     if self.phase == PHASE_DECLARE_ATTACKERS:
         if self.selected_provoke_attacker_id is not None:
             attacker = self.get_unit_by_id(self.selected_provoke_attacker_id)
             if attacker is not None and attacker.has_ability(Ability.PROVOKE):
-                return f"WÃ¤hle Angreifer. {attacker.name} kann eine gegnerische Kreatur provozieren."
-        return "WÃ¤hle Angreifer und bestÃ¤tige."
+                return f"Waehle deine Angreifer. {attacker.name} kann eine gegnerische Kreatur provozieren."
+        return "Waehle deine Angreifer."
     if self.phase == PHASE_DECLARE_BLOCKERS:
-        return "WÃ¤hle einen Angreifer und ordne dann eigene Blocker zu."
+        return "Waehle einen Angreifer und ordne dann eigene Blocker zu."
     if self.phase == PHASE_REACTION:
         trigger = self.get_reaction_window_title()
         detail = self.get_reaction_window_description()
         player = self.get_player_by_id(self.reaction_priority_player_id) if self.reaction_priority_player_id is not None else None
         name = player.name if player is not None else "-"
-        return f"{trigger}. {detail} {name} ist als NÃ¤chstes mit Reagieren oder Passen am Zug."
+        return f"{trigger}. {detail} {name} ist als Naechstes mit Reagieren oder Passen am Zug."
     if self.phase == PHASE_ORDER_BLOCKERS:
-        return "Lege die Reihenfolge fÃ¼r mehrere Blocker fest."
+        return "Lege die Reihenfolge fuer mehrere Blocker fest."
     if self.phase == PHASE_DICE_BATTLE:
         if self.pending_dice_battle is not None and self.pending_dice_battle.pending_comparison is not None:
-            return "Anpassung ist mÃ¶glich. Entscheide Ã¼ber Neu WÃ¼rfeln oder AuflÃ¶sen."
-        return "WÃ¤hle deinen WÃ¼rfel fÃ¼r den aktuellen Vergleich."
+            return "Anpassung ist moeglich. Entscheide ueber Neu Wuerfeln oder Aufloesen."
+        return "Waehle deinen Wuerfel fuer den aktuellen Vergleich."
     return self.game_over_text
 
 
 def get_button_specs(self) -> List[ButtonSpec]:
     if self.phase == PHASE_MULLIGAN:
         return [
-            ButtonSpec("Mulligan bestÃ¤tigen", True, "confirm_mulligan"),
+            ButtonSpec("Weiter", True, "confirm_mulligan"),
             ButtonSpec("Hand behalten", True, "keep_mulligan"),
         ]
     if self.phase == PHASE_GAME_OVER:
@@ -496,7 +496,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
             ButtonSpec("Neue Partie", True, "new_game"),
         ]
     if self.pending_ai_action is not None:
-        return [ButtonSpec("BestÃ¤tigen", True, "confirm_ai_action")]
+        return [ButtonSpec("Weiter", True, "confirm_ai_action")]
 
     human_response_phases = {
         PHASE_DECLARE_BLOCKERS,
@@ -521,7 +521,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
 
     buttons: List[ButtonSpec] = []
     if self.phase == PHASE_RESOURCE:
-        buttons.append(ButtonSpec("Zur BeschwÃ¶rungsphase", True, "to_summoning"))
+        buttons.append(ButtonSpec("Zur Beschwoerungsphase", True, "to_summoning"))
     elif self.phase == PHASE_SUMMONING:
         if self.available_attackers(self.active_player):
             buttons.append(ButtonSpec("Kampfphase", True, "to_combat"))
@@ -538,30 +538,30 @@ def get_button_specs(self) -> List[ButtonSpec]:
         ):
             buttons.append(ButtonSpec("Schnell", True, "choose_tailwind_haste"))
             buttons.append(ButtonSpec("Fliegend", True, "choose_tailwind_flying"))
-        buttons.append(ButtonSpec("Zauber bestÃ¤tigen", self.pending_spell_ready(), "confirm_spell_target"))
+        buttons.append(ButtonSpec("Weiter", self.pending_spell_ready(), "confirm_spell_target"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_spell_target"))
     elif self.phase == PHASE_RECYCLE_PAYMENT:
         ready = (
             self.pending_recycle_payment is not None
             and len(self.pending_recycle_payment.selected_resource_ids) == self.pending_recycle_payment.required_count
         )
-        buttons.append(ButtonSpec("Recycle bestÃ¤tigen", ready, "confirm_recycle"))
+        buttons.append(ButtonSpec("Weiter", ready, "confirm_recycle"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_recycle"))
     elif self.phase == PHASE_FORCED_DISCARD:
         ready = (
             self.pending_forced_discard is not None
             and len(self.pending_forced_discard.selected_card_ids) == self.pending_forced_discard.required_count
         )
-        buttons.append(ButtonSpec("Abwurf bestÃ¤tigen", ready, "confirm_forced_discard"))
+        buttons.append(ButtonSpec("Weiter", ready, "confirm_forced_discard"))
     elif self.phase == PHASE_DECLARE_ATTACKERS:
         attacker_count = len(self.selected_attackers)
-        attack_label = "Angriff Ã¼berspringen" if attacker_count <= 0 else f"{attacker_count} Angreifer bestÃ¤tigen"
+        attack_label = "Angriff ueberspringen" if attacker_count <= 0 else "Weiter"
         buttons.append(ButtonSpec(attack_label, True, "confirm_attackers"))
     elif self.phase == PHASE_DECLARE_BLOCKERS:
         blocker_count = sum(len(blocker_ids) for blocker_ids in self.block_assignments.values())
-        block_label = "Blocken Ã¼berspringen" if blocker_count <= 0 else f"{blocker_count} Blocker bestÃ¤tigen"
+        block_label = "Blocken ueberspringen" if blocker_count <= 0 else "Weiter"
         buttons.append(ButtonSpec(block_label, True, "confirm_blocks"))
-        buttons.append(ButtonSpec("Blocker lÃ¶schen", True, "clear_blocks"))
+        buttons.append(ButtonSpec("Block entfernen", True, "clear_blocks"))
     elif self.phase == PHASE_ORDER_BLOCKERS:
         ready = self.pending_order is not None and len(self.pending_order.chosen_order) == len(self.pending_order.blocker_ids)
         buttons.append(ButtonSpec("Reihenfolge speichern", ready, "confirm_order"))
@@ -571,7 +571,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
             buttons.append(ButtonSpec("Anpassung nutzen", True, "use_adaptation"))
             buttons.append(ButtonSpec("Vergleich werten", True, "resolve_comparison"))
         if self.pending_dice_battle is not None and self.pending_dice_battle.resolution_complete:
-            button_label = "NÃ¤chster Kampf" if self.has_more_dice_battles_after_current() else "Kampf abschlieÃen"
+            button_label = "Naechster Kampf" if self.has_more_dice_battles_after_current() else "Kampf abschliessen"
             buttons.append(ButtonSpec(button_label, True, "end_dice_battle"))
     elif self.phase == PHASE_REACTION:
         buttons.append(ButtonSpec("Passen", True, "pass_reaction"))

@@ -35,9 +35,9 @@ def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_RESOURCE:
         return "Ressource"
     if phase == PHASE_SUMMONING:
-        return "Beschwörung"
-    if phase == "Recycle auswählen":
-        return "Beschwörung"
+        return "Beschwoerung"
+    if phase == "Recycle auswaehlen":
+        return "Beschwoerung"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
     return phase
@@ -158,9 +158,9 @@ def get_spell_target_summary(self, card) -> str:
     if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         return "Eigene Kreatur und gegnerische Kreatur"
     if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        return "Eigene kämpfende Kreatur"
+        return "Eigene kaempfende Kreatur"
     if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-        return "Unbenutzter eigener Kampfwürfel"
+        return "Unbenutzter eigener Kampfwuerfel"
     if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
         return "Aktueller ungeblockter Angreifer"
     if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
@@ -174,7 +174,7 @@ def get_spell_target_summary(self, card) -> str:
     if mode_name == "CREATURE":
         return "Beliebige Kreatur"
     if mode_name == "CREATURE_OR_PLAYER":
-        return "Beliebige Kreatur oder Beschwörer"
+        return "Beliebige Kreatur oder Beschwoerer"
     return str(target_mode.value)
 
 
@@ -197,7 +197,7 @@ def format_target_ref(self, target) -> str:
         return creature.name if creature is not None else "Kreatur nicht mehr im Spiel"
     if target.target_type == "die":
         role = "Angreifer" if target.die_role == "attacker" else "Blocker"
-        return f"{role}-Würfel {0 if target.die_index is None else target.die_index + 1}"
+        return f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}"
     return target.target_type
 
 
@@ -208,7 +208,7 @@ def get_pending_target_summary(self) -> str:
     chosen: list[str] = []
     if pending.selected_sacrifice_creature_id is not None:
         creature = self.engine.get_unit_by_id(pending.selected_sacrifice_creature_id)
-        chosen.append(f"Opfer: {creature.name if creature is not None else 'ausgewählt'}")
+        chosen.append(f"Opfer: {creature.name if creature is not None else 'ausgewaehlt'}")
     for target in pending.selected_targets:
         chosen.append(f"Ziel: {self.format_target_ref(target)}")
     if pending.selected_recycle_resource_ids:
@@ -218,7 +218,7 @@ def get_pending_target_summary(self) -> str:
         )
     if pending.selected_keyword_ability is not None:
         chosen.append(f"Effekt: {pending.selected_keyword_ability.value}")
-    return " | ".join(chosen) if chosen else "Noch nichts ausgewählt"
+    return " | ".join(chosen) if chosen else "Noch nichts ausgewaehlt"
 
 
 def get_stack_lines(self) -> list[str]:

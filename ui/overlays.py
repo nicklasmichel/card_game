@@ -16,7 +16,7 @@ def draw_mulligan_overlay(self) -> None:
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
     self.blit_text(self.title_font, "Starthand und Mulligan", TEXT_COLOR, panel.x + 30, panel.y + 26)
-    self.blit_text(self.font, "Klicke beliebige Karten an, um sie einmalig ins Deck zurÃ¼ckzumischen und neu zu ziehen.", MUTED_TEXT, panel.x + 30, panel.y + 58)
+    self.blit_text(self.font, "Klicke beliebige Karten an, um sie einmalig ins Deck zurueckzumischen und neu zu ziehen.", MUTED_TEXT, panel.x + 30, panel.y + 58)
     for index, card in enumerate(self.engine.human_player.hand):
         mulligan_step = self.card_width + 32
         rect = self.draw_hand_card(card, panel.x + 30 + index * mulligan_step, panel.y + 140, card.instance_id in self.engine.selected_hand_ids)
@@ -32,8 +32,8 @@ def draw_block_order_overlay(self) -> None:
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
     attacker = self.engine.get_unit_by_id(self.engine.pending_order.attacker_id)
     name = attacker.name if attacker is not None else "Angreifer"
-    self.blit_text(self.title_font, f"Blockreihenfolge fÃ¼r {name}", TEXT_COLOR, panel.x + 26, panel.y + 28)
-    self.blit_text(self.font, "Klicke die Blocker in der gewÃ¼nschten Reihenfolge an.", MUTED_TEXT, panel.x + 26, panel.y + 62)
+    self.blit_text(self.title_font, f"Blockreihenfolge fuer {name}", TEXT_COLOR, panel.x + 26, panel.y + 28)
+    self.blit_text(self.font, "Klicke die Blocker in der gewuenschten Reihenfolge an.", MUTED_TEXT, panel.x + 26, panel.y + 62)
     for index, blocker_id in enumerate(self.engine.pending_order.blocker_ids):
         blocker = self.engine.get_unit_by_id(blocker_id)
         if blocker is None:
@@ -77,9 +77,11 @@ def draw_dice_battle_overlay(self) -> None:
     attacker = self.engine.get_unit_by_id(battle.attacker_id) or battle.attacker_snapshot
     blocker = self.engine.get_unit_by_id(battle.blocker_id) or battle.blocker_snapshot
     attacker_owner = self.engine.get_player_by_id(battle.attacker_owner)
-    human_is_attacker = battle.attacker_owner == self.engine.human_player.player_id
-    human_dice = battle.attacker_dice if human_is_attacker else battle.blocker_dice
-    enemy_dice = battle.blocker_dice if human_is_attacker else battle.attacker_dice
+    blocker_owner = self.engine.get_player_by_id(battle.blocker_owner)
+    attacker_is_human = battle.attacker_owner == self.engine.human_player.player_id
+    blocker_is_human = battle.blocker_owner == self.engine.human_player.player_id
+    attacker_dice = battle.attacker_dice
+    blocker_dice = battle.blocker_dice
     pending_spell = self.engine.pending_spell_cast
     pending_card = self.engine.get_card_from_pending_spell(pending_spell) if pending_spell is not None else None
     selecting_combat_die = (
@@ -91,8 +93,8 @@ def draw_dice_battle_overlay(self) -> None:
         }
     )
 
-    attacker_surface = self.build_preview_creature_surface(attacker, battle.attacker_owner == self.engine.human_player.player_id, attacking=True)
-    blocker_surface = self.build_preview_creature_surface(blocker, battle.blocker_owner == self.engine.human_player.player_id)
+    attacker_surface = self.build_preview_creature_surface(attacker, attacker_is_human, attacking=True)
+    blocker_surface = self.build_preview_creature_surface(blocker, blocker_is_human)
     card_y = panel.y + 84
     attacker_rect = attacker_surface.get_rect(topleft=(panel.x + 56, card_y))
     blocker_rect = blocker_surface.get_rect(topright=(panel.right - 56, card_y))
@@ -108,7 +110,7 @@ def draw_dice_battle_overlay(self) -> None:
     if getattr(attacker_owner, "attackers_die_bonus_this_turn", 0) > 0:
         self.blit_text(
             self.font,
-            f"Sturmformation aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre WÃ¼rfelergebnisse.",
+            f"Sturmformation aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre Wuerfelergebnisse.",
             HIGHLIGHT,
             panel.x + 56,
             panel.y + 52,
@@ -120,66 +122,73 @@ def draw_dice_battle_overlay(self) -> None:
     column_width = (middle_width - column_gap) // 2
     left_column_x = middle_x
     right_column_x = middle_x + column_width + column_gap
-    human_column_x = left_column_x if human_is_attacker else right_column_x
-    enemy_column_x = right_column_x if human_is_attacker else left_column_x
-    dice_title_y = panel.y + 84
+    dice_panel_y = attacker_rect.bottom + 18
+    content_start_y = dice_panel_y + 58
+    side_panel_height = max(len(attacker_dice), len(blocker_dice)) * 58 + 98
+    attacker_panel_rect = pygame.Rect(left_column_x - 10, dice_panel_y, column_width + 20, side_panel_height)
+    blocker_panel_rect = pygame.Rect(right_column_x - 10, dice_panel_y, column_width + 20, side_panel_height)
+    pygame.draw.rect(self.screen, (78, 58, 52), attacker_panel_rect, border_radius=8)
+    pygame.draw.rect(self.screen, CARD_BORDER, attacker_panel_rect, 2, border_radius=8)
+    pygame.draw.rect(self.screen, (52, 86, 138), blocker_panel_rect, border_radius=8)
+    pygame.draw.rect(self.screen, CARD_BORDER, blocker_panel_rect, 2, border_radius=8)
+    self.blit_text(self.title_font, f"{attacker_owner.name} greift an", TEXT_COLOR, attacker_panel_rect.x + 12, attacker_panel_rect.y + 10)
+    self.blit_text(self.title_font, f"{blocker_owner.name} blockt", TEXT_COLOR, blocker_panel_rect.x + 12, blocker_panel_rect.y + 10)
 
-    def row_text_for_human(die, round_number: int) -> str:
+    def row_text_for_side(die, round_number: int, owner_is_human: bool, current_die) -> str:
         if die.comparison_label:
             return die.comparison_label
-        if battle.pending_comparison is not None:
-            current_human_die = (
-                battle.pending_comparison.attacker_die if human_is_attacker else battle.pending_comparison.blocker_die
-            )
-            if die is current_human_die:
-                return f"{die.display()} | Runde {round_number}: Offen"
-        return die.display()
+        if current_die is not None and die is current_die:
+            return f"{die.display()} | Runde {round_number}: Offen"
+        return die.display() if owner_is_human else "Verdeckt"
 
-    def row_text_for_enemy(die, round_number: int) -> str:
-        if die.comparison_label:
-            return die.comparison_label
-        if battle.pending_comparison is not None:
-            current_enemy_die = (
-                battle.pending_comparison.blocker_die if human_is_attacker else battle.pending_comparison.attacker_die
-            )
-            if die is current_enemy_die:
-                return f"{die.display()} | Runde {round_number}: Offen"
-        return "Verdeckt"
+    current_attacker_die = battle.pending_comparison.attacker_die if battle.pending_comparison is not None else None
+    current_blocker_die = battle.pending_comparison.blocker_die if battle.pending_comparison is not None else None
 
-    for index, die in enumerate(human_dice):
+    for index, die in enumerate(attacker_dice):
         rect = pygame.Rect(
-            human_column_x,
-            dice_title_y + 42 + index * 58,
+            left_column_x,
+            content_start_y + index * 58,
             column_width,
             46,
         )
         pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, row_text_for_human(die, index + 1), TEXT_COLOR, rect.x + 10, rect.y + 11)
-        if not die.used and (battle.pending_comparison is None or selecting_combat_die):
-            available_index = len([existing for existing in human_dice[:index] if not existing.used])
+        self.blit_text(self.font, row_text_for_side(die, index + 1, attacker_is_human, current_attacker_die), TEXT_COLOR, rect.x + 10, rect.y + 11)
+        if attacker_is_human and not die.used and (battle.pending_comparison is None or selecting_combat_die):
+            available_index = len([existing for existing in attacker_dice[:index] if not existing.used])
             self.click_targets["human_dice"].append((rect, available_index))
             if selecting_combat_die:
                 pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=6)
 
-    for index, die in enumerate(enemy_dice):
+    for index, die in enumerate(blocker_dice):
         rect = pygame.Rect(
-            enemy_column_x,
-            dice_title_y + 42 + index * 58,
+            right_column_x,
+            content_start_y + index * 58,
             column_width,
             46,
         )
         pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, row_text_for_enemy(die, index + 1), TEXT_COLOR, rect.x + 10, rect.y + 11)
+        self.blit_text(self.font, row_text_for_side(die, index + 1, blocker_is_human, current_blocker_die), TEXT_COLOR, rect.x + 10, rect.y + 11)
+        if blocker_is_human and not die.used and (battle.pending_comparison is None or selecting_combat_die):
+            available_index = len([existing for existing in blocker_dice[:index] if not existing.used])
+            self.click_targets["human_dice"].append((rect, available_index))
+            if selecting_combat_die:
+                pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=6)
 
     if battle.pending_comparison is not None:
         attacker_die = battle.pending_comparison.attacker_die
         blocker_die = battle.pending_comparison.blocker_die
-        info_y = dice_title_y + 42 + max(len(human_dice), len(enemy_dice)) * 58 + 12
-        self.blit_text(self.font, f"Aufgedeckt: {attacker.name} {attacker_die.display()} | {blocker.name} {blocker_die.display()}", TEXT_COLOR, human_column_x, info_y)
+        info_y = content_start_y + max(len(attacker_dice), len(blocker_dice)) * 58 + 12
+        self.blit_text(
+            self.font,
+            f"Aufgedeckt: {attacker.name} {attacker_die.display()} | {blocker.name} {blocker_die.display()}",
+            TEXT_COLOR,
+            left_column_x,
+            info_y,
+        )
         if battle.pending_comparison.human_can_adapt:
-            self.blit_text(self.small_font, "Anpassung kann jetzt eingesetzt werden.", MUTED_TEXT, human_column_x, info_y + 28)
+            self.blit_text(self.small_font, "Anpassung kann jetzt eingesetzt werden.", MUTED_TEXT, left_column_x, info_y + 28)
 
 
 def draw_game_over_overlay(self) -> None:
@@ -244,7 +253,7 @@ def draw_reaction_context_boxes(self, preview_panel_rect: pygame.Rect) -> None:
                             target_parts.append(creature.name if creature is not None else "Kreatur nicht mehr im Spiel")
                         elif target.target_type == "die":
                             role = "Angreifer" if target.die_role == "attacker" else "Blocker"
-                            target_parts.append(f"{role}-Würfel {0 if target.die_index is None else target.die_index + 1}")
+                            target_parts.append(f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}")
                         else:
                             target_parts.append(target.target_type)
                     target_text = ", ".join(target_parts)

@@ -85,7 +85,7 @@ AIR_CREATURES = [
         vw=3,
         element=Element.AIR,
         abilities=frozenset({Ability.FLYING}),
-        rules_text="Wenn diese Kreatur Spielerschaden zufügt, ziehe 1 Karte.",
+        rules_text="Wenn diese Kreatur Spielerschaden zufuegt, ziehe 1 Karte.",
         draw_on_player_damage=1,
     ),
     CardTemplate(
@@ -96,12 +96,12 @@ AIR_CREATURES = [
         vw=2,
         element=Element.AIR,
         abilities=frozenset({Ability.HASTE}),
-        rules_text="Stirbt eine andere schnelle Kreatur von dir im Kampf, nimm sie auf deine Hand zurück.",
+        rules_text="Stirbt eine andere schnelle Kreatur von dir im Kampf, nimm sie auf deine Hand zurueck.",
         return_other_own_haste_on_combat_death=True,
     ),
     CardTemplate(
         template_id="air_creature_orkanfuerst",
-        name="Orkanfürst",
+        name="Orkanfuerst",
         cost=CardCost(resources=4, recycle=2),
         aw=2,
         vw=3,

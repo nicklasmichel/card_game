@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.models import CardType, PHASE_RESOURCE, PHASE_SUMMONING
+from core.models import CardType, PHASE_REACTION, PHASE_RESOURCE, PHASE_SUMMONING
 from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
 
 
@@ -85,24 +85,35 @@ def can_drop_on_resource_area(self, position: tuple[int, int]) -> bool:
 
 
 def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
-    if (
-        self.engine.phase != PHASE_SUMMONING
-        or not self.engine.active_player.is_human
-        or self.engine.pending_recycle_payment is not None
-    ):
+    if self.engine.pending_recycle_payment is not None:
         return False
     target_card_id = self.dragged_hand_card_id if card_id is None else card_id
     if target_card_id is None:
         return False
-    card = next(
-        (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
-        None,
-    )
-    return (
-        card is not None
-        and card.template.card_type in {CardType.CREATURE, CardType.RITUAL, CardType.SPELL}
-        and self.engine.can_play_card(self.engine.active_player, card)
-    )
+    if self.engine.phase == PHASE_SUMMONING and self.engine.active_player.is_human:
+        card = next(
+            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
+            None,
+        )
+        return (
+            card is not None
+            and card.template.card_type in {CardType.CREATURE, CardType.RITUAL, CardType.SPELL}
+            and self.engine.can_play_card(self.engine.active_player, card)
+        )
+    if (
+        self.engine.phase == PHASE_REACTION
+        and self.engine.reaction_priority_player_id == self.engine.human_player.player_id
+    ):
+        card = next(
+            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
+            None,
+        )
+        return (
+            card is not None
+            and card.template.card_type in {CardType.RITUAL, CardType.SPELL}
+            and self.engine.can_react_with_card(self.engine.human_player, card)
+        )
+    return False
 
 
 def can_drop_on_creature_area(self, position: tuple[int, int]) -> bool:

@@ -14,7 +14,7 @@ WATER_CREATURES = [
     ),
     CardTemplate(
         template_id="water_creature_kuestenkaempfer",
-        name="Küstenkämpfer",
+        name="Kuestenkaempfer",
         cost=CardCost(resources=2),
         aw=2,
         vw=2,
@@ -57,7 +57,7 @@ WATER_CREATURES = [
     ),
     CardTemplate(
         template_id="water_creature_tiefenjaeger",
-        name="Tiefenjäger",
+        name="Tiefenjaeger",
         cost=CardCost(resources=5),
         aw=5,
         vw=4,

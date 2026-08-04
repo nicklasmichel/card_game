@@ -158,9 +158,8 @@ def build_full_art_card_surface(
         blit_text_with_shadow(base, number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
     recycle_icon_gap = 0
     recycle_icon_size = s(22)
-    recycle_width = cost_value.recycle * recycle_icon_size + max(0, cost_value.recycle - 1) * recycle_icon_gap
-    recycle_x = (self.card_width - recycle_width) // 2
-    recycle_y = self.card_height - s(25)
+    recycle_x = s(10)
+    recycle_y = keyword_y + s(2)
     for recycle_index in range(cost_value.recycle):
         icon_rect = pygame.Rect(
             recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),

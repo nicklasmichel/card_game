@@ -15,7 +15,7 @@ FIRE_RITUALS = [
         spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=2,
-        rules_text="Füge 1 Kreatur 2 Schaden zu.",
+        rules_text="Fuege 1 Kreatur 2 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_ritual_feuerball",
@@ -28,7 +28,7 @@ FIRE_RITUALS = [
         spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER,
         target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
         spell_amount=3,
-        rules_text="Füge 1 Kreatur / Spieler 3 Schaden zu.",
+        rules_text="Fuege 1 Kreatur / Spieler 3 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_ritual_flammenwelle",
@@ -41,7 +41,7 @@ FIRE_RITUALS = [
         spell_effect=SpellEffect.DEAL_DAMAGE_TO_ALL_ENEMY_CREATURES,
         target_mode=SpellTargetMode.NONE,
         spell_amount=1,
-        rules_text="Füge allen gegnerischen Kreaturen 1 Schaden zu.",
+        rules_text="Fuege allen gegnerischen Kreaturen 1 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_ritual_brandopfer",
@@ -54,7 +54,7 @@ FIRE_RITUALS = [
         spell_effect=SpellEffect.SACRIFICE_FOR_DAMAGE,
         target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
         sacrifice_own_creature_on_cast=True,
-        rules_text="Opfere 1 eigene Kreatur. Füge 1 Kreatur / Spieler Schaden in Höhe ihres AW zu.",
+        rules_text="Opfere 1 eigene Kreatur. Fuege 1 Kreatur / Spieler Schaden in Hoehe ihres AW zu.",
     ),
     CardTemplate(
         template_id="fire_ritual_verbotene_glut",

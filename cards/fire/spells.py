@@ -24,7 +24,7 @@ FIRE_SPELLS = [
         reaction_trigger=ReactionTrigger.AFTER_DICE_REVEALED,
         target_mode=SpellTargetMode.NONE,
         spell_amount=3,
-        rules_text="Erhöhe das Ergebnis deines Würfels in diesem Vergleich um 3.",
+        rules_text="Erhoehe das Ergebnis deines Wuerfels in diesem Vergleich um 3.",
     ),
     CardTemplate(
         template_id="fire_spell_letzter_funke",
@@ -38,7 +38,7 @@ FIRE_SPELLS = [
         reaction_trigger=ReactionTrigger.OWN_CREATURE_DESTROYED,
         target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
         spell_amount=2,
-        rules_text="Füge einer Kreatur oder einem Spieler 2 Schaden zu.",
+        rules_text="Fuege einer Kreatur oder einem Spieler 2 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_brandzeichen",
@@ -52,7 +52,7 @@ FIRE_SPELLS = [
         reaction_trigger=ReactionTrigger.BLOCKER_DECLARED,
         target_mode=SpellTargetMode.NONE,
         spell_amount=1,
-        rules_text="Füge dem deklarierten Blocker 1 Schaden zu.",
+        rules_text="Fuege dem deklarierten Blocker 1 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_gegenfeuer",
@@ -66,7 +66,7 @@ FIRE_SPELLS = [
         reaction_trigger=ReactionTrigger.OWN_CREATURE_TARGETED,
         target_mode=SpellTargetMode.NONE,
         spell_amount=2,
-        rules_text="Füge dem gegnerischen Spieler 2 Schaden zu.",
+        rules_text="Fuege dem gegnerischen Spieler 2 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_flammenzorn",
@@ -80,6 +80,6 @@ FIRE_SPELLS = [
         reaction_trigger=ReactionTrigger.OWN_CREATURE_DAMAGED_IN_DICE_COMPARISON,
         target_mode=SpellTargetMode.NONE,
         spell_amount=1,
-        rules_text="Die gegnerische Kreatur in diesem Würfelvergleich erleidet 1 Schaden.",
+        rules_text="Die gegnerische Kreatur in diesem Wuerfelvergleich erleidet 1 Schaden.",
     ),
 ]

@@ -56,7 +56,7 @@ def begin_forced_discard(self, target_player: PlayerState, count: int, source_ca
     )
     self.phase = PHASE_FORCED_DISCARD
     self.selected_hand_ids.clear()
-    self.log(f"WÃ¤hle {required_count} Handkarte(n), die du durch {source_card_name} abwerfen musst.")
+    self.log(f"Waehle {required_count} Handkarte(n), die du durch {source_card_name} abwerfen musst.")
     return True
 
 
@@ -73,7 +73,7 @@ def toggle_forced_discard_selection(self, card_id: int) -> None:
     elif len(pending.selected_card_ids) < pending.required_count:
         pending.selected_card_ids.append(card_id)
     else:
-        self.log("Es wurden bereits genug Handkarten zum Abwerfen ausgewÃ¤hlt.")
+        self.log("Es wurden bereits genug Handkarten zum Abwerfen ausgewaehlt.")
         return
     self.selected_hand_ids = list(pending.selected_card_ids)
 
@@ -85,11 +85,11 @@ def confirm_forced_discard(self) -> None:
     if pending.target_player_id != self.human_player.player_id:
         return
     if len(pending.selected_card_ids) != pending.required_count:
-        self.log("WÃ¤hle genau die benÃ¶tigte Anzahl an Handkarten zum Abwerfen.")
+        self.log("Waehle genau die benoetigte Anzahl an Handkarten zum Abwerfen.")
         return
     cards = [card for card in self.human_player.hand if card.instance_id in pending.selected_card_ids]
     if len(cards) != pending.required_count:
-        self.log("Mindestens eine ausgewÃ¤hlte Handkarte ist nicht mehr verfÃ¼gbar.")
+        self.log("Mindestens eine ausgewaehlte Handkarte ist nicht mehr verfuegbar.")
         return
     self.discard_cards(self.human_player, cards, pending.source_card_name)
     self.pending_forced_discard = None
@@ -203,7 +203,7 @@ def handle_action(self, action: str) -> None:
         self.finish_block_assignment()
     elif action == "reset_order" and self.pending_order is not None:
         self.pending_order.chosen_order.clear()
-        self.log("Blockreihenfolge zurÃ¼ckgesetzt.")
+        self.log("Blockreihenfolge zurueckgesetzt.")
     elif action == "confirm_order":
         self.confirm_block_order()
     elif action == "use_adaptation":

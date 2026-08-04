@@ -204,7 +204,7 @@ SPECIALIZED_AIR_CREATURE_HANDLERS: tuple[AirCreatureHandler, ...] = (
     ),
     SimpleAirCreatureHandler(
         template_id="air_creature_wolkenkrieger",
-        guideline="Fr?her Schnell-Angreifer mit Angriffspflicht. Nur ausspielen, wenn der n?chste Angriff nicht absehbar nutzlos ist.",
+        guideline="Frssher Schnell-Angreifer mit Angriffspflicht. Nur ausspielen, wenn der nsschste Angriff nicht absehbar nutzlos ist.",
         adjuster=_wolkenkrieger,
     ),
     SimpleAirCreatureHandler(
