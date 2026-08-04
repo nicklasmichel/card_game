@@ -278,7 +278,7 @@ def execute_prepared_ai_action(self) -> None:
         return
     if kind == "declare_blocks":
         self.ai_assign_blocks()
-        self.begin_combat_resolution()
+        self.finish_block_assignment()
         return
 
 

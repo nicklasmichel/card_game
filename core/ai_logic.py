@@ -3,7 +3,7 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, ReactionTrigger, SpellEffect, PlayerState, SpellTargetRef
+from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_REACTION, PHASE_SPELL_TARGETING, ReactionTrigger, SpellEffect, PlayerState, SpellTargetRef
 
 
 class RandomDieStrategy:
@@ -45,6 +45,7 @@ class SimpleAI:
         self.rng = rng
         self._committed_air_plan: dict | None = None
         self._planned_rueckenwind_target_id: int | None = None
+        self._planned_turbulenz_target_ids: list[int] = []
         self._planned_attacker_ids: list[int] = []
 
     def has_valid_spell_targets(self, player: PlayerState, engine, card: CardInstance) -> bool:
@@ -58,6 +59,8 @@ class SimpleAI:
             return bool(player.battlefield) and (bool(enemy.battlefield) or enemy.life > 0)
         if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             return bool(player.battlefield or enemy.battlefield)
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+            return engine.has_valid_boeenschub_target(player)
         if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
             return bool(player.battlefield or enemy.battlefield)
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
@@ -66,11 +69,11 @@ class SimpleAI:
             return bool(player.battlefield or enemy.battlefield)
         if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
             return engine.has_valid_ausweichen_target(player)
-        if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-            return engine.has_valid_combat_die_target(player)
+        if effect == SpellEffect.REROLL_OPEN_DIE:
+            return engine.has_valid_open_die_target()
         if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-            pending = engine.pending_direct_attack
-            return pending is not None and pending.attacker_owner == player.player_id
+            enemy = engine.players[1 - player.player_id]
+            return bool(self._current_windrausch_attackers(player, engine)) or self._find_probable_unblocked_damage(player, enemy, list(player.hand)) > 0
         return True
 
     def mulligan_indices(self, hand: List[CardInstance]) -> List[int]:
@@ -155,8 +158,8 @@ class SimpleAI:
             interactive_templates = {
                 SpellEffect.RETURN_TWO_CREATURES_TO_HAND,
                 SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND,
-                SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE,
-                SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE,
+                SpellEffect.REROLL_OPEN_DIE,
+                SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
                 SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
                 SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
             }
@@ -340,6 +343,7 @@ class SimpleAI:
     def _clear_air_plan_state(self) -> None:
         self._committed_air_plan = None
         self._planned_rueckenwind_target_id = None
+        self._planned_turbulenz_target_ids = []
         self._planned_attacker_ids = []
 
     def _get_air_turn_key(self, player: PlayerState, engine) -> tuple[int, int, int]:
@@ -363,6 +367,7 @@ class SimpleAI:
             "sequence": list(plan.get("sequence", [])),
         }
         self._planned_rueckenwind_target_id = plan.get("rueckenwind_target_id")
+        self._planned_turbulenz_target_ids = list(plan.get("turbulenz_target_ids", []))
         self._planned_attacker_ids = list(plan.get("attacker_ids", []))
 
     def _build_best_air_turn_plan(self, player: PlayerState, engine) -> dict:
@@ -386,15 +391,40 @@ class SimpleAI:
             "sequence": list(base_plan["sequence"]),
             "attacker_ids": list(base_attack["attacker_ids"]),
             "rueckenwind_target_id": None,
+            "turbulenz_target_ids": [],
         }
         for card in hand:
             if (
                 card.template.card_type not in {CardType.RITUAL, CardType.SPELL}
-                or card.template.spell_effect != SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN
+                or card.template.spell_effect not in {SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, SpellEffect.RETURN_TWO_CREATURES_TO_HAND}
                 or not engine.can_play_card(player, card)
             ):
                 continue
-            comparison = self._evaluate_air_attack_bonus_support_plan(
+            if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
+                comparison = self._evaluate_air_attack_bonus_support_plan(
+                    player,
+                    engine,
+                    card,
+                    hand=hand,
+                    available_resources=player.available_resources(),
+                    total_resources=player.total_resources(),
+                    own_creature_count=len(player.battlefield),
+                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+                )
+                if not comparison["is_useful"]:
+                    continue
+                if comparison["with_total"] <= best_total + 0.65:
+                    continue
+                best_total = comparison["with_total"]
+                best_plan = {
+                    "sequence": [card.instance_id, *comparison["continuation_sequence"]],
+                    "attacker_ids": list(comparison["attacker_ids"]),
+                    "rueckenwind_target_id": comparison["target_id"],
+                    "turbulenz_target_ids": [],
+                }
+                continue
+            comparison = self._evaluate_air_turbulenz_plan(
                 player,
                 engine,
                 card,
@@ -407,14 +437,48 @@ class SimpleAI:
             )
             if not comparison["is_useful"]:
                 continue
-            if comparison["with_total"] <= best_total + 0.65:
+            if comparison["with_total"] <= best_total + 1.0:
                 continue
             best_total = comparison["with_total"]
             best_plan = {
                 "sequence": [card.instance_id, *comparison["continuation_sequence"]],
                 "attacker_ids": list(comparison["attacker_ids"]),
-                "rueckenwind_target_id": comparison["target_id"],
+                "rueckenwind_target_id": None,
+                "turbulenz_target_ids": list(comparison["target_ids"]),
             }
+            for prefix_card in hand:
+                if prefix_card.instance_id == card.instance_id or prefix_card.template.card_type != CardType.CREATURE:
+                    continue
+                reduced_cost = max(0, prefix_card.template.resource_cost - getattr(player, "creature_cost_reduction_this_turn", 0))
+                if player.available_resources() < reduced_cost or player.total_resources() < prefix_card.template.recycle_cost:
+                    continue
+                prefix_battlefield = list(player.battlefield)
+                prefix_created = BattlefieldCreature.from_card(prefix_card)
+                prefix_created.tapped = not prefix_card.template.has_ability(Ability.HASTE)
+                prefix_created.summoning_sick = not prefix_card.template.has_ability(Ability.HASTE)
+                prefix_battlefield.append(prefix_created)
+                prefix_player = self._clone_air_shadow_player(player, prefix_battlefield)
+                prefix_hand = [existing for existing in hand if existing.instance_id != prefix_card.instance_id]
+                prefixed = self._evaluate_air_turbulenz_plan(
+                    prefix_player,
+                    engine,
+                    card,
+                    hand=prefix_hand,
+                    available_resources=player.available_resources() - reduced_cost,
+                    total_resources=player.total_resources() - prefix_card.template.recycle_cost,
+                    own_creature_count=len(prefix_battlefield),
+                    ready_attacker_count=len([creature for creature in prefix_battlefield if creature.is_ready()]),
+                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+                )
+                if not prefixed["is_useful"] or prefixed["with_total"] <= best_total + 0.65:
+                    continue
+                best_total = prefixed["with_total"]
+                best_plan = {
+                    "sequence": [prefix_card.instance_id, card.instance_id, *prefixed["continuation_sequence"]],
+                    "attacker_ids": list(prefixed["attacker_ids"]),
+                    "rueckenwind_target_id": None,
+                    "turbulenz_target_ids": list(prefixed["target_ids"]),
+                }
         return best_plan
 
     def _best_air_main_phase_plan(
@@ -581,6 +645,12 @@ class SimpleAI:
             value += 0.6
         if template.all_attackers_die_bonus > 0:
             value += 2.2
+        if template.draw_on_play > 0:
+            value += template.draw_on_play * 2.0
+        if template.draw_on_attack > 0:
+            value += template.draw_on_attack * 1.5
+        if template.draw_on_death > 0:
+            value += template.draw_on_death * 1.2
         return value
 
     def _air_main_phase_spell_has_value(
@@ -634,15 +704,42 @@ class SimpleAI:
             )
             return comparison["is_useful"]
         if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-            return len(player.hand) >= 2 and len(player.deck) >= 3
+            comparison = self._evaluate_air_sturmformation_plan(
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                own_creature_count=own_creature_count,
+                ready_attacker_count=ready_attacker_count,
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            return comparison["is_useful"]
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
             return own_creature_count + len(enemy.battlefield) >= 2
         if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            return engine.creatures_died_this_turn > 0
+            comparison = self._evaluate_air_nachwehen_plan(
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+            )
+            return comparison["is_useful"]
+        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
+            comparison = self._evaluate_air_ausweichen_plan(
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+            )
+            return comparison["is_useful"]
         if effect in {
-            SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND,
-            SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE,
-            SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE,
+            SpellEffect.REROLL_OPEN_DIE,
             SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
         }:
             return False
@@ -703,36 +800,51 @@ class SimpleAI:
             )
             return comparison["value"]
         if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-            weak_hand = sum(
-                1
-                for hand_card in remaining_hand
-                if not self._air_card_has_live_use(
-                    player,
-                    engine,
-                    hand_card,
-                    remaining_hand,
-                    available_resources,
-                    total_resources,
-                )
+            comparison = self._evaluate_air_sturmformation_plan(
+                player,
+                engine,
+                card,
+                hand=[card] + remaining_hand,
+                available_resources=available_resources + card.template.resource_cost,
+                total_resources=total_resources + card.template.recycle_cost,
+                own_creature_count=own_creature_count,
+                ready_attacker_count=ready_attacker_count,
+                creature_discount=creature_discount,
             )
-            return 0.6 + weak_hand * 0.9
+            return comparison["value"]
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            creature_values = sorted(
-                (creature.aw + creature.current_hp, owner_id)
-                for owner_id, creatures in (
-                    (player.player_id, player.battlefield),
-                    (enemy.player_id, enemy.battlefield),
-                )
-                for creature in creatures
+            comparison = self._evaluate_air_turbulenz_plan(
+                player,
+                engine,
+                card,
+                hand=[card] + remaining_hand,
+                available_resources=available_resources,
+                total_resources=total_resources + card.template.recycle_cost,
+                own_creature_count=own_creature_count,
+                ready_attacker_count=ready_attacker_count,
+                creature_discount=creature_discount,
             )
-            if len(creature_values) < 2:
-                return -2.0
-            best_two = creature_values[-2:]
-            enemy_gain = sum(value for value, owner_id in best_two if owner_id == enemy.player_id)
-            own_loss = sum(value for value, owner_id in best_two if owner_id == player.player_id)
-            return 1.0 + max(0.0, enemy_gain - own_loss) * 0.35
+            return comparison["value"]
+        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
+            comparison = self._evaluate_air_ausweichen_plan(
+                player,
+                engine,
+                card,
+                hand=[card] + remaining_hand,
+                available_resources=available_resources + card.template.resource_cost,
+                total_resources=total_resources + card.template.recycle_cost,
+            )
+            return comparison["value"]
         if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            return engine.creatures_died_this_turn * 1.8
+            comparison = self._evaluate_air_nachwehen_plan(
+                player,
+                engine,
+                card,
+                hand=[card] + remaining_hand,
+                available_resources=available_resources,
+                total_resources=total_resources + card.template.recycle_cost,
+            )
+            return comparison["value"]
         return 0.5
 
     def _air_resource_keep_value(
@@ -925,17 +1037,59 @@ class SimpleAI:
             )
             return comparison["is_useful"]
         if template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-            return len(hand) >= 2 and len(player.deck) >= 3
+            comparison = self._evaluate_air_sturmformation_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            return comparison["is_useful"]
         if template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            return len(player.battlefield) + len(enemy.battlefield) >= 2
+            comparison = self._evaluate_air_turbulenz_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+            )
+            return comparison["is_useful"]
         if template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            return engine.has_valid_ausweichen_target(player)
-        if template.spell_effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-            return engine.has_valid_combat_die_target(player)
+            comparison = self._evaluate_air_ausweichen_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+            )
+            return comparison["is_useful"]
+        if template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
+            return engine.has_valid_open_die_target()
+        if template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+            return any(creature.is_ready() for creature in player.battlefield)
         if template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-            return self._find_probable_unblocked_damage(player, enemy, hand) > 0
+            return self._find_probable_unblocked_damage(player, enemy, hand) > 1
         if template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            return engine.creatures_died_this_turn > 0 and projected_total_resources >= template.recycle_cost
+            if projected_total_resources < template.recycle_cost:
+                return False
+            comparison = self._evaluate_air_nachwehen_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+            )
+            return comparison["value"] > 0.4
         return self.has_valid_spell_targets(player, engine, card)
 
     def _air_card_role_is_redundant(self, card: CardInstance, hand: list[CardInstance]) -> bool:
@@ -1112,6 +1266,250 @@ class SimpleAI:
             "target_id": with_attack["target_id"],
         }
 
+    def _evaluate_air_boeenschub_reaction_plan(self, player: PlayerState, engine, card: CardInstance) -> dict:
+        if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
+            return {"is_useful": False, "value": -4.0, "target_id": None}
+        if engine.reaction_context.trigger not in {
+            ReactionTrigger.AFTER_ATTACKERS_DECLARED,
+            ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+            ReactionTrigger.BEFORE_FIRST_COMBAT,
+        }:
+            return {"is_useful": False, "value": -4.0, "target_id": None}
+        if player.available_resources() < card.template.resource_cost:
+            return {"is_useful": False, "value": -4.0, "target_id": None}
+
+        enemy = engine.players[1 - player.player_id]
+        blockers_available = bool(engine.available_blockers(enemy))
+        if engine.reaction_context.trigger == ReactionTrigger.AFTER_ATTACKERS_DECLARED and blockers_available:
+            return {"is_useful": False, "value": -1.2, "target_id": None}
+
+        candidates = [creature for creature in player.battlefield if engine.has_valid_boeenschub_target(player) and creature.unit_id in engine.block_assignments]
+        best_result = {"is_useful": False, "value": -4.0, "target_id": None}
+        for creature in candidates:
+            aw = engine.get_creature_attack_value(creature)
+            blockers = [
+                engine.get_unit_by_id(blocker_id)
+                for blocker_id in engine.block_assignments.get(creature.unit_id, [])
+                if engine.get_unit_by_id(blocker_id) is not None
+            ]
+            direct_damage_gain = 0
+            lethal_gain = False
+            score = -1.8
+            if not blockers and creature.unit_id not in engine.blocked_attackers:
+                if enemy.life <= aw:
+                    continue
+                direct_damage_gain = card.template.spell_amount
+                score += direct_damage_gain * 1.5
+                if enemy.life <= aw + card.template.spell_amount and enemy.life > aw:
+                    lethal_gain = True
+                    score += 8.0
+                elif enemy.life <= (aw + card.template.spell_amount) * 2 and enemy.life > aw * 2:
+                    windrausch = next(
+                        (
+                            hand_card
+                            for hand_card in player.hand
+                            if hand_card.instance_id != card.instance_id
+                            and hand_card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE
+                            and player.available_resources() >= card.template.resource_cost + hand_card.template.resource_cost
+                        ),
+                        None,
+                    )
+                    if windrausch is not None:
+                        score += 3.2
+                if creature.has_ability(Ability.FLYING) and not any(blocker.has_ability(Ability.FLYING) for blocker in enemy.battlefield):
+                    score += 0.8
+            else:
+                kill_gain = sum(1 for blocker in blockers if aw < blocker.current_hp <= aw + card.template.spell_amount)
+                score += kill_gain * 3.5
+                score += max(0, len(blockers) - 1) * 1.4
+                if blockers:
+                    most_valuable = max(blockers, key=self._air_creature_board_value)
+                    if aw < most_valuable.current_hp <= aw + card.template.spell_amount:
+                        score += 2.5 + self._air_creature_board_value(most_valuable) * 0.25
+                    if aw >= most_valuable.current_hp:
+                        score -= 1.8
+                    elif aw + card.template.spell_amount < max(blocker.current_hp for blocker in blockers):
+                        score -= 1.2
+                if creature.current_hp <= 1 and kill_gain > 0:
+                    score += 1.2
+
+            if direct_damage_gain <= 0 and not lethal_gain and score < 1.1:
+                continue
+            result = {
+                "is_useful": True,
+                "value": score,
+                "target_id": creature.unit_id,
+            }
+            if result["value"] > best_result["value"]:
+                best_result = result
+        if not best_result["is_useful"] or best_result["value"] <= 1.1:
+            return {"is_useful": False, "value": best_result["value"], "target_id": None}
+        return best_result
+
+    def _current_windrausch_attackers(self, player: PlayerState, engine) -> list[BattlefieldCreature]:
+        context = getattr(engine, "reaction_context", None)
+        if context is None or context.trigger not in {
+            ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+            ReactionTrigger.BEFORE_FIRST_COMBAT,
+        }:
+            return []
+        return [
+            creature
+            for creature in player.battlefield
+            if creature.unit_id in engine.block_assignments and not engine.block_assignments.get(creature.unit_id)
+        ]
+
+    def _evaluate_air_windrausch_reaction_plan(self, player: PlayerState, engine, card: CardInstance) -> dict:
+        if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
+            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
+        if engine.reaction_context.trigger not in {
+            ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+            ReactionTrigger.BEFORE_FIRST_COMBAT,
+        }:
+            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
+        if player != engine.active_player:
+            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
+        if player.available_resources() < card.template.resource_cost or player.total_resources() < card.template.recycle_cost:
+            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
+
+        enemy = engine.players[1 - player.player_id]
+        attackers = self._current_windrausch_attackers(player, engine)
+        if not attackers:
+            return {"is_useful": False, "value": -4.5, "damage": 0, "is_lethal": False}
+
+        normal_damage = sum(engine.get_creature_attack_value(creature) for creature in attackers)
+        if normal_damage <= 0:
+            return {"is_useful": False, "value": -4.0, "damage": 0, "is_lethal": False}
+        if normal_damage >= enemy.life:
+            return {"is_useful": False, "value": -2.2, "damage": normal_damage, "is_lethal": True}
+
+        total_damage = normal_damage * 2
+        is_lethal = total_damage >= enemy.life
+        remaining_total_resources = player.total_resources() - card.template.recycle_cost
+        remaining_available_resources = max(0, player.available_resources() - card.template.resource_cost)
+
+        score = normal_damage * 1.55 - 4.2
+        score += max(0, len(attackers) - 1) * 1.1
+        if is_lethal:
+            score += 11.0
+        if normal_damage <= 1:
+            score -= 3.5
+        if len(attackers) == 1 and normal_damage <= 2:
+            score -= 1.5
+        resource_penalties = {0: 5.8, 1: 3.4, 2: 1.5, 3: 0.3}
+        score -= resource_penalties.get(remaining_total_resources, 0.0)
+        if remaining_available_resources <= 0 and not is_lethal:
+            score -= 0.8
+        if enemy.life - total_damage <= 2 and not is_lethal:
+            score += 1.2
+        if player.life <= 5 and normal_damage >= 4:
+            score += 1.4
+
+        is_useful = is_lethal or score >= 2.4
+        return {"is_useful": is_useful, "value": score, "damage": total_damage, "is_lethal": is_lethal}
+
+    def _nachwehen_future_deaths_likely(self, engine) -> bool:
+        if getattr(engine, "pending_dice_battle", None) is not None:
+            return True
+        combat_queue = list(getattr(engine, "combat_queue", []))
+        current_attack_index = getattr(engine, "current_attack_index", 0)
+        block_assignments = getattr(engine, "block_assignments", {})
+        for attacker_id in combat_queue[current_attack_index:]:
+            living_blockers = [
+                blocker_id
+                for blocker_id in block_assignments.get(attacker_id, [])
+                if engine.get_unit_by_id(blocker_id) is not None
+            ]
+            if living_blockers:
+                return True
+        return False
+
+    def _evaluate_air_nachwehen_plan(
+        self,
+        player: PlayerState,
+        engine,
+        card: CardInstance,
+        *,
+        hand: list[CardInstance],
+        available_resources: int,
+        total_resources: int,
+    ) -> dict:
+        if total_resources < card.template.recycle_cost:
+            return {"is_useful": False, "value": -5.0, "draw_count": 0, "wait_for_more": False}
+
+        deaths = engine.creatures_died_this_turn
+        if deaths <= 0:
+            return {"is_useful": False, "value": -5.0, "draw_count": 0, "wait_for_more": False}
+
+        remaining_hand = [hand_card for hand_card in hand if hand_card.instance_id != card.instance_id]
+        live_cards = 0
+        for hand_card in remaining_hand:
+            if hand_card.template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
+                if deaths >= 2 and total_resources >= hand_card.template.recycle_cost:
+                    live_cards += 1
+                continue
+            if self._air_card_has_live_use(
+                player,
+                engine,
+                hand_card,
+                remaining_hand,
+                available_resources,
+                total_resources,
+            ):
+                live_cards += 1
+        draw_count = deaths * card.template.spell_amount
+        remaining_total_resources = total_resources - card.template.recycle_cost
+        score = draw_count * 1.65 - 3.8
+
+        if deaths == 1:
+            score -= 2.2
+        elif deaths == 2:
+            score += 0.6
+        else:
+            score += 2.2 + max(0, deaths - 3) * 0.8
+
+        if len(remaining_hand) <= 0:
+            score += 2.8
+        elif len(remaining_hand) == 1:
+            score += 1.8
+        elif len(remaining_hand) == 2:
+            score += 0.8
+        elif len(remaining_hand) >= 5:
+            score -= 1.2
+        elif len(remaining_hand) >= 3:
+            score -= 0.4
+
+        if live_cards == 0:
+            score += 1.5
+        elif live_cards >= 3:
+            score -= 1.4
+        elif live_cards >= 5:
+            score -= 2.1
+
+        resource_penalties = {0: 5.4, 1: 3.2, 2: 1.4, 3: 0.2}
+        score -= resource_penalties.get(remaining_total_resources, 0.0)
+
+        future_deaths_likely = self._nachwehen_future_deaths_likely(engine)
+        urgent_need = len(remaining_hand) <= 0 or (len(remaining_hand) <= 1 and live_cards == 0)
+        if future_deaths_likely and deaths < 3 and not urgent_need:
+            score -= 2.6
+
+        if remaining_total_resources <= 0 and draw_count < 6:
+            score -= 2.2
+        if remaining_total_resources == 1 and draw_count <= 2:
+            score -= 1.3
+
+        is_useful = draw_count >= 6 or score >= 2.3
+        wait_for_more = future_deaths_likely and not urgent_need and draw_count < 6
+        if wait_for_more and not draw_count >= 6:
+            is_useful = False
+        return {
+            "is_useful": is_useful,
+            "value": score,
+            "draw_count": draw_count,
+            "wait_for_more": wait_for_more,
+        }
+
     def _evaluate_air_windwechsel_plan(
         self,
         player: PlayerState,
@@ -1243,6 +1641,400 @@ class SimpleAI:
             "value": 0.7 + max(0.0, expected_total - without_cast["score"]) * 0.35,
         }
 
+    def _evaluate_air_sturmformation_plan(
+        self,
+        player: PlayerState,
+        engine,
+        card: CardInstance,
+        *,
+        hand: list[CardInstance],
+        available_resources: int,
+        total_resources: int,
+        own_creature_count: int,
+        ready_attacker_count: int,
+        creature_discount: int,
+    ) -> dict:
+        if available_resources < card.template.resource_cost or total_resources < card.template.recycle_cost or len(player.deck) < 3:
+            return {"is_useful": False, "value": -4.5}
+        remaining_hand = [hand_card for hand_card in hand if hand_card.instance_id != card.instance_id]
+        next_available = available_resources - card.template.resource_cost
+        next_total = total_resources - card.template.recycle_cost
+        without_cast = self._best_air_main_phase_plan(
+            player,
+            engine,
+            remaining_hand,
+            available_resources=available_resources,
+            total_resources=total_resources,
+            start_creature_discount=creature_discount,
+            start_own_creature_count=own_creature_count,
+            start_ready_attacker_count=ready_attacker_count,
+        )
+        after_cast_known = self._best_air_main_phase_plan(
+            player,
+            engine,
+            [],
+            available_resources=next_available,
+            total_resources=next_total,
+            start_creature_discount=creature_discount,
+            start_own_creature_count=own_creature_count,
+            start_ready_attacker_count=ready_attacker_count,
+        )
+        duplicate_counts = self._template_counts(remaining_hand)
+        protected_ids = self._air_current_plan_protected_ids(
+            player,
+            engine,
+            remaining_hand,
+            available_resources=available_resources,
+            total_resources=total_resources,
+        )
+        discarded_keep_values = [
+            max(
+                0.0,
+                self._air_resource_keep_value(
+                    player,
+                    engine,
+                    hand_card,
+                    hand=remaining_hand,
+                    projected_available_resources=available_resources,
+                    projected_total_resources=total_resources,
+                    duplicate_count=duplicate_counts.get(hand_card.template.template_id, 1),
+                    protected_ids=protected_ids,
+                ),
+            )
+            for hand_card in remaining_hand
+        ]
+        discarded_value = sum(discarded_keep_values)
+        weak_current = sum(
+            1
+            for hand_card in remaining_hand
+            if not self._air_card_has_live_use(
+                player,
+                engine,
+                hand_card,
+                remaining_hand,
+                next_available,
+                next_total,
+            )
+        )
+        redundant_current = sum(1 for hand_card in remaining_hand if self._air_card_role_is_redundant(hand_card, remaining_hand))
+        remaining_templates = [deck_card.template for deck_card in player.deck]
+        total_remaining = len(remaining_templates)
+        cheap_playable_hits = 0
+        broadly_useful_hits = 0
+        creature_hits = 0
+        weak_replace_hits = 0
+        passive_follow_up_hits = 0
+        for template in remaining_templates:
+            if template.card_type == CardType.CREATURE:
+                creature_hits += 1
+                reduced_cost = max(0, template.resource_cost - creature_discount)
+                if reduced_cost <= next_available and template.recycle_cost <= next_total:
+                    cheap_playable_hits += 1
+            if self._air_template_is_generally_draw_worthy(
+                player,
+                engine,
+                template,
+                [],
+                available_resources=next_available,
+                total_resources=next_total,
+            ):
+                broadly_useful_hits += 1
+            if self._air_template_improves_weak_hand(
+                player,
+                engine,
+                template,
+                remaining_hand,
+                available_resources=next_available,
+                total_resources=next_total,
+            ):
+                weak_replace_hits += 1
+            if self._air_template_can_be_played_as_fourth_card(
+                player,
+                template,
+                available_resources=next_available,
+                total_resources=next_total,
+                creature_discount=creature_discount,
+            ):
+                passive_follow_up_hits += 1
+        p_playable_now = cheap_playable_hits / total_remaining if total_remaining else 0.0
+        p_useful = broadly_useful_hits / total_remaining if total_remaining else 0.0
+        p_weak_replace = weak_replace_hits / total_remaining if total_remaining else 0.0
+        p_creature_hit = creature_hits / total_remaining if total_remaining else 0.0
+        p_passive_follow_up = passive_follow_up_hits / total_remaining if total_remaining else 0.0
+        expected_upgrade = 0.0
+        expected_upgrade += p_useful * 4.4
+        expected_upgrade += p_playable_now * (2.8 if next_available > 0 else 0.9)
+        expected_upgrade += p_weak_replace * max(1, weak_current) * 1.9
+        expected_upgrade += redundant_current * 0.8
+        if not any(hand_card.template.card_type == CardType.CREATURE for hand_card in remaining_hand):
+            expected_upgrade += p_creature_hit * 1.8
+        if len(remaining_hand) == 0:
+            expected_upgrade += 2.1
+        elif len(remaining_hand) == 1:
+            expected_upgrade += 0.8
+        if weak_current >= max(1, len(remaining_hand)):
+            expected_upgrade += 0.9
+        if player.hand_cards_played_this_turn == 2 and next_available > 0:
+            expected_upgrade += p_passive_follow_up * 1.4
+        if next_available == 0:
+            expected_upgrade -= 1.0
+            if weak_current >= 2 or len(remaining_hand) <= 1:
+                expected_upgrade += 0.5
+        discard_penalty = discarded_value * 0.43 + max(0, len(remaining_hand) - 1) * 0.95
+        if len(remaining_hand) >= 4:
+            discard_penalty += 1.1
+        passive_draw_loss = 0.0
+        if player.hand_cards_played_this_turn == 3:
+            passive_draw_loss = p_useful * 1.4 + p_playable_now * 0.9 + 0.8
+        expected_total = after_cast_known["score"] + expected_upgrade - discard_penalty - passive_draw_loss - 1.2
+        if not remaining_hand:
+            expected_total += 0.75
+        if without_cast["score"] >= expected_total - 0.35:
+            return {"is_useful": False, "value": -3.1 if weak_current <= 1 else -0.9}
+        if discarded_value >= 10.0 and weak_current <= 1:
+            return {"is_useful": False, "value": -3.6}
+        return {
+            "is_useful": True,
+            "value": 0.9 + max(0.0, expected_total - without_cast["score"]) * 0.38,
+        }
+
+    def _clone_air_shadow_player(self, player: PlayerState, battlefield: list[BattlefieldCreature]) -> PlayerState:
+        shadow = PlayerState(player.player_id, player.name, player.is_human)
+        shadow.summoner_key = player.summoner_key
+        shadow.life = player.life
+        shadow.battlefield = list(battlefield)
+        shadow.hand_cards_played_this_turn = player.hand_cards_played_this_turn
+        shadow.creature_cost_reduction_this_turn = getattr(player, "creature_cost_reduction_this_turn", 0)
+        return shadow
+
+    def _evaluate_air_turbulenz_plan(
+        self,
+        player: PlayerState,
+        engine,
+        card: CardInstance,
+        *,
+        hand: list[CardInstance],
+        available_resources: int,
+        total_resources: int,
+        own_creature_count: int,
+        ready_attacker_count: int,
+        creature_discount: int,
+    ) -> dict:
+        enemy = engine.players[1 - player.player_id]
+        if total_resources < card.template.recycle_cost or len(player.battlefield) + len(enemy.battlefield) < 2:
+            return {"is_useful": False, "value": -4.5, "with_total": -999.0, "continuation_sequence": [], "attacker_ids": [], "target_ids": []}
+        remaining_hand = [hand_card for hand_card in hand if hand_card.instance_id != card.instance_id]
+        next_total = total_resources - card.template.recycle_cost
+        next_available = min(available_resources, next_total)
+        without_support = self._best_air_main_phase_plan(
+            player,
+            engine,
+            remaining_hand,
+            available_resources=available_resources,
+            total_resources=total_resources,
+            start_creature_discount=creature_discount,
+            start_own_creature_count=own_creature_count,
+            start_ready_attacker_count=ready_attacker_count,
+        )
+        without_attack = self._estimate_best_air_attack_plan(player, enemy, remaining_hand, without_support["sequence"])
+        without_total = without_support["score"] + without_attack["score"]
+        all_targets = [(creature, player.player_id) for creature in player.battlefield] + [(creature, enemy.player_id) for creature in enemy.battlefield]
+        best_result = {"with_total": -999.0, "target_ids": [], "attacker_ids": [], "continuation_sequence": [], "value": -4.5}
+        for first_index in range(len(all_targets)):
+            for second_index in range(first_index + 1, len(all_targets)):
+                first, first_owner = all_targets[first_index]
+                second, second_owner = all_targets[second_index]
+                target_ids = [first.unit_id, second.unit_id]
+                own_removed = [creature for creature, owner_id in ((first, first_owner), (second, second_owner)) if owner_id == player.player_id]
+                enemy_removed = [creature for creature, owner_id in ((first, first_owner), (second, second_owner)) if owner_id == enemy.player_id]
+                shadow_player_battlefield = [creature for creature in player.battlefield if creature.unit_id not in target_ids]
+                shadow_enemy_battlefield = [creature for creature in enemy.battlefield if creature.unit_id not in target_ids]
+                replay_hand = list(remaining_hand)
+                for creature in own_removed:
+                    replay_hand.append(CardInstance(-(100000 + creature.unit_id), engine.templates[creature.template_id]))
+                shadow_player = self._clone_air_shadow_player(player, shadow_player_battlefield)
+                shadow_enemy = self._clone_air_shadow_player(enemy, shadow_enemy_battlefield)
+                with_support = self._best_air_main_phase_plan(
+                    shadow_player,
+                    engine,
+                    replay_hand,
+                    available_resources=next_available,
+                    total_resources=next_total,
+                    start_creature_discount=creature_discount,
+                    start_own_creature_count=len(shadow_player_battlefield),
+                    start_ready_attacker_count=len([creature for creature in shadow_player_battlefield if creature.is_ready()]),
+                )
+                with_attack = self._estimate_best_air_attack_plan(
+                    shadow_player,
+                    shadow_enemy,
+                    replay_hand,
+                    with_support["sequence"],
+                )
+                target_value = 0.0
+                for creature in enemy_removed:
+                    target_value += creature.aw * 1.2 + creature.current_hp * 1.0
+                    target_value += creature.cost.total_value * 0.75
+                    if creature.cost.recycle > 0:
+                        target_value += 1.2 + creature.cost.recycle * 0.8
+                    if creature.damage_taken > 0:
+                        target_value += creature.damage_taken * 0.6
+                    if creature.has_ability(Ability.FLYING):
+                        target_value += 0.5
+                for creature in own_removed:
+                    own_penalty = creature.aw * 0.9 + creature.current_hp * 0.8 + creature.cost.total_value * 0.5
+                    if creature.is_ready():
+                        own_penalty += 1.8
+                    if creature.current_hp <= 1:
+                        own_penalty -= 3.6
+                    if creature.template_id and engine.templates[creature.template_id].has_ability(Ability.HASTE):
+                        own_penalty += 0.9
+                    if engine.templates[creature.template_id].resource_cost <= available_resources and next_total >= engine.templates[creature.template_id].recycle_cost:
+                        own_penalty -= 0.7
+                    target_value -= own_penalty
+                attack_gain = with_attack["score"] - without_attack["score"]
+                direct_damage_gain = with_attack["direct_damage"] - without_attack["direct_damage"]
+                lethal_gain = with_attack["is_lethal"] and not without_attack["is_lethal"]
+                resource_penalty = 0.0
+                if next_total <= 0:
+                    resource_penalty = 8.0
+                elif next_total == 1:
+                    resource_penalty = 4.6
+                elif next_total == 2:
+                    resource_penalty = 3.0
+                else:
+                    resource_penalty = 0.8
+                with_total = with_support["score"] + with_attack["score"] + target_value - resource_penalty - 1.1
+                if lethal_gain:
+                    with_total += 6.5
+                elif direct_damage_gain > 0:
+                    with_total += direct_damage_gain * 1.4
+                if len(enemy_removed) == 2:
+                    with_total += 0.9
+                if len(enemy_removed) == 0:
+                    with_total -= 4.0
+                if next_total <= 1 and not lethal_gain and direct_damage_gain <= 0:
+                    with_total -= 2.0
+                result = {
+                    "with_total": with_total,
+                    "target_ids": target_ids,
+                    "attacker_ids": list(with_attack["attacker_ids"]),
+                    "continuation_sequence": list(with_support["sequence"]),
+                    "value": 0.7 + max(0.0, with_total - without_total) * 0.34,
+                }
+                if result["with_total"] > best_result["with_total"]:
+                    best_result = result
+        if not best_result["target_ids"]:
+            return {"is_useful": False, "value": -4.5, "with_total": -999.0, "continuation_sequence": [], "attacker_ids": [], "target_ids": []}
+        if best_result["with_total"] <= without_total + 1.0:
+            return {"is_useful": False, "value": -3.3, "with_total": best_result["with_total"], "continuation_sequence": [], "attacker_ids": [], "target_ids": []}
+        return {
+            "is_useful": True,
+            "value": best_result["value"],
+            "with_total": best_result["with_total"],
+            "continuation_sequence": best_result["continuation_sequence"],
+            "attacker_ids": best_result["attacker_ids"],
+            "target_ids": best_result["target_ids"],
+        }
+
+    def _air_creature_board_value(self, creature: BattlefieldCreature) -> float:
+        value = creature.aw * 1.7 + creature.current_hp * 1.5 + creature.cost.total_value * 0.75
+        if creature.has_ability(Ability.HASTE):
+            value += 1.2
+        if creature.has_ability(Ability.FLYING):
+            value += 1.0
+        if creature.cost.recycle > 0:
+            value += 0.8 + creature.cost.recycle * 0.55
+        if creature.all_attackers_die_bonus > 0:
+            value += 2.2
+        if getattr(creature, "draw_on_attack", 0) > 0:
+            value += creature.draw_on_attack * 1.3
+        if getattr(creature, "draw_on_death", 0) > 0:
+            value += creature.draw_on_death * 1.0
+        if creature.return_to_deck_end_of_turn:
+            value -= 0.9
+        return value
+
+    def _evaluate_air_ausweichen_plan(
+        self,
+        player: PlayerState,
+        engine,
+        card: CardInstance,
+        *,
+        hand: list[CardInstance],
+        available_resources: int,
+        total_resources: int,
+    ) -> dict:
+        if available_resources < card.template.resource_cost or not player.battlefield:
+            return {"is_useful": False, "value": -4.0, "target_id": None, "recast_target": False}
+        next_available = available_resources - card.template.resource_cost
+        next_total = total_resources - card.template.recycle_cost
+        battle = engine.pending_dice_battle
+        best_value = -999.0
+        best_target_id: int | None = None
+        best_recast = False
+        for creature in player.battlefield:
+            value = -1.6
+            threatened = False
+            board_value = self._air_creature_board_value(creature)
+            damage_taken = creature.damage_taken
+            if battle is not None and creature.unit_id in {battle.attacker_id, battle.blocker_id}:
+                is_attacker = creature.unit_id == battle.attacker_id
+                opposing = engine.get_unit_by_id(battle.blocker_id if is_attacker else battle.attacker_id)
+                own_dice = battle.attacker_dice if is_attacker else battle.blocker_dice
+                enemy_dice = battle.blocker_dice if is_attacker else battle.attacker_dice
+                own_unused = sum(1 for die in own_dice if not die.used)
+                enemy_unused = sum(1 for die in enemy_dice if not die.used)
+                opposing_aw = getattr(opposing, "aw", 0)
+                threatened = creature.current_hp <= max(1, opposing_aw) or (damage_taken > 0 and enemy_unused >= own_unused)
+                save_bonus = board_value * (1.0 if threatened else 0.24 if damage_taken > 0 else 0.1)
+                abandon_penalty = creature.aw * 0.6 + own_unused * 0.55
+                if not threatened and own_unused > enemy_unused and creature.current_hp > opposing_aw:
+                    abandon_penalty += 1.8
+                if is_attacker:
+                    abandon_penalty += 0.5
+                value += save_bonus - abandon_penalty
+            else:
+                if damage_taken <= 0:
+                    value -= 1.7
+                else:
+                    value += min(4.0, damage_taken * 1.55)
+                    value += board_value * (0.16 if damage_taken == 1 else 0.24)
+                    threatened = damage_taken >= max(1, creature.vw - 1)
+                if creature.return_to_deck_end_of_turn:
+                    value -= 2.1
+
+            can_recast = next_available >= creature.cost.resources and next_total >= creature.cost.recycle
+            if can_recast:
+                replay_value = 0.35 * self._air_creature_play_value(CardInstance(-1, engine.templates[creature.template_id]))
+                if creature.has_ability(Ability.HASTE):
+                    replay_value += 1.1
+                else:
+                    replay_value -= 0.45
+                replay_value -= creature.cost.recycle * 0.35
+                value += replay_value
+                if player.hand_cards_played_this_turn == 2 and replay_value > 0.8:
+                    value += 0.45
+            else:
+                value -= creature.cost.recycle * 0.25
+                if not threatened and damage_taken <= 0:
+                    value -= 0.9
+
+            if creature.return_to_deck_end_of_turn and not can_recast and damage_taken <= 0:
+                value -= 1.6
+            if damage_taken <= 0 and not threatened and not can_recast:
+                value -= 0.8
+            if value > best_value:
+                best_value = value
+                best_target_id = creature.unit_id
+                best_recast = can_recast
+        threshold = 1.25 if battle is not None else 1.8
+        return {
+            "is_useful": best_target_id is not None and best_value > threshold,
+            "value": best_value,
+            "target_id": best_target_id,
+            "recast_target": best_recast,
+        }
+
     def _air_template_is_generally_draw_worthy(
         self,
         player: PlayerState,
@@ -1269,7 +2061,7 @@ class SimpleAI:
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
             return len(player.battlefield) + len(engine.players[1 - player.player_id].battlefield) >= 2 and total_resources >= template.recycle_cost
         if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            return engine.creatures_died_this_turn > 0 and total_resources >= template.recycle_cost
+            return engine.creatures_died_this_turn >= 2 and total_resources >= template.recycle_cost
         return template.resource_cost <= available_resources and template.recycle_cost <= total_resources
 
     def _air_template_improves_weak_hand(
@@ -1341,7 +2133,7 @@ class SimpleAI:
             if available_resources < card.template.resource_cost:
                 continue
             effect = card.template.spell_effect
-            if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE} and bool(player.battlefield):
+            if effect == SpellEffect.REROLL_OPEN_DIE and bool(player.battlefield):
                 return True
             if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE and self._find_probable_unblocked_damage(player, enemy, hand) > 0:
                 return True
@@ -1426,6 +2218,8 @@ class SimpleAI:
             cannot_block=creature.cannot_block,
             must_attack_each_turn=creature.must_attack_each_turn,
             all_attackers_die_bonus=creature.all_attackers_die_bonus,
+            draw_on_attack=creature.draw_on_attack,
+            draw_on_death=creature.draw_on_death,
             current_hp=creature.current_hp,
             temporary_aw_bonus=creature.temporary_aw_bonus,
             tapped=creature.tapped,
@@ -1497,20 +2291,21 @@ class SimpleAI:
 
     def _find_probable_unblocked_damage(self, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> int:
         flying_blockers = len([creature for creature in enemy.battlefield if creature.has_ability(Ability.FLYING)])
-        best_damage = 0
+        probable_damage = 0
+        no_blockers = not enemy.battlefield
         for creature in player.battlefield:
             if not creature.is_ready():
                 continue
-            if creature.has_ability(Ability.FLYING) and flying_blockers == 0:
-                best_damage = max(best_damage, creature.aw)
+            if no_blockers or (creature.has_ability(Ability.FLYING) and flying_blockers == 0):
+                probable_damage += creature.aw
         for card in hand:
             if card.template.card_type != CardType.CREATURE:
                 continue
             if not card.template.has_ability(Ability.HASTE):
                 continue
-            if card.template.has_ability(Ability.FLYING) and flying_blockers == 0:
-                best_damage = max(best_damage, card.template.aw)
-        return best_damage
+            if no_blockers or (card.template.has_ability(Ability.FLYING) and flying_blockers == 0):
+                probable_damage += card.template.aw
+        return probable_damage
 
     def _find_air_lethal_enabler(self, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> Optional[CardInstance]:
         probable_unblocked_damage = self._find_probable_unblocked_damage(player, enemy, hand)
@@ -1647,53 +2442,61 @@ class SimpleAI:
             )
             return 2.3 if comparison["is_useful"] else -2.2
         if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-            weak_hand = sum(
-                1
-                for hand_card in hand
-                if hand_card.instance_id != card.instance_id
-                and not self._air_card_has_live_use(
-                    player,
-                    engine,
-                    hand_card,
-                    hand,
-                    projected_available_resources,
-                    projected_total_resources,
-                )
+            comparison = self._evaluate_air_sturmformation_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
-            return 2.2 if weak_hand >= 2 else -2.8
+            return 2.8 if comparison["is_useful"] else -3.0
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            if len(player.battlefield) + len(enemy.battlefield) < 2:
-                return -3.2
-            all_creatures = sorted(
-                (creature.aw + creature.current_hp, owner_id)
-                for owner_id, creatures in (
-                    (player.player_id, player.battlefield),
-                    (enemy.player_id, enemy.battlefield),
-                )
-                for creature in creatures
+            comparison = self._evaluate_air_turbulenz_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+                own_creature_count=len(player.battlefield),
+                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
-            best_two = all_creatures[-2:]
-            enemy_gain = sum(value for value, owner_id in best_two if owner_id == enemy.player_id)
-            own_loss = sum(value for value, owner_id in best_two if owner_id == player.player_id)
-            return 2.8 if enemy_gain - own_loss >= 2 else -1.8
+            return 3.0 if comparison["is_useful"] else -3.2
         if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            return 2.0 if engine.has_valid_ausweichen_target(player) else -2.2
-        if effect == SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE:
-            return 1.6 if engine.has_valid_combat_die_target(player) else -1.8
-        if effect == SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE:
-            return 2.2 if engine.has_valid_combat_die_target(player) else -2.1
+            comparison = self._evaluate_air_ausweichen_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+            )
+            return 2.4 if comparison["is_useful"] else -3.0
+        if effect == SpellEffect.REROLL_OPEN_DIE:
+            return 1.6 if engine.has_valid_open_die_target() else -1.8
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+            comparison = self._evaluate_air_boeenschub_reaction_plan(player, engine, card)
+            return 2.6 if comparison["is_useful"] else -2.8
         if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
             damage = self._find_probable_unblocked_damage(player, enemy, hand)
             if damage * 2 >= enemy.life and damage > 0:
                 return 5.5
-            return 2.0 if damage > 0 else -2.6
+            return 2.4 if damage >= 4 else 0.9 if damage >= 2 else -2.8
         if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            if projected_total_resources < card.template.recycle_cost:
-                return -3.0
-            if engine.creatures_died_this_turn <= 0:
-                return -3.2
-            remaining_after_recycle = projected_total_resources - card.template.recycle_cost
-            return engine.creatures_died_this_turn * 2.2 + (1.0 if remaining_after_recycle >= 2 else -1.6)
+            comparison = self._evaluate_air_nachwehen_plan(
+                player,
+                engine,
+                card,
+                hand=hand,
+                available_resources=projected_available_resources,
+                total_resources=projected_total_resources,
+            )
+            return comparison["value"]
         return 0.0
 
     def choose_cards_to_discard(self, player: PlayerState, engine, count: int, source_card_name: str = "") -> List[CardInstance]:
@@ -1817,34 +2620,43 @@ class SimpleAI:
             elif card.template.spell_effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
                 score = (2 if len(player.deck) >= 2 else -10, len(player.hand), 0)
             elif card.template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-                weak_cards = sum(
-                    1
-                    for hand_card in player.hand
-                    if hand_card.instance_id != card.instance_id
-                    and not self._air_card_has_live_use(
-                        player,
-                        engine,
-                        hand_card,
-                        player.hand,
-                        player.available_resources(),
-                        player.total_resources(),
-                    )
+                comparison = self._evaluate_air_sturmformation_plan(
+                    player,
+                    engine,
+                    card,
+                    hand=list(player.hand),
+                    available_resources=player.available_resources(),
+                    total_resources=player.total_resources(),
+                    own_creature_count=len(player.battlefield),
+                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
                 )
-                score = (2 if weak_cards >= 2 else 0, weak_cards, -card.template.resource_cost)
+                score = (
+                    2 if comparison["is_useful"] else -2,
+                    int(comparison["value"] * 10),
+                    -card.template.resource_cost,
+                )
             elif card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-                all_creatures = sorted(
-                    (creature.aw + creature.current_hp, owner_id)
-                    for owner_id, creatures in (
-                        (player.player_id, player.battlefield),
-                        (engine.human_player.player_id, engine.human_player.battlefield),
-                    )
-                    for creature in creatures
+                comparison = self._evaluate_air_turbulenz_plan(
+                    player,
+                    engine,
+                    card,
+                    hand=list(player.hand),
+                    available_resources=player.available_resources(),
+                    total_resources=player.total_resources(),
+                    own_creature_count=len(player.battlefield),
+                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
                 )
-                if len(all_creatures) >= 2:
-                    best_two = all_creatures[-2:]
-                    enemy_gain = sum(value for value, owner_id in best_two if owner_id == engine.human_player.player_id)
-                    own_loss = sum(value for value, owner_id in best_two if owner_id == player.player_id)
-                    score = (2 if enemy_gain > own_loss else 0, enemy_gain - own_loss, 0)
+                score = (
+                    2 if comparison["is_useful"] else -2,
+                    int(comparison["value"] * 10),
+                    1 if any(
+                        engine.get_unit_owner(target_id) == engine.human_player
+                        for target_id in comparison.get("target_ids", [])
+                        if engine.get_unit_by_id(target_id) is not None
+                    ) else 0,
+                )
             elif card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
                 battle = engine.pending_dice_battle
                 threatened = 0
@@ -1852,19 +2664,25 @@ class SimpleAI:
                     own_unit = engine.get_unit_by_id(battle.attacker_id if battle.attacker_owner == player.player_id else battle.blocker_id)
                     threatened = 2 if own_unit is not None and own_unit.current_hp <= 1 else 1
                 score = (threatened, 0, 0)
-            elif card.template.spell_effect == SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE:
-                _role, dice = engine.get_player_combat_dice(player.player_id)
-                low_roll = min((die.base_roll for die in dice if not die.used), default=21)
-                score = (2 if low_roll <= 6 else 0, -low_roll, 0)
-            elif card.template.spell_effect == SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE:
-                _role, dice = engine.get_player_combat_dice(player.player_id)
-                has_target = any(not die.used for die in dice)
-                score = (3 if has_target else 0, len([die for die in dice if not die.used]), 0)
+            elif card.template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
+                _target, target_score = self._best_windstoss_target(player, engine)
+                score = (2 if target_score >= 2.0 else 1 if target_score >= 0.9 else 0, int(target_score * 10), 0)
+            elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+                comparison = self._evaluate_air_boeenschub_reaction_plan(player, engine, card)
+                score = (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 0)
             elif card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-                pending = engine.pending_direct_attack
-                score = (3 if pending is not None and pending.attacker_owner == player.player_id else 0, 0, 0)
+                comparison = self._evaluate_air_windrausch_reaction_plan(player, engine, card)
+                score = (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 0)
             elif card.template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-                score = (2 if engine.creatures_died_this_turn > 0 else 0, engine.creatures_died_this_turn, 0)
+                comparison = self._evaluate_air_nachwehen_plan(
+                    player,
+                    engine,
+                    card,
+                    hand=list(player.hand),
+                    available_resources=player.available_resources(),
+                    total_resources=player.total_resources(),
+                )
+                score = (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 0)
             scored.append((score, card))
         return max(scored, key=lambda item: item[0])[1] if scored else None
 
@@ -1879,6 +2697,78 @@ class SimpleAI:
                 len(creature.abilities),
             ),
         )
+
+    def _get_open_die_owner(self, engine, target: SpellTargetRef):
+        open_target = engine.open_die_targets.get(target.open_die_id)
+        if open_target is None:
+            return None
+        player_id = open_target.get("player_id")
+        if player_id is None:
+            return None
+        return engine.players[player_id]
+
+    def _score_windstoss_target(self, player: PlayerState, engine, target: SpellTargetRef) -> float:
+        die = engine.resolve_target_open_die(target)
+        if die is None:
+            return -999.0
+        owner = self._get_open_die_owner(engine, target)
+        if owner is None:
+            return -999.0
+        expected_shift = 10.5 - die.base_roll
+        if owner.player_id != player.player_id:
+            expected_shift = die.base_roll - 10.5
+
+        battle = engine.pending_dice_battle
+        comparison = getattr(battle, "pending_comparison", None) if battle is not None else None
+        if comparison is not None and (die is comparison.attacker_die or die is comparison.blocker_die):
+            attacker = engine.get_unit_by_id(battle.attacker_id)
+            blocker = engine.get_unit_by_id(battle.blocker_id)
+            if attacker is None or blocker is None:
+                return expected_shift * 0.4
+            own_is_attacker = battle.attacker_owner == player.player_id
+            own_die = comparison.attacker_die if own_is_attacker else comparison.blocker_die
+            enemy_die = comparison.blocker_die if own_is_attacker else comparison.attacker_die
+            own_unit = attacker if own_is_attacker else blocker
+            enemy_unit = blocker if own_is_attacker else attacker
+            margin = own_die.total - enemy_die.total
+            future_margin = margin + expected_shift if owner.player_id == player.player_id else margin - expected_shift
+            current_loss = margin <= 0
+            future_loss = future_margin <= 0
+            score = expected_shift * 0.55
+            if current_loss and not future_loss:
+                score += 6.0 + self._air_creature_board_value(own_unit) * 0.55
+            if not current_loss and future_loss:
+                score -= 5.0 + self._air_creature_board_value(own_unit) * 0.45
+            if current_loss:
+                score += min(5.5, self._air_creature_board_value(own_unit) * 0.35)
+            if margin > 0 and die is enemy_die:
+                score += min(3.0, expected_shift * 0.4)
+            if margin <= 0 and die is own_die:
+                score += min(3.5, (10.5 - die.base_roll) * 0.5)
+            if own_unit.current_hp <= 1 and current_loss:
+                score += 3.2
+            if enemy_unit.current_hp <= 1 and margin > 0 and die is enemy_die:
+                score += 1.2
+            return score
+
+        score = expected_shift * 0.35
+        if owner.player_id == player.player_id and die.base_roll <= 4:
+            score += 1.4
+        if owner.player_id != player.player_id and die.base_roll >= 17:
+            score += 1.4
+        if owner.player_id == player.player_id and die.base_roll >= 14:
+            score -= 2.4
+        if owner.player_id != player.player_id and die.base_roll <= 7:
+            score -= 2.1
+        return score
+
+    def _best_windstoss_target(self, player: PlayerState, engine) -> tuple[Optional[SpellTargetRef], float]:
+        candidates = engine.get_open_die_target_refs()
+        if not candidates:
+            return None, -999.0
+        scored = [(self._score_windstoss_target(player, engine, target), target) for target in candidates]
+        best_score, best_target = max(scored, key=lambda item: item[0])
+        return best_target, best_score
 
     def choose_spell_target_ref(self, player: PlayerState, engine, card: CardInstance, pending) -> Optional[SpellTargetRef]:
         effect = card.template.spell_effect
@@ -1920,24 +2810,40 @@ class SimpleAI:
             if best_plan["target_id"] is None:
                 return None
             return SpellTargetRef("creature", creature_id=best_plan["target_id"])
-        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            battle = engine.pending_dice_battle
-            if battle is None:
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+            comparison = self._evaluate_air_boeenschub_reaction_plan(player, engine, card)
+            if comparison["target_id"] is None or not comparison["is_useful"]:
                 return None
-            own_creature = engine.get_unit_by_id(battle.attacker_id if battle.attacker_owner == player.player_id else battle.blocker_id)
+            return SpellTargetRef("creature", creature_id=comparison["target_id"])
+        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
+            comparison = self._evaluate_air_ausweichen_plan(
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+            )
+            if comparison["target_id"] is None or not comparison["is_useful"]:
+                return None
+            own_creature = engine.get_unit_by_id(comparison["target_id"])
             if own_creature is None:
                 return None
             return SpellTargetRef("creature", creature_id=own_creature.unit_id)
-        if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-            role, dice = engine.get_player_combat_dice(player.player_id)
-            if role is None:
+        if effect == SpellEffect.REROLL_OPEN_DIE:
+            chosen, score = self._best_windstoss_target(player, engine)
+            if chosen is None or score <= 0.65:
                 return None
-            available = [(index, die) for index, die in enumerate(dice) if not die.used]
-            if not available:
-                return None
-            chosen_index, _chosen_die = min(available, key=lambda item: item[1].base_roll)
-            return SpellTargetRef("die", player_id=player.player_id, die_index=chosen_index, die_role=role)
+            return chosen
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
+            if self._planned_turbulenz_target_ids:
+                selected_ids = {target.creature_id for target in pending.selected_targets if target.creature_id is not None}
+                for target_id in self._planned_turbulenz_target_ids:
+                    if target_id in selected_ids:
+                        continue
+                    creature = engine.get_unit_by_id(target_id)
+                    if creature is not None:
+                        return SpellTargetRef("creature", creature_id=creature.unit_id)
             selected_ids = {target.creature_id for target in pending.selected_targets if target.creature_id is not None}
             candidates = [
                 creature
@@ -1990,34 +2896,56 @@ class SimpleAI:
             elif card.template.spell_effect == SpellEffect.DAMAGE_AFTER_OWN_CREATURE_DESTROYED:
                 score = (1, 0)
             elif card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-                battle = engine.pending_dice_battle
-                own_creature = None
-                if battle is not None:
-                    own_creature = engine.get_unit_by_id(battle.attacker_id if battle.attacker_owner == engine.ai_player.player_id else battle.blocker_id)
-                score = (3 if own_creature is not None and own_creature.current_hp <= 1 else 0, 0)
-            elif card.template.spell_effect == SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE:
-                _role, dice = engine.get_player_combat_dice(engine.ai_player.player_id)
-                worst = min((die.base_roll for die in dice if not die.used), default=21)
-                score = (2 if worst <= 6 else 0, -worst)
-            elif card.template.spell_effect == SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE:
-                _role, dice = engine.get_player_combat_dice(engine.ai_player.player_id)
-                score = (3 if any(not die.used for die in dice) else 0, 0)
+                comparison = self._evaluate_air_ausweichen_plan(
+                    engine.ai_player,
+                    engine,
+                    card,
+                    hand=list(engine.ai_player.hand),
+                    available_resources=engine.ai_player.available_resources(),
+                    total_resources=engine.ai_player.total_resources(),
+                )
+                score = (max(-3, int(comparison["value"] * 2)), 1 if comparison["recast_target"] else 0)
+            elif card.template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
+                _target, target_score = self._best_windstoss_target(engine.ai_player, engine)
+                score = (max(-4, int(target_score * 2)), 0)
+            elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+                comparison = self._evaluate_air_boeenschub_reaction_plan(engine.ai_player, engine, card)
+                score = (max(-4, int(comparison["value"] * 2)), 1 if comparison["target_id"] is not None else 0)
             elif card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-                pending = engine.pending_direct_attack
-                score = (4 if pending is not None and pending.attacker_owner == engine.ai_player.player_id else 0, 0)
+                comparison = self._evaluate_air_windrausch_reaction_plan(engine.ai_player, engine, card)
+                score = (max(-4, int(comparison["value"] * 2)), 1 if comparison["is_lethal"] else 0)
             elif card.template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-                score = (2 if engine.creatures_died_this_turn > 0 else 0, engine.creatures_died_this_turn)
+                comparison = self._evaluate_air_nachwehen_plan(
+                    engine.ai_player,
+                    engine,
+                    card,
+                    hand=list(engine.ai_player.hand),
+                    available_resources=engine.ai_player.available_resources(),
+                    total_resources=engine.ai_player.total_resources(),
+                )
+                score = (max(-4, int(comparison["value"] * 2)), 1 if comparison["draw_count"] >= 6 else 0)
             scored.append((score, card))
-        chosen = max(scored, key=lambda item: item[0])[1]
-        return chosen if max(scored, key=lambda item: item[0])[0][0] > 0 or self.rng.random() < 0.4 else None
+        best_score, chosen = max(scored, key=lambda item: item[0])
+        if chosen.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.REROLL_OPEN_DIE and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN and best_score[0] <= 0:
+            return None
+        return chosen if best_score[0] > 0 or self.rng.random() < 0.4 else None
 
     def choose_resources_to_recycle(self, player: PlayerState, count: int) -> List[int]:
         if count <= 0:
             return []
 
-        def score(resource) -> tuple[int, int, int, int]:
+        def score(resource) -> tuple[int, int, int, int, int]:
             template = resource.template
             return (
+                1 if getattr(resource, "tapped", False) else 0,
                 len(template.abilities),
                 template.aw + template.vw,
                 template.cost.total_value,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from core.models import (
+    CardInstance,
     DiceRoundRecord,
     DieResult,
     PendingComparison,
@@ -10,6 +11,7 @@ from core.models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_REACTION,
     PHASE_RESOURCE,
 )
 from tests.helpers import EngineTestCase
@@ -21,6 +23,9 @@ class CombatFlowTests(EngineTestCase):
         attacker_two = self.make_creature("air_creature_boeengeist", owner_id=1)
         self.engine.human_player.hand = []
         self.engine.ai_player.hand = []
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
         self.engine.human_player.battlefield = []
         self.engine.ai_player.battlefield = [attacker_one, attacker_two]
         self.engine.active_player_index = 1
@@ -62,8 +67,8 @@ class CombatFlowTests(EngineTestCase):
         haste_creature = self.make_creature("air_creature_windhuscher", owner_id=0)
         flying_creature = self.make_creature("air_creature_sturmfalke", owner_id=0)
 
-        self.assertEqual(self.engine.get_creature_attack_value(sturmfuerst), 2)
-        self.assertEqual(self.engine.get_creature_defense_value(sturmfuerst), 2)
+        self.assertEqual(self.engine.get_creature_attack_value(sturmfuerst), 1)
+        self.assertEqual(self.engine.get_creature_defense_value(sturmfuerst), 1)
         self.assertEqual(self.engine.get_creature_attack_value(haste_creature), 2)
         self.assertEqual(self.engine.get_creature_defense_value(flying_creature), 3)
 
@@ -98,6 +103,19 @@ class CombatFlowTests(EngineTestCase):
         self.engine.cleanup_destroyed_units_for_spells()
 
         self.assertNotIn(flyer, owner.battlefield)
+
+    def test_orkanreiter_draws_one_card_on_attack_declaration(self) -> None:
+        attacker = self.make_creature("air_creature_wolkenwaechter", owner_id=0)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertEqual(self.engine.human_player.hand[0].template.template_id, "air_creature_windgeist")
 
     def test_human_provoke_assigns_selected_blocker_to_attacker(self) -> None:
         attacker = self.make_creature("earth_creature_granitkrieger", owner_id=0)

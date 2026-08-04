@@ -23,6 +23,8 @@ class BattlefieldCreature:
     cannot_block: bool
     must_attack_each_turn: bool
     all_attackers_die_bonus: int
+    draw_on_attack: int
+    draw_on_death: int
     current_hp: int
     temporary_aw_bonus: int = 0
     temporary_abilities: set[Ability] = field(default_factory=set)
@@ -47,6 +49,8 @@ class BattlefieldCreature:
             cannot_block=card.template.cannot_block,
             must_attack_each_turn=card.template.must_attack_each_turn,
             all_attackers_die_bonus=card.template.all_attackers_die_bonus,
+            draw_on_attack=card.template.draw_on_attack,
+            draw_on_death=card.template.draw_on_death,
             current_hp=card.template.vw,
             temporary_aw_bonus=0,
             tapped=not has_haste,

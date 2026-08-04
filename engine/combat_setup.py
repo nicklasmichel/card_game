@@ -168,6 +168,14 @@ def confirm_attackers(self) -> None:
     for attacker in attackers:
         attacker.tapped = True
     self.selected_attackers = [attacker.unit_id for attacker in attackers]
+    for attacker in attackers:
+        if getattr(attacker, "draw_on_attack", 0) <= 0:
+            continue
+        for _ in range(attacker.draw_on_attack):
+            drawn = self.draw_card_for_player(self.active_player, attacker.name)
+            if drawn is None and self.phase == PHASE_GAME_OVER:
+                return
+        self.log(f"{attacker.name} laesst {self.active_player.name} beim Angriff {attacker.draw_on_attack} Karte(n) ziehen.")
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
@@ -177,10 +185,24 @@ def confirm_attackers(self) -> None:
     self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
     self.blocker_to_attackers.clear()
     self.prepare_provoke_assignments(attackers)
+    self.begin_general_spell_window(
+        trigger=ReactionTrigger.AFTER_ATTACKERS_DECLARED,
+        first_responder_id=self.defending_player.player_id,
+        resume_phase=PHASE_REACTION,
+        continuation=self.advance_after_attackers_declared,
+    )
+
+
+def advance_after_attackers_declared(self) -> None:
+    attackers = [
+        attacker
+        for attacker in (self.get_unit_by_id(attacker_id) for attacker_id in self.selected_attackers)
+        if attacker is not None
+    ]
     if self.defending_player.is_human:
         if not self.available_blockers(self.defending_player):
             self.log("Keine Kreaturen koennen blocken. Schaden geht automatisch durch.")
-            self.begin_combat_resolution()
+            self.begin_pre_first_combat_window()
             return
         self.phase = PHASE_DECLARE_BLOCKERS
         self.selected_blocker_id = None
@@ -191,7 +213,7 @@ def confirm_attackers(self) -> None:
         return
     if not self.available_blockers(self.defending_player):
         self.log("Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.")
-        self.begin_combat_resolution()
+        self.begin_pre_first_combat_window()
         return
     self.phase = PHASE_DECLARE_BLOCKERS
     self.selected_blocker_id = None
@@ -282,7 +304,43 @@ def finish_block_assignment(self) -> None:
     if self.statistics is not None:
         for blocker_ids in self.block_assignments.values():
             self.statistics.register_block_assignment(len(blocker_ids))
-    self.begin_combat_resolution()
+    self.begin_general_spell_window(
+        trigger=ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+        first_responder_id=self.active_player.player_id,
+        resume_phase=PHASE_REACTION,
+        continuation=self.advance_after_blockers_declared,
+    )
+
+
+def advance_after_blockers_declared(self) -> None:
+    for attacker_id, blocker_ids in self.block_assignments.items():
+        living_blockers = [blocker_id for blocker_id in blocker_ids if self.get_unit_by_id(blocker_id) is not None]
+        if len(living_blockers) <= 1:
+            continue
+        attacker_owner = self.get_unit_owner(attacker_id)
+        if attacker_owner is None:
+            continue
+        if attacker_owner.is_human:
+            self.pending_order = PendingBlockOrder(attacker_id=attacker_id, blocker_ids=living_blockers)
+            self.phase = PHASE_ORDER_BLOCKERS
+            attacker = self.get_unit_by_id(attacker_id)
+            if attacker is not None:
+                self.log(f"{attacker.name} wurde mehrfach geblockt. Lege die Reihenfolge fest.")
+            return
+        ordered = self.ai.choose_block_order(
+            [self.get_unit_by_id(blocker_id) for blocker_id in living_blockers if self.get_unit_by_id(blocker_id) is not None]
+        )
+        self.block_assignments[attacker_id] = [blocker.unit_id for blocker in ordered]
+    self.begin_pre_first_combat_window()
+
+
+def begin_pre_first_combat_window(self) -> None:
+    self.begin_general_spell_window(
+        trigger=ReactionTrigger.BEFORE_FIRST_COMBAT,
+        first_responder_id=self.active_player.player_id,
+        resume_phase=PHASE_REACTION,
+        continuation=self.begin_combat_resolution,
+    )
 
 
 def ai_assign_blocks(self) -> None:
@@ -310,9 +368,9 @@ def ai_assign_blocks(self) -> None:
         blocker = self.get_unit_by_id(blocker_id)
         if blocker is not None:
             blocker.tapped = True
-    if self.statistics is not None:
-        for blocker_ids in self.block_assignments.values():
-            self.statistics.register_block_assignment(len(blocker_ids))
+        if self.statistics is not None:
+            for blocker_ids in self.block_assignments.values():
+                self.statistics.register_block_assignment(len(blocker_ids))
 
 
 def begin_combat_resolution(self) -> None:
@@ -391,6 +449,7 @@ def advance_combat_resolution(self) -> None:
                 attacker_owner=self.active_player.player_id,
                 defending_player_id=self.defending_player.player_id,
                 base_damage=self.get_creature_attack_value(attacker),
+                damage_multiplier=self.active_player.direct_attack_damage_multiplier_this_turn.get(attacker.unit_id, 1),
             )
             self.begin_general_spell_window(
                 trigger=ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE,
@@ -460,7 +519,7 @@ def confirm_block_order(self) -> None:
     self.current_blocker_order = list(self.pending_order.chosen_order)
     self.current_blocker_index = 0
     self.pending_order = None
-    self.advance_combat_resolution()
+    self.begin_pre_first_combat_window()
 
 
 def choose_next_block_order_item(self, blocker_id: int) -> None:

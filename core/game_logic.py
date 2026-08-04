@@ -49,8 +49,11 @@ from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatis
 class GameEngine:
     from engine.combat import (
         advance_combat_resolution,
+        advance_after_attackers_declared,
+        advance_after_blockers_declared,
         ai_assign_blocks,
         auto_assign_required_blockers,
+        begin_pre_first_combat_window,
         apply_ai_adaptation_if_needed,
         apply_comparison_result,
         apply_trample_if_needed,
@@ -68,6 +71,7 @@ class GameEngine:
         finish_post_comparison_priority_window,
         finalize_or_continue_dice_battle,
         finish_block_assignment,
+        resume_dice_battle_after_roll_window,
         get_attackers_die_bonus,
         get_human_combat_creature,
         human_can_use_adaptation,
@@ -166,12 +170,15 @@ class GameEngine:
         finish_spell_resolution_after_reaction,
         get_card_from_pending_spell,
         get_context_die_for_player,
+        get_open_die_target_refs,
         get_player_by_id,
         get_player_combat_dice,
         get_reaction_window_profile,
         get_reaction_window_description,
         get_reaction_window_title,
+        has_valid_open_die_target,
         has_valid_ausweichen_target,
+        has_valid_boeenschub_target,
         has_valid_combat_die_target,
         is_general_spell_window_trigger,
         is_spell_card,
@@ -181,13 +188,16 @@ class GameEngine:
         reaction_window_is_combat_window,
         reaction_window_shows_stack_preview,
         remove_creature_from_combat,
+        clear_open_die_targets,
         resolve_spell_stack_to,
         resolve_stack_item,
+        resolve_target_open_die,
         resolve_target_creature,
         resume_stack_resolution,
         select_pending_spell_keyword,
         select_spell_combat_die,
         select_spell_target_ref,
+        set_open_die_targets,
         toggle_pending_spell_recycle_resource,
     )
 
@@ -250,6 +260,8 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
+        self.next_open_die_id = 1
+        self.open_die_targets: Dict[int, dict] = {}
 
         self.start_new_game()
 

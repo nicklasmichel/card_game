@@ -13,13 +13,17 @@ from .combat_dice import (
     human_can_use_adaptation,
     make_combat_unit_snapshot,
     resolve_pending_comparison,
+    resume_dice_battle_after_roll_window,
     resume_post_comparison_resolution,
     start_dice_battle,
 )
 from .combat_setup import (
     advance_combat_resolution,
+    advance_after_attackers_declared,
+    advance_after_blockers_declared,
     ai_assign_blocks,
     auto_assign_required_blockers,
+    begin_pre_first_combat_window,
     begin_attack_declaration,
     begin_combat_resolution,
     can_creature_block_attacker,
@@ -38,8 +42,11 @@ from .combat_setup import (
 
 __all__ = [
     "advance_combat_resolution",
+    "advance_after_attackers_declared",
+    "advance_after_blockers_declared",
     "ai_assign_blocks",
     "auto_assign_required_blockers",
+    "begin_pre_first_combat_window",
     "apply_ai_adaptation_if_needed",
     "apply_comparison_result",
     "apply_trample_if_needed",
@@ -64,6 +71,7 @@ __all__ = [
     "prepare_provoke_assignments",
     "resolve_pending_direct_attack_after_reaction",
     "resolve_pending_comparison",
+    "resume_dice_battle_after_roll_window",
     "resume_post_comparison_resolution",
     "start_dice_battle",
     "toggle_provoke_target",

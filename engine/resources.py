@@ -203,6 +203,14 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             f"({card.template.aw}/{card.template.vw}) für {self.format_card_cost(cost)}."
         )
     self.register_hand_card_played(self.active_player)
+    if card.template.draw_on_play > 0:
+        for _ in range(card.template.draw_on_play):
+            drawn = self.draw_card_for_player(self.active_player, card.template.name)
+            if drawn is None and self.phase == PHASE_GAME_OVER:
+                return True
+        self.log(
+            f"{card.template.name} laesst {self.active_player.name} beim Ausspielen {card.template.draw_on_play} Karte(n) ziehen."
+        )
     if card.template.self_damage_on_play > 0:
         self.active_player.life -= card.template.self_damage_on_play
         self.queue_player_damage_event(

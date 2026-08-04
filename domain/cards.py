@@ -48,6 +48,9 @@ class CardTemplate:
     spell_amount: int = 0
     spell_draw_count: int = 0
     sacrifice_own_creature_on_cast: bool = False
+    draw_on_play: int = 0
+    draw_on_attack: int = 0
+    draw_on_death: int = 0
 
     def has_ability(self, ability) -> bool:
         return ability in self.abilities
@@ -98,6 +101,7 @@ class SpellTargetRef:
     creature_id: int | None = None
     die_index: int | None = None
     die_role: str | None = None
+    open_die_id: int | None = None
 
 
 @dataclass

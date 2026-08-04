@@ -5,6 +5,8 @@ from unittest.mock import patch
 from core.models import (
     Ability,
     CardInstance,
+    PHASE_DECLARE_ATTACKERS,
+    PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
@@ -398,6 +400,53 @@ class SpellTests(EngineTestCase):
         self.assertTrue(any(card.template.template_id == "air_creature_windgeist" for card in self.engine.human_player.hand))
         self.assertTrue(any(card.template.template_id == "earth_creature_felsensoldat" for card in self.engine.ai_player.hand))
 
+    def test_turbulenz_can_recycle_tapped_resources(self) -> None:
+        spell = self.give_card("air_ritual_turbulenz")
+        self.give_resources(0, 2)
+        for resource in self.engine.human_player.resources:
+            resource.tapped = True
+        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources]
+        for resource_id in recycle_ids:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=own.unit_id))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=enemy.unit_id))
+        confirmed = self.engine.confirm_pending_spell_cast()
+
+        self.assertTrue(confirmed)
+
+    def test_turbulenz_requires_at_least_two_resources_in_resource_area(self) -> None:
+        spell = self.give_card("air_ritual_turbulenz")
+        self.give_resources(0, 1)
+        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.phase = PHASE_SUMMONING
+
+        started = self.engine.begin_spell_cast(spell.instance_id)
+
+        self.assertFalse(started)
+        self.assertEqual(len(self.engine.human_player.resources), 1)
+
+    def test_turbulenz_duplicate_target_does_not_satisfy_two_target_requirement(self) -> None:
+        spell = self.give_card("air_ritual_turbulenz")
+        self.give_resources(0, 2)
+        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources]
+        for resource_id in recycle_ids:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=enemy.unit_id))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=enemy.unit_id))
+
+        self.assertFalse(self.engine.pending_spell_ready())
+
     def test_selected_creature_in_summoning_shows_no_play_button(self) -> None:
         creature = self.give_card("air_creature_windgeist")
         self.give_resources(0, 2)
@@ -625,6 +674,72 @@ class SpellTests(EngineTestCase):
         self.assertNotEqual(self.engine.phase, PHASE_REACTION)
         self.assertEqual(self.engine.human_player.discard_pile[-1].template.template_id, "air_ritual_sturmformation")
 
+    def test_sturmformation_counts_itself_for_summoner_passive_but_not_discarded_cards(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_ritual_sturmformation")
+        self.give_card("air_spell_boeenschub")
+        self.give_card("air_spell_windstoss")
+        self.engine.human_player.hand_cards_played_this_turn = 2
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def test_sturmformation_fourth_play_discards_passive_draw_before_drawing_three(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_ritual_sturmformation")
+        self.engine.human_player.hand_cards_played_this_turn = 3
+        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])
+        draw_two = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        draw_three = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
+        passive_draw = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        self.engine.human_player.deck = [draw_one, draw_two, draw_three, passive_draw]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
+        self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
+        discard_ids = [card.template.template_id for card in self.engine.human_player.discard_pile]
+        self.assertIn(passive_draw.template.template_id, discard_ids)
+        hand_ids = [card.template.template_id for card in self.engine.human_player.hand]
+        self.assertEqual(
+            hand_ids,
+            [draw_three.template.template_id, draw_two.template.template_id, draw_one.template.template_id],
+        )
+
+    def test_sturmformation_drawn_cards_only_count_when_later_played(self) -> None:
+        self.give_resources(0, 3)
+        spell = self.give_card("air_ritual_sturmformation")
+        self.engine.human_player.hand_cards_played_this_turn = 2
+        draw_one = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"])
+        draw_two = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        draw_three = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        self.engine.human_player.deck = [draw_one, draw_two, draw_three]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+        drawn_creature = next(card for card in self.engine.human_player.hand if card.template.template_id == draw_one.template.template_id)
+        self.engine.resolve_creature_play(drawn_creature)
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
     def test_turbulenz_returns_both_selected_creatures_to_hand(self) -> None:
         self.give_resources(0, 2)
         spell = self.give_card("air_ritual_turbulenz")
@@ -666,6 +781,32 @@ class SpellTests(EngineTestCase):
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell.instance_id)
+
+    def test_turbulenz_returned_creatures_do_not_count_for_passive_until_replayed(self) -> None:
+        self.give_resources(0, 3)
+        spell = self.give_card("air_ritual_turbulenz")
+        own = self.make_creature("air_creature_windgeist", owner_id=0)
+        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.human_player.hand_cards_played_this_turn = 2
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        for resource_id in recycle_ids:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=own.unit_id))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=enemy.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+        returned_own = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_windgeist")
+        self.engine.resolve_creature_play(returned_own)
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
         recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
         for resource_id in recycle_ids:
             self.engine.toggle_pending_spell_recycle_resource(resource_id)
@@ -673,38 +814,35 @@ class SpellTests(EngineTestCase):
         self.assertFalse(self.engine.pending_spell_ready())
         self.assertFalse(self.engine.confirm_pending_spell_cast())
 
-    def test_air_spell_can_be_played_in_summoning_phase_without_ending_phase(self) -> None:
-        self.give_resources(0, 3)
+    def test_windrausch_is_not_playable_in_summoning_phase(self) -> None:
+        self.give_resources(0, 4)
         spell = self.give_card("air_spell_windrausch")
-        self.give_card("air_creature_windgeist")
-        self.engine.ai_player.life = 20
         self.engine.phase = PHASE_SUMMONING
 
-        self.engine.begin_spell_cast(spell.instance_id)
-        self.resolve_current_reaction_window_with_passes()
-
-        self.assertEqual(self.engine.phase, PHASE_SUMMONING)
-        self.assertEqual(self.engine.ai_player.life, 20)
-        self.assertEqual(self.engine.human_player.discard_pile[-1].template.template_id, "air_spell_windrausch")
+        self.assertFalse(self.engine.begin_spell_cast(spell.instance_id))
 
     def test_general_spell_window_opens_after_dice_revealed(self) -> None:
-        self.give_resources(0, 2)
-        self.give_card("air_spell_boeenschub")
+        self.give_resources(0, 1)
+        self.give_card("air_spell_windstoss")
         attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
 
         self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
         battle = self.engine.pending_dice_battle
-
-        self.engine.choose_human_die(0)
-        self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
-        self.engine.select_spell_combat_die(0)
-        self.engine.confirm_pending_spell_cast()
-        self.engine.pass_reaction()
-        self.engine.pass_reaction()
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.AFTER_DICE_REVEALED)
+        target_ref = self.engine.get_open_die_target_refs()[0]
+        target_die = self.engine.resolve_target_open_die(target_ref)
+        with patch.object(self.engine.rng, "randint", return_value=13):
+            self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
+            self.engine.select_spell_target_ref(target_ref)
+            self.engine.confirm_pending_spell_cast()
+            self.engine.pass_reaction()
+            self.engine.pass_reaction()
 
         self.assertIsNotNone(battle)
-        self.assertEqual(battle.attacker_dice[1].aw_bonus, attacker.aw + 20)
+        self.assertIsNotNone(target_die)
+        self.assertEqual(target_die.base_roll, 13)
 
     def test_general_spell_window_opens_after_completed_comparison(self) -> None:
         self.give_resources(0, 1)
@@ -732,45 +870,122 @@ class SpellTests(EngineTestCase):
         self.assertIsNotNone(self.engine.reaction_context)
         self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.AFTER_DICE_COMPARISON)
 
-    def test_unblocked_damage_window_opens_and_windrausch_doubles_damage(self) -> None:
-        self.give_resources(0, 2)
-        self.give_card("air_spell_windrausch")
-        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+    def test_windrausch_card_text_cost_and_effect_are_updated(self) -> None:
+        card = self.engine.templates["air_spell_windrausch"]
+
+        self.assertEqual(card.cost.resources, 2)
+        self.assertEqual(card.cost.recycle, 2)
+        self.assertEqual(card.rules_text, "Deine ungeblockten angreifenden Kreaturen verursachen in diesem Kampf doppelten Spielerschaden.")
+        self.assertEqual(card.spell_effect, SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE)
+        self.assertEqual(card.target_mode, self.engine.templates["air_spell_nachwehen"].target_mode)
+
+    def test_windrausch_is_playable_after_blockers_declared_and_doubles_all_unblocked_attackers(self) -> None:
+        self.give_resources(0, 4)
+        spell = self.give_card("air_spell_windrausch")
+        attacker_one = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        attacker_two = self.make_creature("air_creature_sturmfalke", owner_id=0)
         self.engine.ai_player.life = 20
-        self.engine.phase = PHASE_SUMMONING
+        self.engine.block_assignments = {
+            attacker_one.unit_id: [],
+            attacker_two.unit_id: [],
+        }
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+                active_player=self.engine.human_player,
+                source_player=self.engine.human_player,
+            ),
+            first_responder_id=self.engine.human_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_REACTION,
+        )
 
-        self.engine.begin_attack_declaration()
-        self.engine.toggle_attacker(attacker.unit_id)
-        self.engine.confirm_attackers()
-
-        self.assertEqual(self.engine.phase, PHASE_REACTION)
-        self.assertIsNotNone(self.engine.reaction_context)
-        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE)
-
-        self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
+        if self.engine.reaction_priority_player_id != self.engine.human_player.player_id:
+            self.engine.pass_reaction()
+        self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
+        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        for resource_id in recycle_ids:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.confirm_pending_spell_cast()
         self.engine.pass_reaction()
         self.engine.pass_reaction()
+        self.engine.begin_combat_resolution()
+        while self.engine.pending_direct_attack is not None:
+            self.engine.pass_reaction()
+            self.engine.pass_reaction()
 
-        self.assertEqual(self.engine.ai_player.life, 16)
+        self.assertEqual(self.engine.ai_player.life, 20 - ((attacker_one.aw + attacker_two.aw) * 2))
+        self.assertEqual(len(self.engine.human_player.resources), 2)
 
-    def test_two_windrausch_effects_quadruple_direct_damage(self) -> None:
+    def test_second_windrausch_does_not_stack_past_double_damage(self) -> None:
         self.give_resources(0, 4)
         first = self.give_card("air_spell_windrausch")
         second = self.give_card("air_spell_windrausch")
         attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
         self.engine.ai_player.life = 20
-        self.engine.phase = PHASE_SUMMONING
-
-        self.engine.begin_attack_declaration()
-        self.engine.toggle_attacker(attacker.unit_id)
-        self.engine.confirm_attackers()
+        self.engine.block_assignments = {attacker.unit_id: []}
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+                active_player=self.engine.human_player,
+                source_player=self.engine.human_player,
+            ),
+            first_responder_id=self.engine.human_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_REACTION,
+        )
+        if self.engine.reaction_priority_player_id != self.engine.human_player.player_id:
+            self.engine.pass_reaction()
         self.engine.begin_spell_from_hand(first.instance_id)
+        first_recycle = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        for resource_id in first_recycle:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.confirm_pending_spell_cast()
         self.engine.pass_reaction()
+        if self.engine.reaction_priority_player_id != self.engine.human_player.player_id:
+            self.engine.pass_reaction()
         self.engine.begin_spell_from_hand(second.instance_id)
+        second_recycle = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        for resource_id in second_recycle:
+            self.engine.toggle_pending_spell_recycle_resource(resource_id)
+        self.engine.confirm_pending_spell_cast()
         self.engine.pass_reaction()
         self.engine.pass_reaction()
+        self.engine.begin_combat_resolution()
+        while self.engine.pending_direct_attack is not None:
+            self.engine.pass_reaction()
+            self.engine.pass_reaction()
 
-        self.assertEqual(self.engine.ai_player.life, 12)
+        self.assertEqual(self.engine.ai_player.life, 16)
+
+    def test_windrausch_before_blockers_is_not_legal(self) -> None:
+        self.give_resources(0, 4)
+        spell = self.give_card("air_spell_windrausch")
+        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.block_assignments = {attacker.unit_id: []}
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.AFTER_ATTACKERS_DECLARED,
+                active_player=self.engine.human_player,
+                source_player=self.engine.human_player,
+            ),
+            first_responder_id=self.engine.human_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_REACTION,
+        )
+
+        self.assertFalse(self.engine.begin_spell_from_hand(spell.instance_id))
+
+    def test_windrausch_is_not_playable_after_first_combat_begins(self) -> None:
+        self.give_resources(0, 4)
+        spell = self.give_card("air_spell_windrausch")
+        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertFalse(self.engine.begin_spell_from_hand(spell.instance_id))
 
     def test_ausweichen_returns_own_fighting_creature_without_counting_as_death(self) -> None:
         self.give_resources(0, 1)
@@ -800,6 +1015,71 @@ class SpellTests(EngineTestCase):
         self.assertIsNone(self.engine.get_unit_by_id(attacker.unit_id))
         self.assertEqual(self.engine.creatures_died_this_turn, 0)
         self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "fire_creature_funkenkobold")
+
+    def test_ausweichen_can_target_own_creature_in_own_summoning_phase(self) -> None:
+        self.give_resources(0, 1)
+        spell = self.give_card("air_spell_ausweichen")
+        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=creature.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertIsNone(self.engine.get_unit_by_id(creature.unit_id))
+        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_windgeist")
+
+    def test_ausweichen_can_target_non_fighting_creature_in_enemy_summoning_reaction_window(self) -> None:
+        self.give_resources(0, 1)
+        self.give_card("air_spell_ausweichen")
+        self.engine.active_player_index = 1
+        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.SPELL_CAST,
+                active_player=self.engine.ai_player,
+                source_player=self.engine.ai_player,
+            ),
+            first_responder_id=0,
+            base_stack_size=0,
+            resume_phase=PHASE_SUMMONING,
+        )
+
+        self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=creature.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertIsNone(self.engine.get_unit_by_id(creature.unit_id))
+        self.assertEqual(self.engine.human_player.hand[-1].template.template_id, "air_creature_windgeist")
+
+    def test_ausweichen_counts_itself_for_passive_but_returned_creature_only_when_replayed(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_ausweichen")
+        creature = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.human_player.hand_cards_played_this_turn = 2
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=creature.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+        returned = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_creature_windgeist")
+        self.engine.resolve_creature_play(returned)
+
+        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
     def test_ausweichen_on_blocker_keeps_attacker_blocked(self) -> None:
         self.give_resources(0, 1)
@@ -833,31 +1113,78 @@ class SpellTests(EngineTestCase):
         self.assertIn(blocker.unit_id, self.engine.block_assignments[attacker.unit_id])
 
     def test_windstoss_rerolls_only_base_roll_and_keeps_modifiers(self) -> None:
-        self.give_resources(0, 3)
-        self.give_card("air_spell_boeenschub")
+        self.give_resources(0, 1)
         self.give_card("air_spell_windstoss")
         attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
 
         self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
         battle = self.engine.pending_dice_battle
-        self.engine.choose_human_die(0)
-        self.engine.pass_reaction()
-        self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
-        self.engine.select_spell_combat_die(0)
-        self.engine.confirm_pending_spell_cast()
-        self.engine.pass_reaction()
-        self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
-        target_die = battle.attacker_dice[1]
+        target_ref = self.engine.get_open_die_target_refs()[0]
+        target_die = self.engine.resolve_target_open_die(target_ref)
+        self.assertIsNotNone(target_die)
         old_bonus = target_die.aw_bonus
         with patch.object(self.engine.rng, "randint", return_value=13):
-            self.engine.select_spell_combat_die(0)
+            self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
+            self.engine.select_spell_target_ref(target_ref)
             self.engine.confirm_pending_spell_cast()
             self.engine.pass_reaction()
             self.engine.pass_reaction()
 
+        self.assertIsNotNone(battle)
         self.assertEqual(target_die.base_roll, 13)
-        self.assertEqual(target_die.aw_bonus, old_bonus + 20)
+        self.assertEqual(target_die.aw_bonus, old_bonus)
+
+    def test_windstoss_card_text_is_universal_reroll(self) -> None:
+        self.assertEqual(self.engine.templates["air_spell_windstoss"].rules_text, "Wirf einen Wuerfel erneut.")
+
+    def test_windstoss_can_reroll_enemy_comparison_die_before_resolution(self) -> None:
+        self.give_resources(0, 1)
+        self.give_card("air_spell_windstoss")
+        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.pending_dice_battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(14, attacker.aw)],
+            blocker_dice=[DieResult(19, blocker.aw)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        self.engine.phase = PHASE_DICE_BATTLE
+
+        self.engine.choose_human_die(0)
+        target_ref = next(
+            ref
+            for ref in self.engine.get_open_die_target_refs()
+            if self.engine.resolve_target_open_die(ref) is self.engine.pending_dice_battle.pending_comparison.blocker_die
+        )
+        with patch.object(self.engine.rng, "randint", return_value=2):
+            self.engine.begin_spell_from_hand(self.engine.human_player.hand[0].instance_id)
+            self.engine.select_spell_target_ref(target_ref)
+            self.engine.confirm_pending_spell_cast()
+            self.engine.pass_reaction()
+            self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.pending_dice_battle.history[0].outcome_text.startswith(attacker.name), True)
+
+    def test_fully_resolved_dice_are_no_longer_open_targets(self) -> None:
+        self.give_resources(0, 1)
+        self.give_card("air_spell_windstoss")
+        attacker = self.make_creature("fire_creature_funkenkobold", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertTrue(self.engine.get_open_die_target_refs())
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
+        self.assertFalse(self.engine.get_open_die_target_refs())
 
     def test_nachwehen_uses_recycle_only_and_draws_per_death(self) -> None:
         spell = self.give_card("air_spell_nachwehen")
@@ -882,11 +1209,72 @@ class SpellTests(EngineTestCase):
         self.assertEqual(len(self.engine.human_player.resources), 0)
         self.assertEqual(len(self.engine.human_player.hand), 5)
 
-    def test_ai_does_not_choose_boeenschub_without_unused_combat_die(self) -> None:
+    def test_nachwehen_has_no_normal_resource_cost(self) -> None:
+        card = self.engine.templates["air_spell_nachwehen"]
+
+        self.assertEqual(card.cost.resources, 0)
+        self.assertEqual(card.cost.recycle, 2)
+
+    def test_nachwehen_draws_zero_cards_when_no_creature_died(self) -> None:
+        spell = self.give_card("air_spell_nachwehen")
+        self.give_resources(0, 2)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.begin_spell_cast(spell.instance_id)
+        for resource in list(self.engine.human_player.resources):
+            self.engine.toggle_pending_spell_recycle_resource(resource.resource_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+
+    def test_nachwehen_draws_two_cards_for_one_death_and_six_for_three_deaths(self) -> None:
+        spell_one = self.give_card("air_spell_nachwehen")
+        spell_two = self.give_card("air_spell_nachwehen")
+        self.give_resources(0, 4)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windhuscher"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenwaechter"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsgreif"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
+
+        self.engine.creatures_died_this_turn = 1
+        self.engine.begin_spell_cast(spell_one.instance_id)
+        for resource in list(self.engine.human_player.resources[:2]):
+            self.engine.toggle_pending_spell_recycle_resource(resource.resource_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(len(self.engine.human_player.hand), 3)
+
+        self.engine.creatures_died_this_turn = 3
+        self.engine.begin_spell_cast(spell_two.instance_id)
+        for resource in list(self.engine.human_player.resources[:2]):
+            self.engine.toggle_pending_spell_recycle_resource(resource.resource_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(len(self.engine.human_player.hand), 8)
+
+    def test_ai_does_not_choose_boeenschub_without_valid_attacker(self) -> None:
         self.engine.ai_player.hand.append(
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_boeenschub"])
         )
         self.engine.phase = PHASE_REACTION
+        self.engine.reaction_context = ReactionContext(
+            trigger=ReactionTrigger.BEFORE_FIRST_COMBAT,
+            active_player=self.engine.ai_player,
+            source_player=self.engine.ai_player,
+        )
         self.engine.reaction_priority_player_id = self.engine.ai_player.player_id
 
         chosen = self.engine.ai.choose_spell(self.engine.ai_player.hand, self.engine)
@@ -903,6 +1291,143 @@ class SpellTests(EngineTestCase):
         chosen = self.engine.ai.choose_ritual(self.engine.ai_player, self.engine)
 
         self.assertIsNone(chosen)
+
+    def test_boeenschub_card_text_and_effect_are_updated(self) -> None:
+        card = self.engine.templates["air_spell_boeenschub"]
+
+        self.assertEqual(card.rules_text, "Eine angreifende Kreatur erhaelt fuer diesen Kampf +2 AW.")
+        self.assertEqual(card.spell_effect, SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT)
+
+    def test_boeenschub_can_target_only_own_attacking_creature(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        own_non_attacker = self.make_creature("air_creature_sturmfalke", owner_id=0)
+        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.confirm_attackers()
+
+        self.engine.begin_spell_from_hand(spell.instance_id)
+        self.assertIsNotNone(self.engine.pending_spell_cast)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=own_non_attacker.unit_id))
+        self.assertEqual(self.engine.pending_spell_cast.selected_targets, [])
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=enemy.unit_id))
+        self.assertEqual(self.engine.pending_spell_cast.selected_targets, [])
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=attacker.unit_id))
+        self.assertEqual(len(self.engine.pending_spell_cast.selected_targets), 1)
+
+    def test_boeenschub_is_playable_after_attackers_declared(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
+        ]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.confirm_attackers()
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.AFTER_ATTACKERS_DECLARED)
+        self.engine.pass_reaction()
+        self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
+
+    def test_boeenschub_is_playable_after_blockers_declared(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.confirm_attackers()
+        self.resolve_current_reaction_window_with_passes()
+        self.engine.toggle_selected_attack_target(attacker.unit_id)
+        self.engine.toggle_blocker_assignment(blocker.unit_id)
+        self.engine.finish_block_assignment()
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.AFTER_BLOCKERS_DECLARED)
+        self.engine.pass_reaction()
+        self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
+
+    def test_boeenschub_is_playable_in_last_window_before_first_combat(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmfalke"]),
+        ]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.confirm_attackers()
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.BEFORE_FIRST_COMBAT)
+        self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
+
+    def test_boeenschub_is_not_playable_after_first_combat_begins(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertFalse(self.engine.begin_spell_from_hand(spell.instance_id))
+
+    def test_boeenschub_grants_plus_two_aw_for_current_combat(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        self.engine.ai_player.life = 20
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.toggle_attacker(attacker.unit_id)
+        self.engine.confirm_attackers()
+
+        self.engine.begin_spell_from_hand(spell.instance_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=attacker.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.ai_player.life, 20 - (attacker.aw + 2))
+
+    def test_boeenschub_bonus_applies_across_multiple_blockers_and_ends_after_turn(self) -> None:
+        self.give_resources(0, 2)
+        spell = self.give_card("air_spell_boeenschub")
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker_one = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker_two = self.make_creature("earth_creature_steinkobold", owner_id=1)
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.block_assignments = {
+            attacker.unit_id: [blocker_one.unit_id, blocker_two.unit_id],
+        }
+        self.engine.blocker_to_attackers = {
+            blocker_one.unit_id: [attacker.unit_id],
+            blocker_two.unit_id: [attacker.unit_id],
+        }
+        self.engine.finish_block_assignment()
+
+        self.engine.begin_spell_from_hand(spell.instance_id)
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=attacker.unit_id))
+        self.engine.confirm_pending_spell_cast()
+        self.engine.pass_reaction()
+        self.engine.pass_reaction()
+
+        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 2)
+        self.assertIsNotNone(self.engine.pending_order)
+
+        self.engine.pending_order.chosen_order = [blocker_one.unit_id, blocker_two.unit_id]
+        self.engine.confirm_block_order()
+
+        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 2)
+
+        self.engine.end_turn()
+
+        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw)
 
     def test_nachwehen_loses_on_empty_deck_mid_resolution(self) -> None:
         spell = self.give_card("air_spell_nachwehen")

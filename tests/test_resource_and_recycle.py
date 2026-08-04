@@ -662,7 +662,7 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_ritual_windwechsel",
         ])
         self.make_creature("air_creature_himmelsgreif", owner_id=1)
-        self.engine.human_player.life = 2
+        self.engine.human_player.life = 1
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 

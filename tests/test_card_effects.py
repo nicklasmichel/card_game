@@ -84,21 +84,44 @@ class CardEffectsTests(EngineTestCase):
         self.assertEqual(len(self.engine.pending_visual_events), 2)
         self.assertTrue(all(event["type"] == "player_damage" for event in self.engine.pending_visual_events[-2:]))
 
-    def test_himmelsspaeher_is_selected_as_mandatory_attacker(self) -> None:
-        himmelsspaeher = self.make_creature("air_creature_himmelsspaeher", owner_id=0)
+    def test_windhuscher_is_selected_as_mandatory_attacker(self) -> None:
+        windhuscher = self.make_creature("air_creature_windhuscher", owner_id=0)
 
         self.engine.phase = PHASE_SUMMONING
         self.engine.begin_attack_declaration()
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
-        self.assertIn(himmelsspaeher.unit_id, self.engine.selected_attackers)
+        self.assertIn(windhuscher.unit_id, self.engine.selected_attackers)
 
-    def test_windhuscher_returns_to_deck_at_end_of_turn(self) -> None:
-        creature = self.make_creature("air_creature_windhuscher", owner_id=0)
-        self.engine.human_player.deck = []
+    def test_himmelsgreif_draws_one_card_on_play(self) -> None:
+        card_instance = CardInstance(
+            self.engine.make_instance_id(),
+            self.engine.templates["air_creature_himmelsgreif"],
+        )
+        self.engine.human_player.hand = [card_instance]
+        self.engine.human_player.resources = [
+            self.make_resource("fire_creature_funkenkobold"),
+            self.make_resource("water_creature_wassertropfen"),
+            self.make_resource("earth_creature_steinkobold"),
+        ]
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
+        self.engine.phase = PHASE_SUMMONING
 
-        self.engine.resolve_end_of_turn_returns(self.engine.human_player)
+        played = self.engine.resolve_creature_play(card_instance)
 
-        self.assertEqual(len(self.engine.human_player.battlefield), 0)
-        self.assertEqual(len(self.engine.human_player.deck), 1)
-        self.assertEqual(self.engine.human_player.deck[0].template.template_id, "air_creature_windhuscher")
+        self.assertTrue(played)
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertEqual(self.engine.human_player.hand[0].template.template_id, "air_creature_windgeist")
+
+    def test_sturmfalke_draws_one_card_on_death(self) -> None:
+        creature = self.make_creature("air_creature_boeenreiter", owner_id=0)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
+
+        self.engine.destroy_creature_immediately(self.engine.human_player, creature, "Test")
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertEqual(self.engine.human_player.hand[0].template.template_id, "air_creature_windgeist")

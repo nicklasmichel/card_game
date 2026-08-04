@@ -94,7 +94,46 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
         ai_strategy_name=strategy.name,
         ai_choose_die=lambda dice, strategy=strategy: strategy.choose(dice, self.rng),
     )
+    battle = self.pending_dice_battle
     self.log(f"Wuerfelkampf startet: {attacker.name} gegen {blocker.name}.")
+    setattr(attacker, "owner_id", battle.attacker_owner)
+    setattr(blocker, "owner_id", battle.blocker_owner)
+    self.set_open_die_targets(
+        [
+            {
+                "die": die,
+                "player_id": battle.attacker_owner,
+                "die_role": "attacker",
+                "die_index": index,
+                "source_creature_id": battle.attacker_id,
+                "is_valid": lambda die=die: self.pending_dice_battle is battle and die in battle.attacker_dice and not battle.resolution_complete,
+            }
+            for index, die in enumerate(battle.attacker_dice)
+        ]
+        + [
+            {
+                "die": die,
+                "player_id": battle.blocker_owner,
+                "die_role": "blocker",
+                "die_index": index,
+                "source_creature_id": battle.blocker_id,
+                "is_valid": lambda die=die: self.pending_dice_battle is battle and die in battle.blocker_dice and not battle.resolution_complete,
+            }
+            for index, die in enumerate(battle.blocker_dice)
+        ]
+    )
+    self.begin_general_spell_window(
+        trigger=ReactionTrigger.AFTER_DICE_REVEALED,
+        first_responder_id=1 - self.active_player.player_id,
+        resume_phase=PHASE_DICE_BATTLE,
+        continuation=self.resume_dice_battle_after_roll_window,
+        attacker_creature=attacker,
+        blocker_creature=blocker,
+    )
+
+
+def resume_dice_battle_after_roll_window(self) -> None:
+    self.clear_open_die_targets()
 
 
 def choose_human_die(self, visible_index: int) -> None:
@@ -113,9 +152,6 @@ def choose_human_die(self, visible_index: int) -> None:
 
     chosen_human_die = available_human_dice[visible_index]
     chosen_enemy_die = battle.ai_choose_die(available_enemy_dice)
-    chosen_human_die.used = True
-    chosen_enemy_die.used = True
-
     if human_is_attacker:
         comparison = PendingComparison(
             attacker_die=chosen_human_die,
@@ -135,8 +171,36 @@ def choose_human_die(self, visible_index: int) -> None:
         setattr(attacker, "owner_id", battle.attacker_owner)
     if blocker is not None:
         setattr(blocker, "owner_id", battle.blocker_owner)
+    self.set_open_die_targets(
+        [
+            {
+                "die": comparison.attacker_die,
+                "player_id": battle.attacker_owner,
+                "die_role": "attacker",
+                "die_index": battle.attacker_dice.index(comparison.attacker_die),
+                "source_creature_id": battle.attacker_id,
+                "is_valid": lambda die=comparison.attacker_die: (
+                    self.pending_dice_battle is battle
+                    and battle.pending_comparison is comparison
+                    and comparison.attacker_die is die
+                ),
+            },
+            {
+                "die": comparison.blocker_die,
+                "player_id": battle.blocker_owner,
+                "die_role": "blocker",
+                "die_index": battle.blocker_dice.index(comparison.blocker_die),
+                "source_creature_id": battle.blocker_id,
+                "is_valid": lambda die=comparison.blocker_die: (
+                    self.pending_dice_battle is battle
+                    and battle.pending_comparison is comparison
+                    and comparison.blocker_die is die
+                ),
+            },
+        ]
+    )
     self.begin_general_spell_window(
-        trigger=ReactionTrigger.AFTER_DICE_REVEALED,
+        trigger=ReactionTrigger.BEFORE_DICE_COMPARISON,
         first_responder_id=1 - self.human_player.player_id if self.human_player.player_id == battle.attacker_owner else self.human_player.player_id,
         resume_phase=PHASE_DICE_BATTLE,
         continuation=self.continue_pending_comparison_after_reaction,
@@ -213,6 +277,8 @@ def resolve_pending_comparison(self, use_human_adaptation: bool) -> None:
         if human_unit is not None:
             self.log(f"{human_unit.name} nutzt Anpassung.")
 
+    comparison.attacker_die.used = True
+    comparison.blocker_die.used = True
     battle.pending_comparison = None
     self.apply_comparison_result(battle, comparison)
 
@@ -221,6 +287,7 @@ def continue_pending_comparison_after_reaction(self) -> None:
     battle = self.pending_dice_battle
     if battle is None or battle.pending_comparison is None:
         return
+    self.clear_open_die_targets()
     if self.get_unit_by_id(battle.attacker_id) is None or self.get_unit_by_id(battle.blocker_id) is None:
         battle.pending_comparison = None
         battle.resolution_complete = True
