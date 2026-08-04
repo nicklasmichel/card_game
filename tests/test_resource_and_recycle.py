@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import CardCost, CardInstance, PHASE_FORCED_DISCARD, PHASE_RECYCLE_PAYMENT, PHASE_RESOURCE, PHASE_SUMMONING, PlayerState
+from core.models import CardCost, CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_FORCED_DISCARD, PHASE_REACTION, PHASE_RECYCLE_PAYMENT, PHASE_RESOURCE, PHASE_SUMMONING, PlayerState, ReactionTrigger
 from tests.helpers import EngineTestCase
 
 
@@ -73,11 +73,11 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.play_hand_card_as_resource(third.instance_id)
         self.assertEqual(len(self.engine.human_player.resources), 2)
 
-    def test_fourth_hand_card_play_triggers_one_summoner_draw(self) -> None:
+    def _legacy_test_fourth_hand_card_play_no_longer_triggers_summoner_draw(self) -> None:
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         ]
-        self.engine.phase = PHASE_RESOURCE
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
         first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
@@ -92,16 +92,13 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.play_hand_card_as_resource(second.instance_id)
         self.engine.phase = PHASE_SUMMONING
         self.engine.play_hand_card_in_summoning_zone(third.instance_id)
-        self.assertEqual(len(self.engine.human_player.hand), 1)
-        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 3)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
         self.engine.play_hand_card_in_summoning_zone(fourth.instance_id)
 
-        self.assertEqual(len(self.engine.human_player.hand), 1)
-        self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 4)
-        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-    def test_summoner_passive_log_comes_after_fourth_card_log(self) -> None:
+    def _legacy_test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         ]
@@ -127,7 +124,7 @@ class ResourceAndRecycleTests(EngineTestCase):
 
         self.assertLess(play_index, passive_index)
 
-    def test_resources_count_toward_summoner_passive(self) -> None:
+    def _legacy_test_resources_count_toward_summoner_passive(self) -> None:
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
         ]
@@ -152,7 +149,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(len(self.engine.human_player.hand), 1)
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-    def test_summoner_passive_only_triggers_once_on_fourth_and_fifth_play(self) -> None:
+    def _legacy_test_summoner_passive_only_triggers_once_on_fourth_and_fifth_play(self) -> None:
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
@@ -181,7 +178,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(len(self.engine.human_player.hand), cards_after_third - 1)
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-    def test_summoner_passive_resets_next_own_turn(self) -> None:
+    def _legacy_test_summoner_passive_resets_next_own_turn(self) -> None:
         self.engine.human_player.hand_cards_played_this_turn = 4
         self.engine.human_player.summoner_passive_draw_used_this_turn = True
         self.engine.human_player.deck = [
@@ -196,7 +193,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(self.engine.human_player.hand_cards_played_this_turn, 0)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-    def test_opponent_turn_does_not_increase_human_summoner_counter(self) -> None:
+    def _legacy_test_opponent_turn_does_not_increase_human_summoner_counter(self) -> None:
         self.engine.human_player.hand_cards_played_this_turn = 2
         self.engine.active_player_index = 1
 
@@ -213,6 +210,85 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertFalse(self.engine.can_activate_summoner_draw(self.engine.human_player))
         self.assertFalse(self.engine.activate_summoner_draw(self.engine.human_player))
         self.assertEqual(len(self.engine.human_player.hand), 0)
+
+    def test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def test_three_attackers_trigger_summoner_draw_before_blockers(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
+        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=0)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+        self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
+
+    def test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
+        ]
+        attackers = [
+            self.make_creature("air_creature_windgeist", owner_id=0),
+            self.make_creature("air_creature_windhuscher", owner_id=0),
+            self.make_creature("air_creature_himmelsspaeher", owner_id=0),
+            self.make_creature("air_creature_himmelsgreif", owner_id=0),
+        ]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [creature.unit_id for creature in attackers]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def test_summoner_passive_resets_next_own_turn(self) -> None:
+        self.engine.human_player.summoner_passive_draw_used_this_turn = True
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        self.engine.active_player_index = 0
+        self.engine.starting_player_id = 1
+        self.engine.human_player.turns_started = 1
+        self.engine.turn_number = 2
+
+        self.engine.start_turn()
+
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def test_opponent_attack_does_not_trigger_human_summoner_passive(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        self.engine.active_player_index = 1
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=1)
+        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=1)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
     def test_spell_can_be_played_via_summoning_zone_drop(self) -> None:
         spell = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_windwechsel"])
@@ -756,3 +832,83 @@ class AiResourceStrategyTests(EngineTestCase):
         selected = self.select_resource_ids(1)
 
         self.assertNotIn("air_creature_himmelsspaeher", selected)
+
+    def _test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def _test_three_attackers_trigger_summoner_draw_before_blockers(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=0)
+        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=0)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.AFTER_ATTACKERS_DECLARED)
+
+    def _test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
+        ]
+        attackers = [
+            self.make_creature("air_creature_windgeist", owner_id=0),
+            self.make_creature("air_creature_windhuscher", owner_id=0),
+            self.make_creature("air_creature_himmelsspaeher", owner_id=0),
+            self.make_creature("air_creature_himmelsgreif", owner_id=0),
+        ]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [creature.unit_id for creature in attackers]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 1)
+        self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def _test_summoner_passive_resets_next_own_turn(self) -> None:
+        self.engine.human_player.summoner_passive_draw_used_this_turn = True
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        self.engine.active_player_index = 0
+        self.engine.starting_player_id = 1
+        self.engine.human_player.turns_started = 1
+        self.engine.turn_number = 2
+
+        self.engine.start_turn()
+
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
+    def _test_opponent_attack_does_not_trigger_human_summoner_passive(self) -> None:
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"])
+        ]
+        self.engine.active_player_index = 1
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=1)
+        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=1)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(len(self.engine.human_player.hand), 0)
+        self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)

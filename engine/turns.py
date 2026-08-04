@@ -103,7 +103,6 @@ def start_turn(self) -> None:
         self.log(f"{player.name} ist Startspieler und zieht im ersten Zug keine Karte.")
     player.turns_started += 1
     player.resources_played_this_turn = 0
-    player.hand_cards_played_this_turn = 0
     player.summoner_passive_draw_used_this_turn = False
     self.phase = PHASE_RESOURCE
     self.selected_hand_ids.clear()

@@ -147,7 +147,11 @@ def prepare_ai_turn_action(self) -> bool:
 
     if self.phase == PHASE_SUMMONING:
         chosen = self.ai.choose_main_phase_card(self.active_player, self)
-        if chosen is not None and chosen.template.card_type in {CardType.RITUAL, CardType.SPELL}:
+        if (
+            chosen is not None
+            and chosen.template.card_type in {CardType.RITUAL, CardType.SPELL}
+            and self.can_play_card(self.active_player, chosen)
+        ):
             self.pending_ai_action = {
                 "kind": "cast_spell",
                 "description": f"Gegner wird {chosen.template.name} spielen.",
@@ -255,23 +259,8 @@ def execute_prepared_ai_action(self) -> None:
     if kind == "declare_attackers":
         attacker_ids = set(action.get("attacker_ids", []))
         attackers = [attacker for attacker in self.available_attackers(self.active_player) if attacker.unit_id in attacker_ids]
-        for attacker in attackers:
-            attacker.tapped = True
         self.selected_attackers = [attacker.unit_id for attacker in attackers]
-        self.statistics.register_attackers(self.active_player.player_id, len(attackers))
-        if not attackers:
-            self.log("Gegner greift nicht an.")
-            self.end_turn()
-            return
-        self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
-        self.blocker_to_attackers.clear()
-        self.prepare_provoke_assignments(attackers)
-        self.phase = PHASE_DECLARE_BLOCKERS
-        self.selected_provoke_attacker_id = None
-        self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
-        self.auto_assign_required_blockers()
-        attacker_names = ", ".join(attacker.name for attacker in attackers)
-        self.log(f"Gegner greift an mit: {attacker_names}. Waehle deine Blocker.")
+        self.confirm_attackers()
         return
     if kind == "reaction_pass":
         self.pass_reaction()
@@ -326,23 +315,8 @@ def ai_play_creatures(self) -> None:
 
 def ai_declare_attackers(self) -> None:
     attackers = self.ai.choose_attackers(self.available_attackers(self.active_player))
-    for attacker in attackers:
-        attacker.tapped = True
     self.selected_attackers = [attacker.unit_id for attacker in attackers]
-    self.statistics.register_attackers(self.active_player.player_id, len(attackers))
-    if not attackers:
-        self.log("Gegner greift nicht an.")
-        self.end_turn()
-        return
-    self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
-    self.blocker_to_attackers.clear()
-    self.prepare_provoke_assignments(attackers)
-    self.phase = PHASE_DECLARE_BLOCKERS
-    self.selected_provoke_attacker_id = None
-    self.selected_attack_target_id = attackers[0].unit_id if len(attackers) == 1 else None
-    self.auto_assign_required_blockers()
-    attacker_names = ", ".join(attacker.name for attacker in attackers)
-    self.log(f"Gegner greift an mit: {attacker_names}. Waehle deine Blocker.")
+    self.confirm_attackers()
 
 
 def handle_click(self, area: str, item_id: int) -> None:

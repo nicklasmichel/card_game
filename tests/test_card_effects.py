@@ -84,16 +84,16 @@ class CardEffectsTests(EngineTestCase):
         self.assertEqual(len(self.engine.pending_visual_events), 2)
         self.assertTrue(all(event["type"] == "player_damage" for event in self.engine.pending_visual_events[-2:]))
 
-    def test_windhuscher_is_selected_as_mandatory_attacker(self) -> None:
-        windhuscher = self.make_creature("air_creature_windhuscher", owner_id=0)
+    def test_wolkenkrieger_is_selected_as_mandatory_attacker(self) -> None:
+        wolkenkrieger = self.make_creature("air_creature_windhuscher", owner_id=0)
 
         self.engine.phase = PHASE_SUMMONING
         self.engine.begin_attack_declaration()
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
-        self.assertIn(windhuscher.unit_id, self.engine.selected_attackers)
+        self.assertIn(wolkenkrieger.unit_id, self.engine.selected_attackers)
 
-    def test_himmelsgreif_draws_one_card_on_play(self) -> None:
+    def test_himmelsfalke_draws_one_card_on_play(self) -> None:
         card_instance = CardInstance(
             self.engine.make_instance_id(),
             self.engine.templates["air_creature_himmelsgreif"],

@@ -168,6 +168,21 @@ def confirm_attackers(self) -> None:
     for attacker in attackers:
         attacker.tapped = True
     self.selected_attackers = [attacker.unit_id for attacker in attackers]
+    if self.statistics is not None:
+        self.statistics.register_attackers(self.active_player.player_id, len(attackers))
+    if not attackers:
+        self.log("Keine Angreifer gewaehlt.")
+        self.end_turn()
+        return
+    if not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
+        self.active_player.summoner_passive_draw_used_this_turn = True
+        drawn = self.draw_card_for_player(self.active_player, "Beschwoerer-Passiv")
+        if drawn is not None:
+            self.log(f"{self.active_player.name} zieht 1 Karte durch den Beschwoerer.")
+        elif self.phase != PHASE_GAME_OVER:
+            self.log("Es kann keine Karte durch den Beschwoerer gezogen werden.")
+        if self.phase == PHASE_GAME_OVER:
+            return
     for attacker in attackers:
         if getattr(attacker, "draw_on_attack", 0) <= 0:
             continue
@@ -176,12 +191,6 @@ def confirm_attackers(self) -> None:
             if drawn is None and self.phase == PHASE_GAME_OVER:
                 return
         self.log(f"{attacker.name} laesst {self.active_player.name} beim Angriff {attacker.draw_on_attack} Karte(n) ziehen.")
-    if self.statistics is not None:
-        self.statistics.register_attackers(self.active_player.player_id, len(attackers))
-    if not attackers:
-        self.log("Keine Angreifer gewaehlt.")
-        self.end_turn()
-        return
     self.block_assignments = {attacker.unit_id: [] for attacker in attackers}
     self.blocker_to_attackers.clear()
     self.prepare_provoke_assignments(attackers)

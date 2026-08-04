@@ -95,7 +95,7 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_SUMMONING)
         self.assertGreaterEqual(len(self.engine.ai_player.resources), 1)
 
-    def test_ai_draws_from_summoner_passive_on_fourth_hand_card_play(self) -> None:
+    def _legacy_test_ai_draws_from_summoner_passive_on_fourth_hand_card_play(self) -> None:
         self.engine.phase = PHASE_SUMMONING
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand_cards_played_this_turn = 2
@@ -228,6 +228,47 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(prepared_attack)
         self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
         self.assertEqual(self.engine.pending_ai_action["attacker_ids"], [flyer.unit_id])
+
+    def test_ai_three_safe_attackers_trigger_summoner_passive_draw(self) -> None:
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.ai_player.summoner_key = "air"
+        self.engine.ai_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
+        ]
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=1)
+        attacker_three = self.make_creature("air_creature_himmelsspaeher", owner_id=1)
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
+        self.assertEqual(
+            set(self.engine.pending_ai_action["attacker_ids"]),
+            {attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id},
+        )
+
+        self.engine.execute_prepared_ai_action()
+
+        self.assertEqual(len(self.engine.ai_player.hand), 1)
+        self.assertTrue(self.engine.ai_player.summoner_passive_draw_used_this_turn)
+
+    def test_ai_prefers_safe_third_flier_for_summoner_passive_draw(self) -> None:
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.ai_player.summoner_key = "air"
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windhuscher", owner_id=1)
+        safe_flier = self.make_creature("air_creature_himmelsgreif", owner_id=1)
+        self.make_creature("earth_creature_felsensoldat", owner_id=0)
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
+        self.assertEqual(
+            set(self.engine.pending_ai_action["attacker_ids"]),
+            {attacker_one.unit_id, attacker_two.unit_id, safe_flier.unit_id},
+        )
 
     def test_ai_reaction_spell_waits_for_confirmation(self) -> None:
         self.engine.ai_player.hand = [
@@ -499,7 +540,7 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(prepared_follow_up)
         self.assertEqual(self.engine.pending_ai_action["kind"], "play_creature")
 
-    def test_ai_does_not_use_ausweichen_only_for_passive(self) -> None:
+    def _legacy_test_ai_does_not_use_ausweichen_only_for_passive(self) -> None:
         self.engine.phase = PHASE_SUMMONING
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand_cards_played_this_turn = 2

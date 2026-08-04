@@ -42,17 +42,7 @@ def can_play_card(self, player: PlayerState, card: CardInstance) -> bool:
 
 
 def register_hand_card_played(self, player: PlayerState) -> None:
-    if player != self.active_player:
-        return
-    player.hand_cards_played_this_turn += 1
-    if player.summoner_passive_draw_used_this_turn or player.hand_cards_played_this_turn != 4:
-        return
-    player.summoner_passive_draw_used_this_turn = True
-    drawn = self.draw_card_for_player(player, "Beschwoerer-Passiv")
-    if drawn is not None:
-        self.log(f"{player.name} zieht 1 Karte durch den Beschwoerer.")
-    elif self.phase != PHASE_GAME_OVER:
-        self.log("Es kann keine Karte durch den Beschwoerer gezogen werden.")
+    return
 
 
 def begin_recycle_payment(self, card_instance_id: int) -> bool:

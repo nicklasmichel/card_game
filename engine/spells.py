@@ -385,6 +385,19 @@ def begin_spell_from_hand(self, card_id: int) -> bool:
 
 
 def begin_spell_cast_from_card(self, card: CardInstance, origin_phase: str) -> bool:
+    controller = self.active_player if origin_phase == PHASE_SUMMONING else (
+        self.get_player_by_id(self.reaction_priority_player_id) if self.reaction_priority_player_id is not None else None
+    )
+    if controller is None:
+        return False
+    if origin_phase == PHASE_SUMMONING:
+        if not self.can_play_card(controller, card):
+            self.log("Diese Karte kann gerade nicht gespielt werden.")
+            return False
+    elif origin_phase == PHASE_REACTION:
+        if not self.can_react_with_card(controller, card):
+            self.log("Dieser Zauber ist in diesem Fenster nicht legal.")
+            return False
     if not spell_cast_needs_interaction(self, card):
         return self.commit_spell_cast(card, origin_phase, [])
     self.pending_spell_cast = PendingSpellCast(

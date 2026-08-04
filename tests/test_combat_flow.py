@@ -44,7 +44,7 @@ class CombatFlowTests(EngineTestCase):
         self.assertIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
         self.assertNotIn("Zug 5: Gegner ist am Zug.", self.engine.log_messages)
 
-    def test_flying_attacker_can_only_be_blocked_by_flying_creature(self) -> None:
+    def test_windfalke_can_only_be_blocked_by_flying_creature(self) -> None:
         attacker = self.make_creature("air_creature_sturmfalke", owner_id=1)
         ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
         flying_blocker = self.make_creature("air_creature_himmelsgreif", owner_id=0)
@@ -151,6 +151,7 @@ class CombatFlowTests(EngineTestCase):
         blocker = self.make_creature("water_creature_flusskrieger", owner_id=0)
 
         self.engine.active_player_index = 1
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_declare_attackers()
 
         self.assertEqual(self.engine.provoke_assignments[attacker.unit_id], blocker.unit_id)

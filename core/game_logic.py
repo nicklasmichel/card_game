@@ -403,7 +403,6 @@ class GameEngine:
             player.battlefield.clear()
             player.resources.clear()
             player.resources_played_this_turn = 0
-            player.hand_cards_played_this_turn = 0
             player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
             player.attackers_die_bonus_this_turn = 0
@@ -445,7 +444,6 @@ class GameEngine:
             player.battlefield.clear()
             player.resources.clear()
             player.resources_played_this_turn = 0
-            player.hand_cards_played_this_turn = 0
             player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
             player.attackers_die_bonus_this_turn = 0
