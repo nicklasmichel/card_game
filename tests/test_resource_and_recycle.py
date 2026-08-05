@@ -311,8 +311,8 @@ class ResourceAndRecycleTests(EngineTestCase):
 
         self.assertEqual(self.engine.phase, PHASE_FORCED_DISCARD)
 
-    def test_orkanfuerst_is_payable_with_five_resources(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfuerst"])
+    def test_orkanfalke_is_payable_with_five_resources(self) -> None:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfalke"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_funkenkobold"),
@@ -323,10 +323,10 @@ class ResourceAndRecycleTests(EngineTestCase):
         ]
 
         self.assertTrue(self.engine.can_play_card(self.engine.human_player, card))
-        self.assertTrue(self.engine.human_player.can_pay(CardCost(resources=5, recycle=2)))
+        self.assertTrue(self.engine.human_player.can_pay(CardCost(resources=4, recycle=1)))
 
-    def test_orkanfuerst_leaves_three_resources_after_recycle(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfuerst"])
+    def test_orkanfalke_leaves_four_resources_after_recycle(self) -> None:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfalke"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_funkenkobold"),
@@ -337,13 +337,13 @@ class ResourceAndRecycleTests(EngineTestCase):
         ]
         self.engine.phase = PHASE_SUMMONING
 
-        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        recycle_ids = [self.engine.human_player.resources[0].resource_id]
         self.engine.resolve_creature_play(card, recycle_resource_ids=recycle_ids)
 
-        self.assertEqual(len(self.engine.human_player.resources), 3)
+        self.assertEqual(len(self.engine.human_player.resources), 4)
 
     def test_tapped_resources_can_be_used_for_recycle(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfuerst"])
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfalke"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_funkenkobold"),
@@ -357,14 +357,14 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources[0].tapped = True
         self.engine.human_player.resources[1].tapped = True
 
-        recycle_ids = [resource.resource_id for resource in self.engine.human_player.resources[:2]]
+        recycle_ids = [self.engine.human_player.resources[0].resource_id]
         played = self.engine.resolve_creature_play(card, recycle_resource_ids=recycle_ids)
 
         self.assertTrue(played)
-        self.assertEqual(len(self.engine.human_player.resources), 4)
+        self.assertEqual(len(self.engine.human_player.resources), 5)
 
     def test_recycle_costs_are_not_added_to_normal_play_costs(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfuerst"])
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfalke"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_funkenkobold"),
@@ -439,7 +439,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_ai_chooses_two_resources_in_early_air_setup(self) -> None:
         self.set_ai_resources(0)
         self.set_ai_hand([
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
             "air_creature_wolkenfalke",
             "air_creature_wolkenfalke",
             "air_ritual_aufwind",
@@ -452,7 +452,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(0)
         self.set_ai_hand([
             "air_creature_wolkenfalke",
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
         ])
 
         self.assertEqual(len(self.choose_resource_ids()), 1)
@@ -470,7 +470,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_ai_card_draw_bias_is_only_slightly_aggressive(self) -> None:
         self.set_ai_resources(4)
         self.set_ai_hand([
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
             "air_spell_windstoss",
             "air_spell_windstoss",
             "air_creature_wolkenfalke",
@@ -512,12 +512,12 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_redundant_copy_is_preferred_as_resource(self) -> None:
         self.set_ai_resources(2)
         self.set_ai_hand([
-            "air_creature_orkanfuerst",
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
+            "air_creature_orkanfalke",
             "air_creature_wolkenfalke",
         ])
 
-        self.assertEqual(self.select_resource_ids(1), ["air_creature_orkanfuerst"])
+        self.assertEqual(self.select_resource_ids(1), ["air_creature_orkanfalke"])
 
     def test_situational_dead_spell_is_low_value(self) -> None:
         self.set_ai_resources(3)
@@ -542,7 +542,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_expensive_finisher_is_not_automatically_sacrificed(self) -> None:
         self.set_ai_resources(4)
         self.set_ai_hand([
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
             "air_ritual_sturmformation",
             "air_spell_windstoss",
         ])
@@ -551,12 +551,12 @@ class AiResourceStrategyTests(EngineTestCase):
 
         selected = self.select_resource_ids(1)
 
-        self.assertNotIn("air_creature_orkanfuerst", selected)
+        self.assertNotIn("air_creature_orkanfalke", selected)
 
-    def test_orkanfuerst_is_protected_when_fifth_resource_sets_up_attack(self) -> None:
+    def test_orkanfalke_can_be_used_as_resource_when_aufwind_line_is_better(self) -> None:
         self.set_ai_resources(4)
         self.set_ai_hand([
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
             "air_spell_windstoss",
             "air_spell_windstoss",
             "air_creature_wolkenfalke",
@@ -580,7 +580,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         selected = self.select_resource_ids(1)
 
-        self.assertNotIn("air_ritual_aufwind", selected)
+        self.assertEqual(selected, ["air_ritual_aufwind"])
 
     def test_aufwind_is_low_value_without_creatures(self) -> None:
         self.set_ai_resources(2)
@@ -637,7 +637,7 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_ritual_windwechsel",
             "air_ritual_turbulenz",
             "air_spell_nachwehen",
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
         ])
         self.engine.ai_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
@@ -671,7 +671,7 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_ritual_windwechsel",
             "air_ritual_turbulenz",
             "air_spell_nachwehen",
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
         ])
         deck_templates = [
             "air_creature_wolkenfalke",
@@ -782,7 +782,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_hand([
             "air_ritual_sturmformation",
             "air_ritual_windwechsel",
-            "air_creature_orkanfuerst",
+            "air_creature_orkanfalke",
         ])
 
         self.assertEqual(self.select_resource_ids(1), ["air_ritual_sturmformation"])
@@ -928,4 +928,5 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 0)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
 

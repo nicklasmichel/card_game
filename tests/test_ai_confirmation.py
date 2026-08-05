@@ -75,7 +75,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfuerst"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanfalke"]),
         ]
         self.engine.ai_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
@@ -168,7 +168,7 @@ class AiConfirmationTests(EngineTestCase):
     def test_ai_does_not_prepare_unplayable_creature_and_spam_resource_error(self) -> None:
         self.engine.phase = PHASE_SUMMONING
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanreiter"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkankrieger"]),
         ]
         self.engine.ai_player.resources = []
         original = self.engine.ai.choose_main_phase_card
@@ -335,9 +335,9 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.life = 5
-        keep_back_blocker = self.make_creature("air_creature_orkanfuerst", owner_id=1)
+        keep_back_blocker = self.make_creature("air_creature_orkanfalke", owner_id=1)
         expendable_attacker = self.make_creature("air_creature_sturmkrieger", owner_id=1)
-        self.make_creature("air_creature_orkanreiter", owner_id=0)
+        self.make_creature("air_creature_orkankrieger", owner_id=0)
         self.make_creature("air_creature_himmelskrieger", owner_id=0)
         self.engine.human_player.life = 20
 
@@ -557,7 +557,7 @@ class AiConfirmationTests(EngineTestCase):
             self.make_resource("fire_creature_funkenkobold"),
         ]
         low_gain = self.make_creature("air_creature_wolkenfalke", owner_id=1)
-        high_gain = self.make_creature("air_creature_orkanreiter", owner_id=1)
+        high_gain = self.make_creature("air_creature_orkankrieger", owner_id=1)
         self.engine.human_player.life = high_gain.aw + 2
         self.engine.block_assignments = {
             low_gain.unit_id: [],
@@ -609,7 +609,7 @@ class AiConfirmationTests(EngineTestCase):
             self.make_resource("air_creature_wolkenfalke"),
             self.make_resource("fire_creature_brandstifter"),
         ]
-        creature = self.make_creature("air_creature_orkanreiter", owner_id=1)
+        creature = self.make_creature("air_creature_orkankrieger", owner_id=1)
         creature.current_hp = 1
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -1132,7 +1132,7 @@ class AiConfirmationTests(EngineTestCase):
     def test_ai_turbulenz_can_be_played_after_other_card_uses_tapped_resources_for_recycle(self) -> None:
         self.engine.phase = PHASE_SUMMONING
         self.engine.ai_player.summoner_key = "air"
-        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanreiter"])
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkankrieger"])
         turbulenz = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_turbulenz"])
         self.engine.ai_player.hand = [creature, turbulenz]
         self.engine.ai_player.resources = [
@@ -1319,4 +1319,5 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(prepared)
         self.assertEqual(self.engine.pending_ai_action["kind"], "play_creature")
         self.assertNotEqual(self.engine.pending_ai_action["card_id"], sturmformation.instance_id)
+
 

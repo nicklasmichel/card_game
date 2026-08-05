@@ -326,7 +326,7 @@ class SpellTests(EngineTestCase):
         spell_one = self.give_card("air_ritual_aufwind")
         spell_two = self.give_card("air_ritual_aufwind")
         zero_cost_creature = self.give_card("air_creature_sturmkrieger")
-        recycle_creature = self.give_card("air_creature_himmelskrieger")
+        reduced_cost_creature = self.give_card("air_creature_himmelskrieger")
         self.engine.phase = PHASE_SUMMONING
 
         self.engine.begin_spell_cast(spell_one.instance_id)
@@ -335,12 +335,12 @@ class SpellTests(EngineTestCase):
         self.resolve_current_reaction_window_with_passes()
 
         reduced_zero = self.engine.get_card_cost_to_pay(self.engine.human_player, zero_cost_creature)
-        reduced_recycle = self.engine.get_card_cost_to_pay(self.engine.human_player, recycle_creature)
+        reduced_cost = self.engine.get_card_cost_to_pay(self.engine.human_player, reduced_cost_creature)
 
         self.assertEqual(reduced_zero.resources, 0)
-        self.assertEqual(reduced_zero.recycle, 1)
-        self.assertEqual(reduced_recycle.resources, 1)
-        self.assertEqual(reduced_recycle.recycle, 0)
+        self.assertEqual(reduced_zero.recycle, 2)
+        self.assertEqual(reduced_cost.resources, 1)
+        self.assertEqual(reduced_cost.recycle, 0)
 
     def test_rueckenwind_grants_plus_five_attack_until_end_of_turn(self) -> None:
         self.give_resources(0, 1)
@@ -1245,7 +1245,7 @@ class SpellTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windfalke"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenkrieger"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanreiter"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkankrieger"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsfalke"]),
         ]
         self.engine.phase = PHASE_SUMMONING
@@ -1565,4 +1565,5 @@ class SpellTests(EngineTestCase):
         self.engine.confirm_attackers()
 
         self.assertEqual(len(self.engine.human_player.hand), 1)
+
 

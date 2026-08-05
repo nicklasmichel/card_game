@@ -1198,7 +1198,7 @@ def destroy_creature_immediately(self, owner, creature, source_name: str, *, die
         if destroyed_card in owner.discard_pile:
             owner.discard_pile.remove(destroyed_card)
         owner.hand.append(destroyed_card)
-        self.log(f"{creature.name} wird durch Orkanreiter auf die Hand zurueckgenommen.")
+        self.log(f"{creature.name} wird durch Orkankrieger auf die Hand zurueckgenommen.")
     if self.statistics is not None:
         self.statistics.player_stats[owner.player_id].creatures_destroyed += 1
     return ReactionContext(
@@ -1436,3 +1436,4 @@ def remove_creature_from_combat(self, creature_id: int) -> None:
     if battle is not None and creature_id in {battle.attacker_id, battle.blocker_id}:
         battle.pending_comparison = None
         battle.resolution_complete = True
+

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from core.ai.air.registry import get_air_card_handler, get_air_creature_handler
 from core.ai import ActionCandidate, BoundPlan, DecisionReason, build_ai_context
@@ -39,8 +39,8 @@ class AiArchitectureTests(EngineTestCase):
             "air_creature_windfalke",
             "air_creature_himmelskrieger",
             "air_creature_himmelsfalke",
-            "air_creature_orkanreiter",
-            "air_creature_orkanfuerst",
+            "air_creature_orkankrieger",
+            "air_creature_orkanfalke",
         ):
             with self.subTest(template_id=template_id):
                 self.assertIsNotNone(get_air_creature_handler(template_id))
@@ -77,4 +77,5 @@ class AiArchitectureTests(EngineTestCase):
         self.assertEqual(candidate.reason.reason_code, "resource_loss_too_high")
         self.assertEqual(candidate.reason.metrics["remaining_resources"], 1)
         self.assertEqual(plan.sequence, (42,))
+
 

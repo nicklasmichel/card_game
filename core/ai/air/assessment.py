@@ -27,7 +27,7 @@ class AirAssessmentMixin:
         if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             return any(creature.is_ready() for creature in player.battlefield)
         if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
-            return len(player.deck) >= 2
+            return len(player.deck) >= template.spell_draw_count
         if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
             return False
         if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
@@ -324,6 +324,108 @@ class AirAssessmentMixin:
                 probable_damage += card.template.aw + (aura_bonus if card.template.has_ability(Ability.FLYING) else 0)
         return probable_damage
 
+    def _count_unblockable_haste_attackers(
+        self,
+        player: PlayerState,
+        enemy: PlayerState,
+        hand: list[CardInstance],
+    ) -> int:
+        blockers = self._get_probable_blockers(enemy)
+        flying_blockers = [creature for creature in blockers if creature.has_ability(Ability.FLYING)]
+        count = 0
+        for creature in player.battlefield:
+            if not creature.is_ready():
+                continue
+            if creature.has_ability(Ability.HASTE) and (not blockers or (creature.has_ability(Ability.FLYING) and not flying_blockers)):
+                count += 1
+        for card in hand:
+            if card.template.card_type != CardType.CREATURE or not card.template.has_ability(Ability.HASTE):
+                continue
+            if not blockers or (card.template.has_ability(Ability.FLYING) and not flying_blockers):
+                count += 1
+        return count
+
+    def _generic_air_creature_keep_adjustment(
+        self,
+        player: PlayerState,
+        enemy: PlayerState,
+        card: CardInstance,
+        hand: list[CardInstance],
+        *,
+        projected_available_resources: int,
+        projected_total_resources: int,
+    ) -> float:
+        template = card.template
+        blockers = self._get_probable_blockers(enemy)
+        flying_blockers = [creature for creature in blockers if creature.has_ability(Ability.FLYING)]
+        attack_now = 0.0
+        if template.has_ability(Ability.HASTE):
+            if not blockers:
+                attack_now += template.aw * 1.7 + 1.1
+            elif template.has_ability(Ability.FLYING) and not flying_blockers:
+                attack_now += template.aw * 1.8 + 1.3
+            else:
+                bad_trade = any(blocker.aw >= template.vw and blocker.current_hp >= template.aw for blocker in blockers)
+                if bad_trade:
+                    attack_now -= 0.9
+                else:
+                    attack_now += 0.7 + template.aw * 0.35
+        flight_pressure = 0.0
+        if template.has_ability(Ability.FLYING):
+            if not flying_blockers:
+                flight_pressure += 1.8 + template.aw * 0.35 + template.vw * 0.15
+            elif len(flying_blockers) == 1:
+                flight_pressure += 0.7
+            else:
+                flight_pressure -= 0.3
+
+        probable_attackers = self._count_probable_attackers(player, hand)
+        third_attacker_bonus = 0.0
+        if probable_attackers == 2:
+            if template.has_ability(Ability.HASTE):
+                third_attacker_bonus += 1.8
+                if attack_now <= 0.0:
+                    third_attacker_bonus -= 0.7
+            elif template.has_ability(Ability.FLYING):
+                third_attacker_bonus += 1.2 if not flying_blockers else 0.5
+
+        lethal_bonus = 0.0
+        unblocked_damage = self._find_probable_unblocked_damage(player, enemy, hand)
+        if enemy.life <= unblocked_damage:
+            lethal_bonus += 2.8
+        elif template.has_ability(Ability.HASTE) and enemy.life <= unblocked_damage + template.aw:
+            lethal_bonus += 2.0
+
+        spell_bonus = 0.0
+        has_attack_spell = any(
+            hand_card.template.spell_effect in {
+                SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
+                SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
+                SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
+            }
+            for hand_card in hand
+            if hand_card.template.spell_effect is not None and hand_card.instance_id != card.instance_id
+        )
+        if has_attack_spell:
+            if template.has_ability(Ability.HASTE):
+                spell_bonus += 0.8
+            if template.has_ability(Ability.FLYING) and not flying_blockers:
+                spell_bonus += 0.9
+
+        recycle_penalty = 0.0
+        remaining_after_recycle = projected_total_resources - template.recycle_cost
+        if template.recycle_cost > 0:
+            recycle_penalty -= template.recycle_cost * 0.6
+            if remaining_after_recycle <= 0:
+                recycle_penalty -= 2.4
+            elif remaining_after_recycle == 1:
+                recycle_penalty -= 1.4
+            elif remaining_after_recycle == 2:
+                recycle_penalty -= 0.6
+
+        base_curve = 0.15 * template.aw + 0.1 * template.vw
+        return base_curve + attack_now + flight_pressure + third_attacker_bonus + lethal_bonus + spell_bonus + recycle_penalty
+
     def _find_air_lethal_enabler(self, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> Optional[CardInstance]:
         probable_unblocked_damage = self._find_probable_unblocked_damage(player, enemy, hand)
         if probable_unblocked_damage <= 0:
@@ -365,7 +467,14 @@ class AirAssessmentMixin:
     ) -> float:
         handler = get_air_creature_handler(card.template.template_id)
         if handler is None:
-            return 0.0
+            return self._generic_air_creature_keep_adjustment(
+                player,
+                enemy,
+                card,
+                hand,
+                projected_available_resources=projected_available_resources,
+                projected_total_resources=projected_total_resources,
+            )
         return handler.keep_adjustment(
             self,
             player,
