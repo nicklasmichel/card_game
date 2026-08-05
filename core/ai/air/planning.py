@@ -62,13 +62,26 @@ class AirPlanningMixin:
             return None
         if phase == PHASE_MAIN_1:
             if player.resources_played_this_turn >= 1:
-                return None
-            if any(
-                card.template.card_type in {CardType.RITUAL, CardType.SPELL}
-                and engine.can_play_card(player, card)
-                for card in player.hand
-            ):
-                return None
+                best_candidate: Optional[CardInstance] = None
+                best_score = 0.0
+                for candidate in player.hand:
+                    remaining_hand = [
+                        card for card in player.hand
+                        if card.instance_id != candidate.instance_id
+                    ]
+                    projected_plan = self._best_air_main_phase_plan(
+                        player,
+                        engine,
+                        remaining_hand,
+                        available_resources=player.available_resources(),
+                        total_resources=player.total_resources() + 1,
+                    )
+                    if not projected_plan["sequence"]:
+                        continue
+                    if projected_plan["score"] > best_score + 0.01:
+                        best_score = projected_plan["score"]
+                        best_candidate = candidate
+                return best_candidate
             playable_without_resource = self.choose_main_phase_card(player, engine)
             if playable_without_resource is not None and engine.can_play_card(player, playable_without_resource):
                 return None
@@ -145,12 +158,8 @@ class AirPlanningMixin:
             duplicate_counts = self._template_counts(remaining_hand)
             creatures_in_hand = [card for card in remaining_hand if card.template.card_type == CardType.CREATURE]
             interactive_templates = {
-                SpellEffect.RETURN_TWO_CREATURES_TO_HAND,
-                SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND,
-                SpellEffect.REROLL_OPEN_DIE,
-                SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
-                SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
-                SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
+                SpellEffect.RETURN_CREATURES_TO_HAND,
+                SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
             }
             interactions_in_hand = [
                 card for card in remaining_hand
@@ -332,6 +341,8 @@ class AirPlanningMixin:
     def _clear_air_plan_state(self) -> None:
         self._committed_air_plan = None
         self._planned_rueckenwind_target_id = None
+        self._planned_graveyard_target_ids = []
+        self._planned_bounce_target_ids = []
         self._planned_turbulenz_target_ids = []
         self._planned_attacker_ids = []
 
@@ -357,6 +368,8 @@ class AirPlanningMixin:
             "sequence": list(plan.get("sequence", [])),
         }
         self._planned_rueckenwind_target_id = plan.get("rueckenwind_target_id")
+        self._planned_graveyard_target_ids = list(plan.get("graveyard_target_ids", []))
+        self._planned_bounce_target_ids = list(plan.get("bounce_target_ids", []))
         self._planned_turbulenz_target_ids = list(plan.get("turbulenz_target_ids", []))
         self._planned_attacker_ids = list(plan.get("attacker_ids", []))
 
@@ -381,17 +394,23 @@ class AirPlanningMixin:
             "sequence": list(base_plan["sequence"]),
             "attacker_ids": list(base_attack["attacker_ids"]),
             "rueckenwind_target_id": None,
+            "graveyard_target_ids": [],
+            "bounce_target_ids": [],
             "turbulenz_target_ids": [],
         }
         for card in hand:
             if (
                 card.template.card_type not in {CardType.RITUAL, CardType.SPELL}
-                or card.template.spell_effect not in {SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, SpellEffect.RETURN_TWO_CREATURES_TO_HAND}
+                or card.template.spell_effect not in {
+                    SpellEffect.REDUCE_CREATURE_COST_THIS_TURN,
+                    SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
+                    SpellEffect.DISCARD_HAND_AND_DRAW,
+                }
                 or not engine.can_play_card(player, card)
             ):
                 continue
-            if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-                comparison = self._evaluate_air_attack_bonus_support_plan(
+            if card.template.spell_effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
+                comparison = self._evaluate_air_cost_reduction_support_plan(
                     player,
                     engine,
                     card,
@@ -410,7 +429,33 @@ class AirPlanningMixin:
                 best_plan = {
                     "sequence": [card.instance_id, *comparison["continuation_sequence"]],
                     "attacker_ids": list(comparison["attacker_ids"]),
-                    "rueckenwind_target_id": comparison["target_id"],
+                    "rueckenwind_target_id": None,
+                    "graveyard_target_ids": [],
+                    "bounce_target_ids": [],
+                    "turbulenz_target_ids": [],
+                }
+                continue
+            if card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+                comparison = self._evaluate_air_windwechsel_plan(
+                    player,
+                    engine,
+                    card,
+                    hand=hand,
+                    available_resources=player.available_resources(),
+                    total_resources=player.total_resources(),
+                    own_creature_count=len(player.battlefield),
+                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
+                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
+                )
+                if not comparison["is_useful"] or comparison["with_total"] <= best_total + 0.65:
+                    continue
+                best_total = comparison["with_total"]
+                best_plan = {
+                    "sequence": [card.instance_id, *comparison["continuation_sequence"]],
+                    "attacker_ids": list(comparison["attacker_ids"]),
+                    "rueckenwind_target_id": None,
+                    "graveyard_target_ids": list(comparison.get("target_ids", [])),
+                    "bounce_target_ids": [],
                     "turbulenz_target_ids": [],
                 }
                 continue
@@ -425,50 +470,17 @@ class AirPlanningMixin:
                 ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
-            if not comparison["is_useful"]:
-                continue
-            if comparison["with_total"] <= best_total + 1.0:
+            if not comparison["is_useful"] or comparison["with_total"] <= best_total + 1.0:
                 continue
             best_total = comparison["with_total"]
             best_plan = {
                 "sequence": [card.instance_id, *comparison["continuation_sequence"]],
                 "attacker_ids": list(comparison["attacker_ids"]),
                 "rueckenwind_target_id": None,
-                "turbulenz_target_ids": list(comparison["target_ids"]),
+                "graveyard_target_ids": [],
+                "bounce_target_ids": [],
+                "turbulenz_target_ids": [],
             }
-            for prefix_card in hand:
-                if prefix_card.instance_id == card.instance_id or prefix_card.template.card_type != CardType.CREATURE:
-                    continue
-                reduced_cost = max(0, prefix_card.template.resource_cost - getattr(player, "creature_cost_reduction_this_turn", 0))
-                if player.available_resources() < reduced_cost or player.total_resources() < prefix_card.template.recycle_cost:
-                    continue
-                prefix_battlefield = list(player.battlefield)
-                prefix_created = BattlefieldCreature.from_card(prefix_card)
-                prefix_created.tapped = not prefix_card.template.has_ability(Ability.HASTE)
-                prefix_created.summoning_sick = not prefix_card.template.has_ability(Ability.HASTE)
-                prefix_battlefield.append(prefix_created)
-                prefix_player = self._clone_air_shadow_player(player, prefix_battlefield)
-                prefix_hand = [existing for existing in hand if existing.instance_id != prefix_card.instance_id]
-                prefixed = self._evaluate_air_turbulenz_plan(
-                    prefix_player,
-                    engine,
-                    card,
-                    hand=prefix_hand,
-                    available_resources=player.available_resources() - reduced_cost,
-                    total_resources=player.total_resources() - prefix_card.template.recycle_cost,
-                    own_creature_count=len(prefix_battlefield),
-                    ready_attacker_count=len([creature for creature in prefix_battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if not prefixed["is_useful"] or prefixed["with_total"] <= best_total + 0.65:
-                    continue
-                best_total = prefixed["with_total"]
-                best_plan = {
-                    "sequence": [prefix_card.instance_id, card.instance_id, *prefixed["continuation_sequence"]],
-                    "attacker_ids": list(prefixed["attacker_ids"]),
-                    "rueckenwind_target_id": None,
-                    "turbulenz_target_ids": list(prefixed["target_ids"]),
-                }
         return best_plan
 
     def _best_air_main_phase_plan(
@@ -607,7 +619,7 @@ class AirPlanningMixin:
         )
         if template.spell_effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             next_creature_discount += template.spell_amount
-        if template.spell_effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
+        if template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             value += 0.8
         return {
             "value": value,
@@ -691,20 +703,7 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-            comparison = self._evaluate_air_attack_bonus_support_plan(
-                player,
-                engine,
-                card,
-                hand=list(player.hand),
-                available_resources=player.available_resources(),
-                total_resources=player.total_resources(),
-                own_creature_count=own_creature_count,
-                ready_attacker_count=ready_attacker_count,
-                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-            )
-            return comparison["is_useful"]
-        if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             comparison = self._evaluate_air_windwechsel_plan(
                 player,
                 engine,
@@ -717,7 +716,7 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
+        if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
             comparison = self._evaluate_air_sturmformation_plan(
                 player,
                 engine,
@@ -730,26 +729,8 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.has_live_use(
-                    self,
-                    player,
-                    engine,
-                    card,
-                    hand=list(player.hand),
-                    available_resources=player.available_resources(),
-                    total_resources=player.total_resources(),
-                    own_creature_count=own_creature_count,
-                    ready_attacker_count=ready_attacker_count,
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            return own_creature_count + len(enemy.battlefield) >= 2
-        if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            comparison = self._evaluate_air_nachwehen_plan(
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            comparison = self._evaluate_air_bounce_plan(
                 player,
                 engine,
                 card,
@@ -758,20 +739,9 @@ class AirPlanningMixin:
                 total_resources=player.total_resources(),
             )
             return comparison["is_useful"]
-        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            comparison = self._evaluate_air_ausweichen_plan(
-                player,
-                engine,
-                card,
-                hand=list(player.hand),
-                available_resources=player.available_resources(),
-                total_resources=player.total_resources(),
-            )
-            return comparison["is_useful"]
-        if effect in {
-            SpellEffect.REROLL_OPEN_DIE,
-            SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
-        }:
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            return False
+        if effect in {SpellEffect.REROLL_OPEN_DIE, SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE}:
             return False
         return self.has_valid_spell_targets(player, engine, card)
 
@@ -819,20 +789,7 @@ class AirPlanningMixin:
                 creature_discount=creature_discount,
             )
             return comparison["value"]
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-            comparison = self._evaluate_air_attack_bonus_support_plan(
-                player,
-                engine,
-                card,
-                hand=[card] + remaining_hand,
-                available_resources=available_resources + card.template.resource_cost,
-                total_resources=total_resources + card.template.recycle_cost,
-                own_creature_count=own_creature_count,
-                ready_attacker_count=ready_attacker_count,
-                creature_discount=creature_discount,
-            )
-            return comparison["value"]
-        if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             comparison = self._evaluate_air_windwechsel_plan(
                 player,
                 engine,
@@ -845,7 +802,7 @@ class AirPlanningMixin:
                 creature_discount=creature_discount,
             )
             return comparison["value"]
-        if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
+        if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
             comparison = self._evaluate_air_sturmformation_plan(
                 player,
                 engine,
@@ -858,37 +815,8 @@ class AirPlanningMixin:
                 creature_discount=creature_discount,
             )
             return comparison["value"]
-        if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.play_value(
-                    self,
-                    player,
-                    engine,
-                    card,
-                    hand=[card] + remaining_hand,
-                    available_resources=available_resources,
-                    total_resources=total_resources + card.template.recycle_cost,
-                    own_creature_count=own_creature_count,
-                    ready_attacker_count=ready_attacker_count,
-                    creature_discount=creature_discount,
-                )
-                if specialized is not None:
-                    return specialized
-            comparison = self._evaluate_air_turbulenz_plan(
-                player,
-                engine,
-                card,
-                hand=[card] + remaining_hand,
-                available_resources=available_resources,
-                total_resources=total_resources + card.template.recycle_cost,
-                own_creature_count=own_creature_count,
-                ready_attacker_count=ready_attacker_count,
-                creature_discount=creature_discount,
-            )
-            return comparison["value"]
-        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            comparison = self._evaluate_air_ausweichen_plan(
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            comparison = self._evaluate_air_bounce_plan(
                 player,
                 engine,
                 card,
@@ -897,16 +825,8 @@ class AirPlanningMixin:
                 total_resources=total_resources + card.template.recycle_cost,
             )
             return comparison["value"]
-        if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            comparison = self._evaluate_air_nachwehen_plan(
-                player,
-                engine,
-                card,
-                hand=[card] + remaining_hand,
-                available_resources=available_resources,
-                total_resources=total_resources + card.template.recycle_cost,
-            )
-            return comparison["value"]
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            return 0.0
         return 0.5
 
     def _air_resource_keep_value(
@@ -1088,20 +1008,7 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-            comparison = self._evaluate_air_attack_bonus_support_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-                own_creature_count=len(player.battlefield),
-                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-            )
-            return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
+        if template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             comparison = self._evaluate_air_windwechsel_plan(
                 player,
                 engine,
@@ -1114,7 +1021,7 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
+        if template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW:
             comparison = self._evaluate_air_sturmformation_plan(
                 player,
                 engine,
@@ -1127,53 +1034,8 @@ class AirPlanningMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.has_live_use(
-                    self,
-                    player,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            comparison = self._evaluate_air_turbulenz_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-                own_creature_count=len(player.battlefield),
-                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-            )
-            return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.has_live_use(
-                    self,
-                    player,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            comparison = self._evaluate_air_ausweichen_plan(
+        if template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            comparison = self._evaluate_air_bounce_plan(
                 player,
                 engine,
                 card,
@@ -1182,40 +1044,8 @@ class AirPlanningMixin:
                 total_resources=projected_total_resources,
             )
             return comparison["is_useful"]
-        if template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.has_live_use(
-                    self,
-                    player,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            return engine.has_valid_open_die_target()
-        if template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-            return any(creature.is_ready() for creature in player.battlefield)
-        if template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-            return self._find_probable_unblocked_damage(player, enemy, hand) > 1
-        if template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            if projected_total_resources < template.recycle_cost:
-                return False
-            comparison = self._evaluate_air_nachwehen_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-            )
-            return comparison["value"] > 0.4
+        if template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            return False
         return self.has_valid_spell_targets(player, engine, card)
 
     def _air_card_role_is_redundant(self, card: CardInstance, hand: list[CardInstance]) -> bool:

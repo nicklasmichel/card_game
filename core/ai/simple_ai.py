@@ -15,6 +15,8 @@ class SimpleAI(CommonAIMixin, AirPlanningMixin, AirEffectEvaluationMixin, AirAss
         self.rng = rng
         self._committed_air_plan: dict | None = None
         self._planned_rueckenwind_target_id: int | None = None
+        self._planned_graveyard_target_ids: list[int] = []
+        self._planned_bounce_target_ids: list[int] = []
         self._planned_turbulenz_target_ids: list[int] = []
         self._planned_attacker_ids: list[int] = []
 
@@ -34,4 +36,9 @@ class SimpleAI(CommonAIMixin, AirPlanningMixin, AirEffectEvaluationMixin, AirAss
         if getattr(player, "summoner_key", "") == "air":
             return AirPlanningMixin.choose_attackers_for_player(self, player, engine, creatures)
         return CommonAIMixin.choose_attackers_for_player(self, player, engine, creatures)
+
+    def choose_resource_card_for_main_phase(self, player, engine, phase):
+        if getattr(player, "summoner_key", "") == "air":
+            return AirPlanningMixin.choose_resource_card_for_main_phase(self, player, engine, phase)
+        return CommonAIMixin.choose_resource_card_for_main_phase(self, player, engine, phase)
 

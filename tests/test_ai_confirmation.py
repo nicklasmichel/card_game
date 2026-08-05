@@ -205,6 +205,19 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(self.engine.active_player, self.engine.human_player)
 
+    def test_ai_main_one_without_attackers_prepares_end_turn_not_to_combat(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.active_player_index = 1
+        self.engine.ai_player.hand = []
+        self.engine.ai_player.battlefield = [
+            self.make_creature("air_creature_windfalke", owner_id=1, ready=False),
+        ]
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "end_turn")
+
     def test_ai_does_not_prepare_unplayable_creature_and_spam_resource_error(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.active_player_index = 1

@@ -665,6 +665,7 @@ class SpellTests(EngineTestCase):
         creature = self.give_card("air_creature_wolkenfalke")
         self.give_resources(0, 2)
         self.engine.phase = PHASE_MAIN_1
+        self.make_creature("air_creature_sturmkrieger", owner_id=0)
 
         self.engine.toggle_hand_card(creature.instance_id)
         labels = [spec.label for spec in self.engine.get_button_specs()]
@@ -672,6 +673,15 @@ class SpellTests(EngineTestCase):
         self.assertNotIn("Kreatur spielen", labels)
         self.assertNotIn("Kampfphase", labels)
         self.assertIn("Zum Kampf", labels)
+
+    def test_main_one_without_ready_attackers_shows_end_turn_instead_of_to_combat(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.make_creature("air_creature_windfalke", owner_id=0, ready=False)
+
+        labels = [spec.label for spec in self.engine.get_button_specs()]
+
+        self.assertIn("Zug beenden", labels)
+        self.assertNotIn("Zum Kampf", labels)
 
     def test_selected_windwechsel_in_summoning_shows_spell_play_button(self) -> None:
         spell = self.give_card("air_ritual_windwechsel")

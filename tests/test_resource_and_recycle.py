@@ -382,6 +382,21 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertTrue(self.engine.can_play_card(self.engine.human_player, card))
         self.assertFalse(self.engine.human_player.can_pay(7))
 
+    def test_start_turn_logs_turn_begin_before_draw(self) -> None:
+        self.engine.active_player_index = 1
+        self.engine.starting_player_id = 0
+        self.engine.ai_player.turns_started = 1
+        self.engine.turn_number = 2
+        self.engine.ai_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"])
+        ]
+
+        self.engine.start_turn()
+
+        turn_index = self.engine.log_messages.index("Zug 3: Gegner ist am Zug.")
+        draw_index = self.engine.log_messages.index("Gegner zieht eine Karte.")
+        self.assertLess(turn_index, draw_index)
+
 
 class AiResourceStrategyTests(EngineTestCase):
     def setUp(self) -> None:
@@ -587,7 +602,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertEqual(self.select_resource_ids(1), ["air_spell_windstoss"])
 
-    def test_aufwind_is_protected_with_multiple_creatures(self) -> None:
+    def test_aufwind_is_kept_with_multiple_creatures(self) -> None:
         self.set_ai_resources(3)
         self.set_ai_hand([
             "air_ritual_aufwind",
@@ -601,7 +616,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         selected = self.select_resource_ids(1)
 
-        self.assertEqual(selected, ["air_ritual_aufwind"])
+        self.assertEqual(selected, ["air_ritual_turbulenz"])
 
     def test_aufwind_is_low_value_without_creatures(self) -> None:
         self.set_ai_resources(2)
@@ -638,6 +653,57 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertIsNotNone(chosen)
         self.assertEqual(chosen.template.template_id, "air_ritual_aufwind")
+
+    def test_ai_plays_second_main_one_resource_before_combat_for_recycle_haste(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.ai_player.summoner_key = "air"
+        self.engine.ai_player.resources_played_this_turn = 1
+        self.set_ai_resources(1)
+        self.set_ai_hand([
+            "air_creature_sturmkrieger",
+            "air_spell_windstoss",
+        ])
+
+        chosen_resource = self.engine.ai.choose_resource_card_for_main_phase(
+            self.engine.ai_player,
+            self.engine,
+            PHASE_MAIN_1,
+        )
+
+        self.assertIsNotNone(chosen_resource)
+        self.assertEqual(chosen_resource.template.template_id, "air_spell_windstoss")
+
+        self.engine.ai_play_resource(chosen_resource)
+        chosen_card = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
+
+        self.assertIsNotNone(chosen_card)
+        self.assertEqual(chosen_card.template.template_id, "air_creature_sturmkrieger")
+
+    def test_ai_plays_first_resource_even_if_turbulenz_is_legally_playable_but_bad(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.set_ai_resources(1)
+        self.set_ai_hand([
+            "air_creature_windfalke",
+            "air_ritual_rueckenwind",
+            "air_ritual_rueckenwind",
+            "air_creature_orkankrieger",
+            "air_ritual_turbulenz",
+        ])
+
+        chosen_resource = self.engine.ai.choose_resource_card_for_main_phase(
+            self.engine.ai_player,
+            self.engine,
+            PHASE_MAIN_1,
+        )
+
+        self.assertIsNotNone(chosen_resource)
+        self.assertEqual(self.engine.ai_player.resources_played_this_turn, 0)
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertIsNotNone(self.engine.pending_ai_action)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "play_resource")
 
     def test_windwechsel_is_not_automatic_at_two_resources(self) -> None:
         self.set_ai_resources(2)

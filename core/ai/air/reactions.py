@@ -318,6 +318,13 @@ class AirReactionMixin:
                 return specialized_target
         if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             selected_ids = {target.card_instance_id for target in pending.selected_targets if target.card_instance_id is not None}
+            for planned_id in getattr(self, "_planned_graveyard_target_ids", []):
+                if planned_id in selected_ids:
+                    continue
+                target = SpellTargetRef("discard_card", card_instance_id=planned_id)
+                if engine.resolve_target_discard_card_for_controller(player, target) is not None:
+                    return target
+            selected_ids = {target.card_instance_id for target in pending.selected_targets if target.card_instance_id is not None}
             valid_targets = [
                 target for target in engine.get_valid_discard_creature_target_refs(player)
                 if target.card_instance_id not in selected_ids
@@ -334,6 +341,13 @@ class AirReactionMixin:
                 ),
             )
         if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            selected_ids = {target.creature_id for target in pending.selected_targets if target.creature_id is not None}
+            for planned_id in getattr(self, "_planned_bounce_target_ids", []):
+                if planned_id in selected_ids:
+                    continue
+                creature = engine.get_unit_by_id(planned_id)
+                if creature is not None:
+                    return SpellTargetRef("creature", creature_id=creature.unit_id)
             selected_ids = {target.creature_id for target in pending.selected_targets if target.creature_id is not None}
             candidates = [
                 creature for creature in player.battlefield + enemy.battlefield

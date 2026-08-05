@@ -24,16 +24,14 @@ class AirAssessmentMixin:
         effect = template.spell_effect
         if effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
             return sum(1 for hand_card in hand if hand_card.template.card_type == CardType.CREATURE) >= 2 and available_resources >= template.resource_cost
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+            return len(engine.get_valid_discard_creature_target_refs(player)) >= template.spell_amount
+        if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
+            return len(player.deck) >= template.spell_draw_count and len(hand) <= max(2, template.spell_draw_count - 1)
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            return len(player.battlefield) + len(engine.players[1 - player.player_id].battlefield) >= template.spell_amount
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
             return any(creature.is_ready() for creature in player.battlefield)
-        if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
-            return len(player.deck) >= template.spell_draw_count
-        if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
-            return False
-        if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            return len(player.battlefield) + len(engine.players[1 - player.player_id].battlefield) >= 2 and total_resources >= template.recycle_cost
-        if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            return engine.creatures_died_this_turn >= 2 and total_resources >= template.recycle_cost
         return template.resource_cost <= available_resources and template.recycle_cost <= total_resources
 
     def _air_template_improves_weak_hand(
@@ -90,9 +88,9 @@ class AirAssessmentMixin:
             if available_resources < card.template.resource_cost:
                 continue
             effect = card.template.spell_effect
-            if effect == SpellEffect.REROLL_OPEN_DIE and bool(player.battlefield):
+            if effect == SpellEffect.RETURN_CREATURES_TO_HAND and len(player.battlefield) + len(enemy.battlefield) >= card.template.spell_amount:
                 return True
-            if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE and self._find_probable_unblocked_damage(player, enemy, hand) > 0:
+            if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT and any(creature.is_ready() for creature in player.battlefield):
                 return True
         return False
 
@@ -398,11 +396,7 @@ class AirAssessmentMixin:
 
         spell_bonus = 0.0
         has_attack_spell = any(
-            hand_card.template.spell_effect in {
-                SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
-                SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
-                SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
-            }
+            hand_card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
             for hand_card in hand
             if hand_card.template.spell_effect is not None and hand_card.instance_id != card.instance_id
         )
@@ -431,7 +425,10 @@ class AirAssessmentMixin:
         if probable_unblocked_damage <= 0:
             return None
         for card in hand:
-            if card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE and probable_unblocked_damage * 2 >= enemy.life:
+            if (
+                card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+                and probable_unblocked_damage + card.template.spell_amount >= enemy.life
+            ):
                 return card
         return None
 
@@ -443,7 +440,7 @@ class AirAssessmentMixin:
             return None
         answers = [
             card for card in hand
-            if card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND
+            if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND
         ]
         if len(answers) == 1:
             return answers[0]
@@ -527,20 +524,7 @@ class AirAssessmentMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return 2.8 if comparison["is_useful"] else -3.2
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-            comparison = self._evaluate_air_attack_bonus_support_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-                own_creature_count=len(player.battlefield),
-                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-            )
-            return 2.4 if comparison["is_useful"] else -2.4
-        if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
             comparison = self._evaluate_air_windwechsel_plan(
                 player,
                 engine,
@@ -553,7 +537,7 @@ class AirAssessmentMixin:
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
             return 2.3 if comparison["is_useful"] else -2.2
-        if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
+        if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
             comparison = self._evaluate_air_sturmformation_plan(
                 player,
                 engine,
@@ -565,56 +549,11 @@ class AirAssessmentMixin:
                 ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
                 creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
             )
-            return 2.8 if comparison["is_useful"] else -3.0
-        if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.keep_adjustment(
-                    self,
-                    player,
-                    enemy,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            comparison = self._evaluate_air_turbulenz_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-                own_creature_count=len(player.battlefield),
-                ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-            )
+            if card.template.spell_amount >= 5:
+                return 2.3 if comparison["is_useful"] else -3.0
             return 3.0 if comparison["is_useful"] else -3.2
-        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.keep_adjustment(
-                    self,
-                    player,
-                    enemy,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            comparison = self._evaluate_air_ausweichen_plan(
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            comparison = self._evaluate_air_bounce_plan(
                 player,
                 engine,
                 card,
@@ -623,42 +562,8 @@ class AirAssessmentMixin:
                 total_resources=projected_total_resources,
             )
             return 2.4 if comparison["is_useful"] else -3.0
-        if effect == SpellEffect.REROLL_OPEN_DIE:
-            handler = self._get_air_card_handler(card)
-            if handler is not None:
-                specialized = handler.keep_adjustment(
-                    self,
-                    player,
-                    enemy,
-                    engine,
-                    card,
-                    hand=hand,
-                    available_resources=projected_available_resources,
-                    total_resources=projected_total_resources,
-                    own_creature_count=len(player.battlefield),
-                    ready_attacker_count=len([creature for creature in player.battlefield if creature.is_ready()]),
-                    creature_discount=getattr(player, "creature_cost_reduction_this_turn", 0),
-                )
-                if specialized is not None:
-                    return specialized
-            return 1.6 if engine.has_valid_open_die_target() else -1.8
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-            comparison = self._evaluate_air_boeenschub_reaction_plan(player, engine, card)
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            comparison = self._evaluate_air_global_attack_bonus_reaction_plan(player, engine, card)
             return 2.6 if comparison["is_useful"] else -2.8
-        if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-            damage = self._find_probable_unblocked_damage(player, enemy, hand)
-            if damage * 2 >= enemy.life and damage > 0:
-                return 5.5
-            return 2.4 if damage >= 4 else 0.9 if damage >= 2 else -2.8
-        if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-            comparison = self._evaluate_air_nachwehen_plan(
-                player,
-                engine,
-                card,
-                hand=hand,
-                available_resources=projected_available_resources,
-                total_resources=projected_total_resources,
-            )
-            return comparison["value"]
         return 0.0
 

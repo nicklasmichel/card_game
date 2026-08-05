@@ -189,8 +189,12 @@ def prepare_ai_turn_action(self) -> bool:
                 return True
         self.pending_ai_action = (
             {
-                "kind": "to_combat",
-                "description": "Gegner wird in die Kampfphase wechseln.",
+                "kind": "to_combat" if self.available_attackers(self.active_player) else "end_turn",
+                "description": (
+                    "Gegner wird in die Kampfphase wechseln."
+                    if self.available_attackers(self.active_player)
+                    else "Gegner wird den Zug beenden."
+                ),
             }
             if self.phase == PHASE_MAIN_1
             else {
@@ -198,10 +202,6 @@ def prepare_ai_turn_action(self) -> bool:
                 "description": "Gegner wird den Zug beenden.",
             }
         )
-        if self.phase == PHASE_MAIN_1 and not self.available_attackers(self.active_player):
-            self.pending_ai_action = None
-            self.enter_combat_or_second_main()
-            return self.prepare_ai_turn_action()
         return True
 
     if self.phase == PHASE_SPELL_TARGETING and ai_spell_targeting:
@@ -478,7 +478,9 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_MAIN_1:
         next_resource = "erste" if self.active_player.resources_played_this_turn == 0 else "zweite"
         next_state = "bereit" if self.active_player.resources_played_this_turn == 0 else "getappt"
-        return f"Erste Hauptphase. Spiele Karten oder gehe zum Kampf. Naechste Ressource: {next_resource} ({next_state})."
+        if self.available_attackers(self.active_player):
+            return f"Erste Hauptphase. Spiele Karten oder gehe zum Kampf. Naechste Ressource: {next_resource} ({next_state})."
+        return f"Erste Hauptphase. Spiele Karten oder beende den Zug. Naechste Ressource: {next_resource} ({next_state})."
     if self.phase == PHASE_MAIN_2:
         next_resource = "erste" if self.active_player.resources_played_this_turn == 0 else "zweite"
         next_state = "bereit" if self.active_player.resources_played_this_turn == 0 else "getappt"
@@ -562,7 +564,10 @@ def get_button_specs(self) -> List[ButtonSpec]:
 
     buttons: List[ButtonSpec] = []
     if self.phase == PHASE_MAIN_1:
-        buttons.append(ButtonSpec("Zum Kampf", True, "to_combat"))
+        if self.available_attackers(self.active_player):
+            buttons.append(ButtonSpec("Zum Kampf", True, "to_combat"))
+        else:
+            buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
     elif self.phase == PHASE_MAIN_2:
         buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
     elif self.phase == PHASE_SPELL_TARGETING:

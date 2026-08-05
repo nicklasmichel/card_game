@@ -19,6 +19,18 @@ from tests.helpers import EngineTestCase
 
 
 class CombatFlowTests(EngineTestCase):
+    def test_main_one_without_attackers_does_not_enter_second_main(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.turn_number = 2
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
+        ]
+
+        self.engine.enter_combat_or_second_main()
+
+        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
+        self.assertNotIn("Zweite Hauptphase begonnen.", self.engine.log_messages)
+
     def test_unblocked_multi_attack_advances_turn_only_once_without_reactions(self) -> None:
         attacker_one = self.make_creature("air_creature_windfalke", owner_id=1)
         attacker_two = self.make_creature("air_creature_sturmkrieger", owner_id=1)

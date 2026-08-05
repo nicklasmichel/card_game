@@ -31,8 +31,7 @@ def begin_attack_declaration(self) -> None:
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("Keine Kreaturen koennen angreifen. Kampfphase wird uebersprungen.")
-        self.enter_second_main_phase()
+        self.log("Keine Kreaturen koennen angreifen.")
         return
     self.phase = PHASE_DECLARE_ATTACKERS
     self.selected_attackers = [creature.unit_id for creature in self.get_mandatory_attackers(self.active_player)]

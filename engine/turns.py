@@ -91,6 +91,7 @@ def start_turn(self) -> None:
     self.turn_number += 1
     self.creatures_died_this_turn = 0
     player.untap_for_turn()
+    self.log(f"Zug {self.turn_number}: {player.name} ist am Zug.")
     draw_allowed = not (player.player_id == self.starting_player_id and player.turns_started == 0)
     if draw_allowed:
         drawn = self.draw_card_for_player(player, "Ziehphase")
@@ -113,7 +114,6 @@ def start_turn(self) -> None:
     self.pending_ai_action = None
     if self.statistics is not None:
         self.statistics.register_turn_count(self.turn_number)
-    self.log(f"Zug {self.turn_number}: {player.name} ist am Zug.")
     self.check_for_game_over()
 
 
@@ -145,8 +145,7 @@ def enter_combat_or_second_main(self) -> None:
     if self.available_attackers(self.active_player):
         self.begin_attack_declaration()
         return
-    self.log("Keine Kreaturen koennen angreifen. Kampfphase wird uebersprungen.")
-    self.enter_second_main_phase()
+    self.log("Keine Kreaturen koennen angreifen. Die Kampfphase kann nicht begonnen werden.")
 
 
 def auto_resolve_human_no_blockers_if_needed(self) -> None:
@@ -189,8 +188,12 @@ def handle_human_timeout(self) -> None:
         self.apply_human_mulligan()
         return
     if self.phase == PHASE_MAIN_1 and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Spieler wechselt in die Kampfphase.")
-        self.enter_combat_or_second_main()
+        if self.available_attackers(self.active_player):
+            self.log("Zeit abgelaufen. Spieler wechselt in die Kampfphase.")
+            self.enter_combat_or_second_main()
+        else:
+            self.log("Zeit abgelaufen. Zug wird beendet.")
+            self.end_turn()
         return
     if self.phase == PHASE_MAIN_2 and self.active_player.is_human:
         self.log("Zeit abgelaufen. Zug wird beendet.")
