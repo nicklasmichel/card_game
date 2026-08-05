@@ -239,7 +239,7 @@ class ResourceAndRecycleTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 1)
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
-        self.assertIn("Spieler zieht 1 Karte durch den Beschwörer.", self.engine.log_messages)
+        self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
 
     def test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
         self.engine.human_player.deck = [
@@ -763,6 +763,18 @@ class AiResourceStrategyTests(EngineTestCase):
         self.assertEqual(chosen.template.template_id, "air_ritual_rueckenwind")
         self.assertNotEqual(high_aw_ground.unit_id, target.creature_id)
         self.assertEqual(flyer.unit_id, target.creature_id)
+
+    def test_rueckenwind_is_not_chosen_before_a_future_haste_creature_enters_play(self) -> None:
+        self.set_ai_resources(2)
+        self.set_ai_hand([
+            "air_ritual_rueckenwind",
+            "air_creature_sturmkrieger",
+        ])
+
+        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
+
+        self.assertIsNotNone(chosen)
+        self.assertEqual(chosen.template.template_id, "air_creature_sturmkrieger")
 
     def test_sturmformation_is_low_value_without_attackers(self) -> None:
         self.set_ai_resources(2)

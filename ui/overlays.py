@@ -116,17 +116,12 @@ def draw_dice_battle_overlay(self) -> None:
             panel.y + 52,
         )
 
-    middle_x = attacker_rect.right + 48
-    middle_width = blocker_rect.left - middle_x - 48
-    column_gap = 18
-    column_width = (middle_width - column_gap) // 2
-    left_column_x = middle_x
-    right_column_x = middle_x + column_width + column_gap
     dice_panel_y = attacker_rect.bottom + 18
     content_start_y = dice_panel_y + 58
     side_panel_height = max(len(attacker_dice), len(blocker_dice)) * 58 + 98
-    attacker_panel_rect = pygame.Rect(left_column_x - 10, dice_panel_y, column_width + 20, side_panel_height)
-    blocker_panel_rect = pygame.Rect(right_column_x - 10, dice_panel_y, column_width + 20, side_panel_height)
+    panel_width = max(attacker_rect.width, blocker_rect.width)
+    attacker_panel_rect = pygame.Rect(attacker_rect.x, dice_panel_y, panel_width, side_panel_height)
+    blocker_panel_rect = pygame.Rect(blocker_rect.x, dice_panel_y, panel_width, side_panel_height)
     pygame.draw.rect(self.screen, (78, 58, 52), attacker_panel_rect, border_radius=8)
     pygame.draw.rect(self.screen, CARD_BORDER, attacker_panel_rect, 2, border_radius=8)
     pygame.draw.rect(self.screen, (52, 86, 138), blocker_panel_rect, border_radius=8)
@@ -146,9 +141,9 @@ def draw_dice_battle_overlay(self) -> None:
 
     for index, die in enumerate(attacker_dice):
         rect = pygame.Rect(
-            left_column_x,
+            attacker_panel_rect.x + 10,
             content_start_y + index * 58,
-            column_width,
+            attacker_panel_rect.width - 20,
             46,
         )
         pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
@@ -162,9 +157,9 @@ def draw_dice_battle_overlay(self) -> None:
 
     for index, die in enumerate(blocker_dice):
         rect = pygame.Rect(
-            right_column_x,
+            blocker_panel_rect.x + 10,
             content_start_y + index * 58,
-            column_width,
+            blocker_panel_rect.width - 20,
             46,
         )
         pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
@@ -184,11 +179,11 @@ def draw_dice_battle_overlay(self) -> None:
             self.font,
             f"Aufgedeckt: {attacker.name} {attacker_die.display()} | {blocker.name} {blocker_die.display()}",
             TEXT_COLOR,
-            left_column_x,
+            attacker_panel_rect.x + 10,
             info_y,
         )
         if battle.pending_comparison.human_can_adapt:
-            self.blit_text(self.small_font, "Anpassung kann jetzt eingesetzt werden.", MUTED_TEXT, left_column_x, info_y + 28)
+            self.blit_text(self.small_font, "Anpassung kann jetzt eingesetzt werden.", MUTED_TEXT, attacker_panel_rect.x + 10, info_y + 28)
 
 
 def draw_game_over_overlay(self) -> None:

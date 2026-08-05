@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from core.models import CardInstance, DieResult, PendingComparison, PendingDiceBattle, PHASE_DECLARE_ATTACKERS, PHASE_DICE_BATTLE, PHASE_REACTION, PHASE_RESOURCE, PHASE_SUMMONING, ReactionContext, ReactionTrigger
+from core.models import CardInstance, DieResult, PendingComparison, PendingDiceBattle, PHASE_DECLARE_ATTACKERS, PHASE_DICE_BATTLE, PHASE_REACTION, PHASE_RESOURCE, PHASE_SPELL_TARGETING, PHASE_SUMMONING, ReactionContext, ReactionTrigger
 from tests.helpers import EngineTestCase
 
 
@@ -165,6 +165,26 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_RESOURCE)
         self.assertEqual(self.engine.active_player, self.engine.human_player)
 
+    def test_ai_does_not_prepare_unplayable_creature_and_spam_resource_error(self) -> None:
+        self.engine.phase = PHASE_SUMMONING
+        self.engine.ai_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanreiter"]),
+        ]
+        self.engine.ai_player.resources = []
+        original = self.engine.ai.choose_main_phase_card
+        self.engine.ai.choose_main_phase_card = lambda player, engine: self.engine.ai_player.hand[0]
+        try:
+            prepared = self.engine.prepare_ai_turn_action()
+        finally:
+            self.engine.ai.choose_main_phase_card = original
+
+        self.assertFalse(prepared)
+        self.assertFalse(self.engine.has_pending_ai_action())
+        self.assertNotIn(
+            "Nicht genuegend Ressourcen oder Recyclekosten koennen nicht bezahlt werden.",
+            self.engine.log_messages,
+        )
+
     def test_ai_uses_planned_aufwind_follow_up_in_summoning_phase(self) -> None:
         self.engine.phase = PHASE_SUMMONING
         self.engine.ai_player.summoner_key = "air"
@@ -230,6 +250,46 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
         self.assertEqual(self.engine.pending_ai_action["attacker_ids"], [flyer.unit_id])
 
+    def test_ai_rueckenwind_falls_back_to_legal_attacker_target(self) -> None:
+        self.engine.phase = PHASE_SUMMONING
+        self.engine.ai_player.summoner_key = "air"
+        self.engine.ai_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_rueckenwind"]),
+        ]
+        self.engine.ai_player.resources = [
+            self.make_resource("fire_creature_funkenkobold"),
+        ]
+        attacker = self.make_creature("air_creature_himmelskrieger", owner_id=1)
+
+        self.engine.prepare_ai_turn_action()
+        self.engine.execute_prepared_ai_action()
+
+        with patch.object(self.engine.ai, "_estimate_best_air_attack_plan", return_value={"target_id": None}):
+            prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "spell_targeting")
+        self.assertEqual(self.engine.pending_ai_action["selected_targets"][0].creature_id, attacker.unit_id)
+
+    def test_ai_cancels_unresolvable_spell_targeting_instead_of_looping(self) -> None:
+        self.engine.phase = PHASE_SUMMONING
+        self.engine.ai_player.summoner_key = "air"
+        self.engine.ai_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_rueckenwind"]),
+        ]
+        self.engine.ai_player.resources = [
+            self.make_resource("fire_creature_funkenkobold"),
+        ]
+        self.engine.begin_spell_cast_from_card(self.engine.ai_player.hand[0], PHASE_SUMMONING)
+
+        with patch.object(self.engine.ai, "choose_spell_target_ref", return_value=None):
+            prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertFalse(prepared)
+        self.assertIsNone(self.engine.pending_spell_cast)
+        self.assertEqual(self.engine.phase, PHASE_SUMMONING)
+        self.assertIn("Zauberabwicklung abgebrochen.", self.engine.log_messages)
+
     def test_ai_three_safe_attackers_trigger_summoner_passive_draw(self) -> None:
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.summoner_key = "air"
@@ -269,6 +329,25 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(
             set(self.engine.pending_ai_action["attacker_ids"]),
             {attacker_one.unit_id, attacker_two.unit_id, safe_flier.unit_id},
+        )
+
+    def test_ai_does_not_attack_all_when_that_opens_lethal_counterattack(self) -> None:
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.ai_player.summoner_key = "air"
+        self.engine.ai_player.life = 5
+        keep_back_blocker = self.make_creature("air_creature_orkanfuerst", owner_id=1)
+        expendable_attacker = self.make_creature("air_creature_sturmkrieger", owner_id=1)
+        self.make_creature("air_creature_orkanreiter", owner_id=0)
+        self.make_creature("air_creature_himmelskrieger", owner_id=0)
+        self.engine.human_player.life = 20
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
+        self.assertNotEqual(
+            set(self.engine.pending_ai_action["attacker_ids"]),
+            {keep_back_blocker.unit_id, expendable_attacker.unit_id},
         )
 
     def test_ai_reaction_spell_waits_for_confirmation(self) -> None:

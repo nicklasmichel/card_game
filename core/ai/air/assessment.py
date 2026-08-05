@@ -134,6 +134,7 @@ class AirAssessmentMixin:
                 if target_id is not None and target_id not in {creature.unit_id for creature in chosen_attackers}:
                     continue
                 plan = self._score_air_attack_subset(
+                    player,
                     chosen_attackers,
                     enemy,
                     attack_bonus_target_id=target_id,
@@ -190,6 +191,7 @@ class AirAssessmentMixin:
 
     def _score_air_attack_subset(
         self,
+        player: PlayerState,
         attackers: list[BattlefieldCreature],
         enemy: PlayerState,
         *,
@@ -231,9 +233,21 @@ class AirAssessmentMixin:
             else:
                 score += 0.7 + attacker.aw * 0.25 + kills_here * 0.3
         if len(cloned_attackers) >= 3:
-            score += 1.15
+            score += 2.0
         if direct_damage >= enemy.life:
             score += 9.0
+        counterattack = self._estimate_enemy_counterattack(
+            player,
+            enemy,
+            attacking_ids={attacker.unit_id for attacker in cloned_attackers},
+        )
+        if not direct_damage >= enemy.life:
+            if counterattack["is_lethal"]:
+                score -= 12.0
+            elif counterattack["damage"] >= max(1, player.life - 2):
+                score -= 4.5
+            elif counterattack["damage"] >= max(1, player.life // 2):
+                score -= 1.6
         return {
             "score": score,
             "attacker_ids": [attacker.unit_id for attacker in cloned_attackers],
@@ -243,6 +257,36 @@ class AirAssessmentMixin:
             "own_losses": own_losses,
             "is_lethal": direct_damage >= enemy.life,
         }
+
+    def _estimate_enemy_counterattack(
+        self,
+        player: PlayerState,
+        enemy: PlayerState,
+        *,
+        attacking_ids: set[int],
+    ) -> dict:
+        enemy_attackers = [creature for creature in enemy.battlefield if creature.current_hp > 0]
+        if not enemy_attackers:
+            return {"damage": 0, "is_lethal": False}
+        remaining_blockers = [
+            creature
+            for creature in player.battlefield
+            if creature.current_hp > 0
+            and creature.unit_id not in attacking_ids
+            and not creature.cannot_block
+        ]
+        blocker_assignments = self.choose_blockers_for_attackers(enemy_attackers, remaining_blockers)
+        blockers_by_id = {blocker.unit_id: blocker for blocker in remaining_blockers}
+        direct_damage = 0
+        for attacker in enemy_attackers:
+            assigned_blockers = [
+                blockers_by_id[blocker_id]
+                for blocker_id in blocker_assignments.get(attacker.unit_id, [])
+                if blocker_id in blockers_by_id
+            ]
+            if not assigned_blockers:
+                direct_damage += attacker.aw
+        return {"damage": direct_damage, "is_lethal": direct_damage >= player.life}
 
     def _count_probable_attackers(self, player: PlayerState, hand: list[CardInstance]) -> int:
         ready_now = len([creature for creature in player.battlefield if creature.is_ready()])

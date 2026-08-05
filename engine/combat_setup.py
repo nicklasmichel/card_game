@@ -404,6 +404,11 @@ def begin_combat_resolution(self) -> None:
 
 def advance_combat_resolution(self) -> None:
     while self.phase != PHASE_GAME_OVER:
+        if self.current_attack_index >= len(self.combat_queue):
+            self.current_blocker_order = []
+            self.current_blocker_index = 0
+            self.end_turn()
+            return
         if self.pending_dice_battle is not None:
             self.phase = PHASE_DICE_BATTLE
             return
@@ -433,10 +438,6 @@ def advance_combat_resolution(self) -> None:
             self.current_blocker_index = 0
             self.current_attack_index += 1
             continue
-        if self.current_attack_index >= len(self.combat_queue):
-            self.end_turn()
-            return
-
         attacker_id = self.combat_queue[self.current_attack_index]
         attacker = self.get_unit_by_id(attacker_id)
         if attacker is None or self.is_creature_destroyed(attacker):

@@ -94,6 +94,19 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
         if len(selected_targets) >= 2:
             break
 
+    shadow_pending.card_instance_id = pending.card_instance_id
+    shadow_pending.controller_id = pending.controller_id
+    shadow_pending.origin_phase = pending.origin_phase
+    shadow_pending.selected_recycle_resource_ids = recycle_ids
+    shadow_pending.selected_keyword_ability = selected_keyword_ability
+    original_pending = self.pending_spell_cast
+    try:
+        self.pending_spell_cast = shadow_pending
+        if not self.pending_spell_ready():
+            return None
+    finally:
+        self.pending_spell_cast = original_pending
+
     target_names = ", ".join(_format_ai_target_name(self, target) for target in selected_targets) if selected_targets else "ohne Ziel"
     return {
         "kind": "spell_targeting",
@@ -159,7 +172,7 @@ def prepare_ai_turn_action(self) -> bool:
                 "origin_phase": PHASE_SUMMONING,
             }
             return True
-        if chosen is not None and chosen.template.card_type == CardType.CREATURE:
+        if chosen is not None and chosen.template.card_type == CardType.CREATURE and self.can_play_card(self.active_player, chosen):
             recycle_ids = self.ai.choose_resources_to_recycle(self.active_player, chosen.template.recycle_cost)
             if len(recycle_ids) == chosen.template.recycle_cost:
                 self.pending_ai_action = {
@@ -180,10 +193,13 @@ def prepare_ai_turn_action(self) -> bool:
 
     if self.phase == PHASE_SPELL_TARGETING and ai_spell_targeting:
         self.pending_ai_action = _build_ai_spell_targeting_action(self)
-        return self.pending_ai_action is not None
+        if self.pending_ai_action is None:
+            self.cancel_pending_spell_cast()
+            return False
+        return True
 
     if self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
-        attackers = self.ai.choose_attackers(self.available_attackers(self.active_player))
+        attackers = self.ai.choose_attackers_for_player(self.active_player, self, self.available_attackers(self.active_player))
         attacker_names = ", ".join(attacker.name for attacker in attackers)
         self.pending_ai_action = {
             "kind": "declare_attackers",
@@ -239,7 +255,7 @@ def execute_prepared_ai_action(self) -> None:
         return
     if kind == "play_creature":
         chosen = next((card for card in self.active_player.hand if card.instance_id == action["card_id"]), None)
-        if chosen is not None:
+        if chosen is not None and self.can_play_card(self.active_player, chosen):
             self.resolve_creature_play(chosen, action.get("recycle_resource_ids", []))
         return
     if kind == "to_combat":
@@ -303,6 +319,8 @@ def ai_play_creatures(self) -> None:
     while True:
         chosen = self.ai.choose_playable_creature(self.active_player)
         if chosen is None:
+            break
+        if not self.can_play_card(self.active_player, chosen):
             break
         recycle_ids = self.ai.choose_resources_to_recycle(self.active_player, chosen.template.recycle_cost)
         if len(recycle_ids) != chosen.template.recycle_cost:

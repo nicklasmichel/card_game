@@ -30,3 +30,8 @@ class SimpleAI(CommonAIMixin, AirPlanningMixin, AirEffectEvaluationMixin, AirAss
     def _get_air_creature_handler_by_template_id(self, template_id: str):
         return get_air_creature_handler(template_id)
 
+    def choose_attackers_for_player(self, player, engine, creatures):
+        if getattr(player, "summoner_key", "") == "air":
+            return AirPlanningMixin.choose_attackers_for_player(self, player, engine, creatures)
+        return CommonAIMixin.choose_attackers_for_player(self, player, engine, creatures)
+

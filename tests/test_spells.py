@@ -1137,7 +1137,7 @@ class SpellTests(EngineTestCase):
         self.assertEqual(target_die.aw_bonus, old_bonus)
 
     def test_windstoss_card_text_is_universal_reroll(self) -> None:
-        self.assertEqual(self.engine.templates["air_spell_windstoss"].rules_text, "Wirf einen Würfel erneut.")
+        self.assertEqual(self.engine.templates["air_spell_windstoss"].rules_text, "Wirf einen Wuerfel erneut.")
 
     def test_windstoss_can_reroll_enemy_comparison_die_before_resolution(self) -> None:
         self.give_resources(0, 1)
@@ -1319,7 +1319,7 @@ class SpellTests(EngineTestCase):
     def test_boeenschub_card_text_and_effect_are_updated(self) -> None:
         card = self.engine.templates["air_spell_boeenschub"]
 
-        self.assertEqual(card.rules_text, "Eine angreifende Kreatur erhält für diesen Kampf +2 AW.")
+        self.assertEqual(card.rules_text, "Eine angreifende Kreatur erhaelt fuer diesen Kampf +2 AW.")
         self.assertEqual(card.spell_effect, SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT)
 
     def test_boeenschub_can_target_only_own_attacking_creature(self) -> None:

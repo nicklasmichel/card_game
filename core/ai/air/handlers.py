@@ -297,6 +297,9 @@ class RueckenwindHandler(ComparisonRitualHandler):
             chosen = next((creature for creature in player.battlefield if creature.unit_id == ai._planned_rueckenwind_target_id), None)
             if chosen is not None:
                 return SpellTargetRef("creature", creature_id=chosen.unit_id)
+        legal_target_ids = {creature.unit_id for creature in player.battlefield if creature.current_hp > 0}
+        if not legal_target_ids:
+            return None
         enemy = engine.players[1 - player.player_id]
         best_plan = ai._estimate_best_air_attack_plan(
             player,
@@ -305,8 +308,22 @@ class RueckenwindHandler(ComparisonRitualHandler):
             [],
             attack_bonus_amount=card.template.spell_amount,
         )
-        if best_plan["target_id"] is None:
-            return None
+        if best_plan["target_id"] is None or best_plan["target_id"] not in legal_target_ids:
+            fallback_candidates = list(engine.available_attackers(player))
+            if not fallback_candidates:
+                fallback_candidates = [creature for creature in player.battlefield if creature.current_hp > 0]
+            if not fallback_candidates:
+                return None
+            chosen = max(
+                fallback_candidates,
+                key=lambda creature: (
+                    engine.get_creature_attack_value(creature),
+                    1 if creature.has_ability(Ability.FLYING) else 0,
+                    1 if creature.has_ability(Ability.HASTE) else 0,
+                    creature.current_hp,
+                ),
+            )
+            return SpellTargetRef("creature", creature_id=chosen.unit_id)
         return SpellTargetRef("creature", creature_id=best_plan["target_id"])
 
 

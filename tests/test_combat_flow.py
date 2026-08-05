@@ -266,7 +266,7 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertTrue(battle.resolution_complete)
         self.assertIs(self.engine.pending_dice_battle, battle)
-        self.assertIn("Kampf abschließen", [spec.label for spec in self.engine.get_button_specs()])
+        self.assertIn("Kampf abschliessen", [spec.label for spec in self.engine.get_button_specs()])
 
         self.engine.end_dice_battle()
 
@@ -305,7 +305,7 @@ class CombatFlowTests(EngineTestCase):
         self.engine.finalize_or_continue_dice_battle(battle, attacker_one, blocker_one)
 
         self.assertTrue(battle.resolution_complete)
-        self.assertIn("Nächster Kampf", [spec.label for spec in self.engine.get_button_specs()])
+        self.assertIn("Naechster Kampf", [spec.label for spec in self.engine.get_button_specs()])
 
     def test_dice_battle_cannot_be_closed_early(self) -> None:
         attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
@@ -331,6 +331,46 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertIs(self.engine.pending_dice_battle, battle)
         self.assertEqual(self.engine.log_messages, [])
+
+    def test_end_dice_battle_handles_finished_queue_without_index_error(self) -> None:
+        attacker = self.make_creature("fire_creature_lavakrieger", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenfalke"]),
+        ]
+        self.engine.ai_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenkrieger"]),
+        ]
+
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DICE_BATTLE
+        self.engine.turn_number = 3
+        self.engine.combat_queue = [attacker.unit_id]
+        self.engine.current_attack_index = 1
+        self.engine.current_blocker_order = [blocker.unit_id]
+        self.engine.current_blocker_index = 1
+        self.engine.block_assignments = {attacker.unit_id: [blocker.unit_id]}
+        battle = PendingDiceBattle(
+            attacker_id=attacker.unit_id,
+            blocker_id=blocker.unit_id,
+            attacker_owner=0,
+            blocker_owner=1,
+            attacker_dice=[DieResult(20, attacker.aw, used=True)],
+            blocker_dice=[DieResult(1, blocker.aw, used=True)],
+            attacker_snapshot=self.snapshot(attacker),
+            blocker_snapshot=self.snapshot(blocker),
+            ai_strategy_name="Test",
+            ai_choose_die=lambda dice: dice[0],
+        )
+        battle.resolution_complete = True
+        self.engine.pending_dice_battle = battle
+
+        self.engine.end_dice_battle()
+
+        self.assertIsNone(self.engine.pending_dice_battle)
+        self.assertEqual(self.engine.turn_number, 4)
+        self.assertEqual(self.engine.active_player, self.engine.ai_player)
+        self.assertEqual(self.engine.phase, PHASE_RESOURCE)
 
     def test_combat_queue_uses_battlefield_order_for_attackers(self) -> None:
         attacker_left = self.make_creature("fire_creature_funkenkobold", owner_id=0)

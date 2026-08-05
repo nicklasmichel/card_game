@@ -6,6 +6,57 @@ from typing import List, Optional
 from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
 
 class AirPlanningMixin:
+    def choose_attackers_for_player(
+        self,
+        player: PlayerState,
+        engine,
+        creatures: List[BattlefieldCreature],
+    ) -> List[BattlefieldCreature]:
+        if getattr(player, "summoner_key", "") != "air":
+            return self.choose_attackers(creatures)
+        if self._planned_attacker_ids:
+            planned = [creature for creature in creatures if creature.unit_id in self._planned_attacker_ids and creature.is_ready()]
+            if planned:
+                return planned
+        enemy = engine.players[1 - player.player_id]
+        best_plan = self._estimate_best_air_attack_plan(
+            player,
+            enemy,
+            list(player.hand),
+            [],
+        )
+        best_ids = set(best_plan.get("attacker_ids", []))
+        if best_ids:
+            chosen = [creature for creature in creatures if creature.unit_id in best_ids and creature.is_ready()]
+            if chosen:
+                if len(chosen) < 3:
+                    base_score = best_plan.get("score", 0.0)
+                    best_extension = None
+                    for extra in creatures:
+                        if not extra.is_ready() or extra.unit_id in best_ids:
+                            continue
+                        extended = chosen + [extra]
+                        extended_plan = self._score_air_attack_subset(
+                            player,
+                            extended,
+                            enemy,
+                            attack_bonus_target_id=None,
+                            attack_bonus_amount=0,
+                        )
+                        if len(extended_plan["attacker_ids"]) < 3:
+                            continue
+                        if extended_plan["score"] < base_score - 0.75:
+                            continue
+                        if best_extension is None or extended_plan["score"] > best_extension[0]:
+                            best_extension = (extended_plan["score"], extended)
+                    if best_extension is not None:
+                        return best_extension[1]
+                return chosen
+        forced_attackers = [creature for creature in creatures if creature.must_attack_each_turn and creature.is_ready()]
+        if forced_attackers:
+            return forced_attackers
+        return []
+
     def choose_resource_cards_to_play(self, player: PlayerState, engine) -> List[CardInstance]:
         if player.resources_played_this_turn >= 2 or not player.hand:
             return []

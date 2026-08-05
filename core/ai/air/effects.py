@@ -80,6 +80,13 @@ class AirEffectEvaluationMixin:
     ) -> dict:
         if available_resources < card.template.resource_cost or total_resources < card.template.recycle_cost:
             return {"is_useful": False, "value": -4.0, "with_total": -999.0, "continuation_sequence": [], "attacker_ids": [], "target_id": None}
+        legal_target_ids = {
+            creature.unit_id
+            for creature in player.battlefield
+            if creature.current_hp > 0
+        }
+        if not legal_target_ids:
+            return {"is_useful": False, "value": -4.0, "with_total": -999.0, "continuation_sequence": [], "attacker_ids": [], "target_id": None}
         remaining_hand = [hand_card for hand_card in hand if hand_card.instance_id != card.instance_id]
         next_available = available_resources - card.template.resource_cost
         next_total = total_resources - card.template.recycle_cost
@@ -112,7 +119,11 @@ class AirEffectEvaluationMixin:
             with_support["sequence"],
             attack_bonus_amount=card.template.spell_amount,
         )
-        if with_attack["target_id"] is None or not with_attack["attacker_ids"]:
+        if (
+            with_attack["target_id"] is None
+            or with_attack["target_id"] not in legal_target_ids
+            or not with_attack["attacker_ids"]
+        ):
             return {"is_useful": False, "value": -4.0, "with_total": -999.0, "continuation_sequence": [], "attacker_ids": [], "target_id": None}
         without_total = without_support["score"] + without_attack["score"]
         with_total = with_support["score"] + with_attack["score"] - 1.4

@@ -103,7 +103,10 @@ def draw_summoner_life_circle(self, life: int, x: int, y: int, think_progress: f
 def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     scale = getattr(self, "layout_scale", 1.0)
     s = lambda value: max(1, int(round(value * scale)))
-    card_number_font = pygame.font.SysFont("arial", max(self.small_font.get_height() + s(2), self.small_font.get_height() + 2))
+    body_size = max(self.small_font.get_height(), 12)
+    title_size = max(self.small_font.get_height() + 3, 15)
+    number_size = max(body_size + 8, title_size + 5, 22)
+    card_number_font = pygame.font.SysFont("arial", number_size, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
     rules_text = "Wenn in deinem Zug mindestens drei deiner Kreaturen angreifen, ziehe 1 Karte."
     rules_rect = pygame.Rect(s(10), self.card_height - s(86), self.card_width - s(20), s(54))

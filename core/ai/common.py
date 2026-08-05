@@ -110,6 +110,14 @@ class CommonAIMixin:
                 return planned
         return [creature for creature in creatures if creature.is_ready()]
 
+    def choose_attackers_for_player(
+        self,
+        player: PlayerState,
+        engine,
+        creatures: List[BattlefieldCreature],
+    ) -> List[BattlefieldCreature]:
+        return self.choose_attackers(creatures)
+
     def choose_blocker(self, attacker: BattlefieldCreature, blockers: List[BattlefieldCreature]) -> Optional[BattlefieldCreature]:
         if not blockers:
             return None
