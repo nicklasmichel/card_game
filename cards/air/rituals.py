@@ -27,8 +27,8 @@ AIR_RITUALS = [
         card_type=CardType.RITUAL,
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         target_mode=SpellTargetMode.CREATURE,
-        spell_amount=3,
-        rules_text="Eine Kreatur erhaelt bis zum Ende des Zuges +3 AW.",
+        spell_amount=5,
+        rules_text="Eine Kreatur erhaelt bis zum Ende des Zuges +5 AW.",
     ),
     CardTemplate(
         template_id="air_ritual_windwechsel",
@@ -40,8 +40,8 @@ AIR_RITUALS = [
         card_type=CardType.RITUAL,
         spell_effect=SpellEffect.DRAW_TWO_THEN_DISCARD_ONE,
         target_mode=SpellTargetMode.NONE,
-        spell_draw_count=2,
-        rules_text="Ziehe 2 Karten. Wirf eine Karte ab.",
+        spell_draw_count=3,
+        rules_text="Ziehe 3 Karten. Wirf eine Karte ab.",
     ),
     CardTemplate(
         template_id="air_ritual_sturmformation",

@@ -301,6 +301,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_funkenkobold"]),
         ]
         self.engine.phase = PHASE_SUMMONING
 

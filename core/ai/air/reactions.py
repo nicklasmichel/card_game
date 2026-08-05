@@ -131,7 +131,7 @@ class AirReactionMixin:
                 useful_targets = [creature for creature in player.battlefield if creature.current_hp > 0]
                 score = (1 if useful_targets else -5, len(useful_targets), 0)
             elif card.template.spell_effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
-                score = (2 if len(player.deck) >= 2 else -10, len(player.hand), 0)
+                score = (2 if len(player.deck) >= card.template.spell_draw_count else -10, len(player.hand), 0)
             elif card.template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
                 comparison = self._evaluate_air_sturmformation_plan(
                     player,

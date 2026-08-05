@@ -419,7 +419,11 @@ class AirEffectEvaluationMixin:
         ready_attacker_count: int,
         creature_discount: int,
     ) -> dict:
-        if available_resources < card.template.resource_cost or total_resources < card.template.recycle_cost or not player.deck:
+        if (
+            available_resources < card.template.resource_cost
+            or total_resources < card.template.recycle_cost
+            or len(player.deck) < card.template.spell_draw_count
+        ):
             return {"is_useful": False, "value": -4.0}
         remaining_hand = [hand_card for hand_card in hand if hand_card.instance_id != card.instance_id]
         next_available = available_resources - card.template.resource_cost

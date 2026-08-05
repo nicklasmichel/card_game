@@ -399,12 +399,37 @@ def begin_combat_resolution(self) -> None:
     self.pending_order = None
     self.pending_dice_battle = None
     self.pending_direct_attack = None
+    self.pending_direct_attacks = []
     self.advance_combat_resolution()
+
+
+def begin_next_pending_direct_attack(self) -> bool:
+    if self.pending_direct_attack is not None:
+        return True
+    while self.pending_direct_attacks:
+        pending = self.pending_direct_attacks.pop(0)
+        attacker = self.get_unit_by_id(pending.attacker_id)
+        if attacker is None or self.get_unit_owner(attacker.unit_id) != self.active_player:
+            continue
+        self.pending_direct_attack = pending
+        self.begin_general_spell_window(
+            trigger=ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE,
+            first_responder_id=self.defending_player.player_id,
+            resume_phase=PHASE_REACTION,
+            continuation=self.resolve_pending_direct_attack_after_reaction,
+            attacker_creature=attacker,
+            damage_amount=pending.base_damage,
+            pending_damage_attacker_id=attacker.unit_id,
+        )
+        return True
+    return False
 
 
 def advance_combat_resolution(self) -> None:
     while self.phase != PHASE_GAME_OVER:
         if self.current_attack_index >= len(self.combat_queue):
+            if self.begin_next_pending_direct_attack():
+                return
             self.current_blocker_order = []
             self.current_blocker_index = 0
             self.end_turn()
@@ -454,23 +479,15 @@ def advance_combat_resolution(self) -> None:
                 self.log(f"{attacker.name} bleibt geblockt und verursacht keinen direkten Schaden.")
                 self.current_attack_index += 1
                 continue
-            self.pending_direct_attack = PendingDirectAttack(
+            self.pending_direct_attacks.append(PendingDirectAttack(
                 attacker_id=attacker.unit_id,
                 attacker_owner=self.active_player.player_id,
                 defending_player_id=self.defending_player.player_id,
                 base_damage=self.get_creature_attack_value(attacker),
                 damage_multiplier=self.active_player.direct_attack_damage_multiplier_this_turn.get(attacker.unit_id, 1),
-            )
-            self.begin_general_spell_window(
-                trigger=ReactionTrigger.BEFORE_DIRECT_ATTACK_DAMAGE,
-                first_responder_id=self.defending_player.player_id,
-                resume_phase=PHASE_REACTION,
-                continuation=self.resolve_pending_direct_attack_after_reaction,
-                attacker_creature=attacker,
-                damage_amount=self.get_creature_attack_value(attacker),
-                pending_damage_attacker_id=attacker.unit_id,
-            )
-            return
+            ))
+            self.current_attack_index += 1
+            continue
 
         if len(blockers) == 1:
             self.current_blocker_order = blockers

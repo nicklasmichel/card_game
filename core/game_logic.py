@@ -59,6 +59,7 @@ class GameEngine:
         apply_trample_if_needed,
         begin_attack_declaration,
         begin_combat_resolution,
+        begin_next_pending_direct_attack,
         can_creature_block_attacker,
         choose_human_die,
         choose_next_block_order_item,
@@ -250,6 +251,7 @@ class GameEngine:
         self.resolving_stack = False
         self.pending_post_comparison = None
         self.pending_direct_attack: Optional[PendingDirectAttack] = None
+        self.pending_direct_attacks: List[PendingDirectAttack] = []
         self.combat_queue: List[int] = []
         self.current_attack_index = 0
         self.current_blocker_order: List[int] = []
@@ -508,6 +510,7 @@ class GameEngine:
         self.resolving_stack = False
         self.pending_post_comparison = None
         self.pending_direct_attack = None
+        self.pending_direct_attacks = []
         self.combat_queue = []
         self.current_attack_index = 0
         self.current_blocker_order = []

@@ -350,6 +350,20 @@ class AiConfirmationTests(EngineTestCase):
             {keep_back_blocker.unit_id, expendable_attacker.unit_id},
         )
 
+    def test_ai_attacks_past_tapped_flying_creature_that_cannot_block(self) -> None:
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.ai_player.summoner_key = "air"
+        attacker = self.make_creature("air_creature_sturmkrieger", owner_id=1)
+        tapped_flier = self.make_creature("air_creature_sturmfalke", owner_id=0)
+        tapped_flier.tapped = True
+        tapped_flier.summoning_sick = False
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "declare_attackers")
+        self.assertEqual(self.engine.pending_ai_action["attacker_ids"], [attacker.unit_id])
+
     def test_ai_reaction_spell_waits_for_confirmation(self) -> None:
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_gegenfeuer"]),

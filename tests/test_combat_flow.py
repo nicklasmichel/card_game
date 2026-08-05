@@ -44,6 +44,27 @@ class CombatFlowTests(EngineTestCase):
         self.assertIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
         self.assertNotIn("Zug 5: Gegner ist am Zug.", self.engine.log_messages)
 
+    def test_unblocked_attackers_wait_until_blocked_combats_finish(self) -> None:
+        unblocked_attacker = self.make_creature("air_creature_windfalke", owner_id=1)
+        blocked_attacker = self.make_creature("fire_creature_lavakrieger", owner_id=1)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
+
+        self.engine.active_player_index = 1
+        self.engine.ai_player.hand = []
+        self.engine.human_player.hand = []
+        self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.block_assignments = {
+            unblocked_attacker.unit_id: [],
+            blocked_attacker.unit_id: [blocker.unit_id],
+        }
+
+        self.engine.begin_combat_resolution()
+
+        self.assertEqual(self.engine.human_player.life, 20)
+        self.assertIsNotNone(self.engine.pending_dice_battle)
+        self.assertEqual(self.engine.pending_dice_battle.attacker_id, blocked_attacker.unit_id)
+        self.assertIsNone(self.engine.pending_direct_attack)
+
     def test_windfalke_can_only_be_blocked_by_flying_creature(self) -> None:
         attacker = self.make_creature("air_creature_windfalke", owner_id=1)
         ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)

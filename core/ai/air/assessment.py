@@ -189,6 +189,13 @@ class AirAssessmentMixin:
             temporary_abilities=set(creature.temporary_abilities),
         )
 
+    def _get_probable_blockers(self, player: PlayerState) -> list[BattlefieldCreature]:
+        return [
+            creature
+            for creature in player.battlefield
+            if creature.current_hp > 0 and creature.is_ready() and not creature.cannot_block
+        ]
+
     def _score_air_attack_subset(
         self,
         player: PlayerState,
@@ -205,7 +212,7 @@ class AirAssessmentMixin:
             )
             for attacker in attackers
         ]
-        blockers = [creature for creature in enemy.battlefield if creature.current_hp > 0]
+        blockers = self._get_probable_blockers(enemy)
         blocker_assignments = self.choose_blockers_for_attackers(cloned_attackers, blockers)
         blockers_by_id = {blocker.unit_id: blocker for blocker in blockers}
         score = 0.0
@@ -265,13 +272,14 @@ class AirAssessmentMixin:
         *,
         attacking_ids: set[int],
     ) -> dict:
-        enemy_attackers = [creature for creature in enemy.battlefield if creature.current_hp > 0]
+        enemy_attackers = [creature for creature in enemy.battlefield if creature.current_hp > 0 and creature.is_ready()]
         if not enemy_attackers:
             return {"damage": 0, "is_lethal": False}
         remaining_blockers = [
             creature
             for creature in player.battlefield
             if creature.current_hp > 0
+            and creature.is_ready()
             and creature.unit_id not in attacking_ids
             and not creature.cannot_block
         ]
@@ -297,9 +305,10 @@ class AirAssessmentMixin:
         return ready_now + hasty_from_hand
 
     def _find_probable_unblocked_damage(self, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> int:
-        flying_blockers = len([creature for creature in enemy.battlefield if creature.has_ability(Ability.FLYING)])
+        blockers = self._get_probable_blockers(enemy)
+        flying_blockers = len([creature for creature in blockers if creature.has_ability(Ability.FLYING)])
         probable_damage = 0
-        no_blockers = not enemy.battlefield
+        no_blockers = not blockers
         aura_bonus = sum(getattr(creature, "own_flying_attack_aura", 0) for creature in player.battlefield if creature.current_hp > 0)
         for creature in player.battlefield:
             if not creature.is_ready():
