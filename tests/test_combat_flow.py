@@ -11,8 +11,9 @@ from core.models import (
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
+    PHASE_MAIN_2,
     PHASE_REACTION,
-    PHASE_RESOURCE,
+    PHASE_MAIN_1,
 )
 from tests.helpers import EngineTestCase
 
@@ -38,11 +39,10 @@ class CombatFlowTests(EngineTestCase):
 
         self.engine.finish_block_assignment()
 
-        self.assertEqual(self.engine.turn_number, 4)
-        self.assertEqual(self.engine.active_player, self.engine.human_player)
-        self.assertEqual(self.engine.phase, PHASE_RESOURCE)
-        self.assertIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
-        self.assertNotIn("Zug 5: Gegner ist am Zug.", self.engine.log_messages)
+        self.assertEqual(self.engine.turn_number, 3)
+        self.assertEqual(self.engine.active_player, self.engine.ai_player)
+        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
+        self.assertNotIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
 
     def test_unblocked_attackers_wait_until_blocked_combats_finish(self) -> None:
         unblocked_attacker = self.make_creature("air_creature_windfalke", owner_id=1)
@@ -356,9 +356,9 @@ class CombatFlowTests(EngineTestCase):
         self.engine.end_dice_battle()
 
         self.assertIsNone(self.engine.pending_dice_battle)
-        self.assertEqual(self.engine.turn_number, 4)
-        self.assertEqual(self.engine.active_player, self.engine.ai_player)
-        self.assertEqual(self.engine.phase, PHASE_RESOURCE)
+        self.assertEqual(self.engine.turn_number, 3)
+        self.assertEqual(self.engine.active_player, self.engine.human_player)
+        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
 
     def test_combat_queue_uses_battlefield_order_for_attackers(self) -> None:
         attacker_left = self.make_creature("fire_creature_funkenkobold", owner_id=0)
@@ -562,5 +562,6 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertIsNone(self.engine.get_unit_by_id(blocker.unit_id))
         self.assertEqual(battle.blocker_snapshot.current_hp, 0)
+
 
 

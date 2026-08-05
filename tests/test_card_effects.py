@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from cards.registry import DECK_DEFINITIONS
-from core.models import Ability, CardCost, CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_SUMMONING
+from core.models import Ability, CardCost, CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1
 from tests.helpers import EngineTestCase
 from ui.render_helpers import normalize_rules_text
 
@@ -78,7 +78,7 @@ class CardEffectsTests(EngineTestCase):
         self.engine.human_player.hand = [card_instance]
         self.engine.human_player.resources = [self.make_resource("fire_creature_funkenkobold")]
         self.engine.human_player.life = 20
-        self.engine.phase = PHASE_SUMMONING
+        self.engine.phase = PHASE_MAIN_1
 
         played = self.engine.resolve_creature_play(card_instance)
 
@@ -107,7 +107,7 @@ class CardEffectsTests(EngineTestCase):
             self.make_resource("earth_creature_steinkobold"),
         ]
         self.engine.ai_player.life = 20
-        self.engine.phase = PHASE_SUMMONING
+        self.engine.phase = PHASE_MAIN_1
 
         played = self.engine.resolve_creature_play(card_instance)
 
@@ -130,7 +130,7 @@ class CardEffectsTests(EngineTestCase):
         ]
         self.engine.human_player.life = 20
         self.engine.ai_player.life = 20
-        self.engine.phase = PHASE_SUMMONING
+        self.engine.phase = PHASE_MAIN_1
 
         played = self.engine.resolve_creature_play(card_instance)
 
@@ -143,9 +143,10 @@ class CardEffectsTests(EngineTestCase):
     def test_wolkenkrieger_is_not_selected_as_mandatory_attacker(self) -> None:
         wolkenkrieger = self.make_creature("air_creature_wolkenkrieger", owner_id=0)
 
-        self.engine.phase = PHASE_SUMMONING
+        self.engine.phase = PHASE_MAIN_1
         self.engine.begin_attack_declaration()
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
         self.assertNotIn(wolkenkrieger.unit_id, self.engine.selected_attackers)
+
 

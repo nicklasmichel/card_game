@@ -10,12 +10,13 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_MULLIGAN,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
+    MAIN_PHASES,
     PlayerState,
 )
 
@@ -104,7 +105,7 @@ def start_turn(self) -> None:
     player.turns_started += 1
     player.resources_played_this_turn = 0
     player.summoner_passive_draw_used_this_turn = False
-    self.phase = PHASE_RESOURCE
+    self.phase = PHASE_MAIN_1
     self.selected_hand_ids.clear()
     self.selected_attackers.clear()
     self.selected_blocker_id = None
@@ -132,19 +133,20 @@ def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
     return any(self.can_play_card(player, card) for card in player.hand)
 
 
-def enter_summoning_phase(self) -> None:
-    self.phase = PHASE_SUMMONING
-    self.log("Beschwoerungsphase begonnen.")
-    self.auto_advance_human_summoning_phase_if_needed()
+def enter_second_main_phase(self) -> None:
+    self.clear_combat_temporary_effects()
+    self.phase = PHASE_MAIN_2
+    self.log("Zweite Hauptphase begonnen.")
 
 
-def auto_advance_human_summoning_phase_if_needed(self) -> None:
-    if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
+def enter_combat_or_second_main(self) -> None:
+    if self.phase != PHASE_MAIN_1:
         return
-    if self.has_playable_creature_in_hand(self.active_player):
+    if self.available_attackers(self.active_player):
+        self.begin_attack_declaration()
         return
-    self.log("Keine Karte kann ausgespielt werden. Kampfphase beginnt automatisch.")
-    self.begin_attack_declaration()
+    self.log("Keine Kreaturen koennen angreifen. Kampfphase wird uebersprungen.")
+    self.enter_second_main_phase()
 
 
 def auto_resolve_human_no_blockers_if_needed(self) -> None:
@@ -186,13 +188,13 @@ def handle_human_timeout(self) -> None:
         self.log("Zeit abgelaufen. Spieler behaelt seine Starthand.")
         self.apply_human_mulligan()
         return
-    if self.phase == PHASE_RESOURCE and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Keine Ressource gespielt.")
-        self.enter_summoning_phase()
+    if self.phase == PHASE_MAIN_1 and self.active_player.is_human:
+        self.log("Zeit abgelaufen. Spieler wechselt in die Kampfphase.")
+        self.enter_combat_or_second_main()
         return
-    if self.phase == PHASE_SUMMONING and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Keine Kreatur gespielt.")
-        self.begin_attack_declaration()
+    if self.phase == PHASE_MAIN_2 and self.active_player.is_human:
+        self.log("Zeit abgelaufen. Zug wird beendet.")
+        self.end_turn()
         return
     if self.phase == PHASE_RECYCLE_PAYMENT and self.active_player.is_human:
         self.log("Zeit abgelaufen. Recycle-Auswahl wurde abgebrochen.")
@@ -243,6 +245,10 @@ def get_unit_owner(self, unit_id: int) -> Optional[PlayerState]:
     return None
 
 
+def is_own_main_phase(self, player: PlayerState) -> bool:
+    return player == self.active_player and self.phase in MAIN_PHASES
+
+
 def has_more_dice_battles_after_current(self) -> bool:
     battle = self.pending_dice_battle
     if battle is None:
@@ -268,9 +274,16 @@ def has_more_dice_battles_after_current(self) -> bool:
 
 def clear_end_of_turn_temporary_effects(self) -> None:
     self.active_player.creature_cost_reduction_this_turn = 0
-    self.active_player.attackers_die_bonus_this_turn = 0
-    self.active_player.direct_attack_damage_multiplier_this_turn.clear()
+    self.clear_combat_temporary_effects()
     for player in self.players:
         for creature in player.battlefield:
             creature.temporary_aw_bonus = 0
             creature.temporary_abilities.clear()
+
+
+def clear_combat_temporary_effects(self) -> None:
+    self.active_player.attackers_die_bonus_this_turn = 0
+    self.active_player.direct_attack_damage_multiplier_this_turn.clear()
+    for player in self.players:
+        for creature in player.battlefield:
+            creature.temporary_combat_aw_bonus = 0

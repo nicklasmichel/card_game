@@ -8,13 +8,14 @@ from core.models import (
     CardType,
     CardCost,
     CardInstance,
+    MAIN_PHASES,
     PendingRecyclePayment,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
-    PHASE_SUMMONING,
     PlayerState,
     ResourceCard,
 )
@@ -101,7 +102,7 @@ def register_hand_card_played(self, player: PlayerState) -> None:
 
 
 def begin_recycle_payment(self, card_instance_id: int) -> bool:
-    if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
+    if self.phase not in MAIN_PHASES or not self.active_player.is_human:
         return False
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_instance_id), None)
     if card is None:
@@ -116,6 +117,7 @@ def begin_recycle_payment(self, card_instance_id: int) -> bool:
         card_instance_id=card.instance_id,
         required_count=card.template.recycle_cost,
         selected_resource_ids=[],
+        return_phase=self.phase,
     )
     self.phase = PHASE_RECYCLE_PAYMENT
     self.selected_hand_ids = [card.instance_id]
@@ -149,10 +151,11 @@ def toggle_recycle_resource_selection(self, resource_id: int) -> None:
 
 
 def cancel_recycle_payment(self) -> None:
-    if self.pending_recycle_payment is None:
+    pending = self.pending_recycle_payment
+    if pending is None:
         return
     self.pending_recycle_payment = None
-    self.phase = PHASE_SUMMONING
+    self.phase = pending.return_phase
     self.selected_hand_ids.clear()
     self.log("Recycle-Auswahl abgebrochen.")
 
@@ -172,7 +175,7 @@ def confirm_recycle_payment(self) -> None:
         self.log("Die Kosten koennen nicht mehr vollstaendig bezahlt werden.")
         return
     self.pending_recycle_payment = None
-    self.phase = PHASE_SUMMONING
+    self.phase = pending.return_phase
     if not self.resolve_creature_play(card, recycle_resource_ids=list(pending.selected_resource_ids)):
         self.pending_recycle_payment = pending
         self.phase = PHASE_RECYCLE_PAYMENT
@@ -294,7 +297,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         self.active_player,
         card.template.discard_self_on_play,
         card.template.name,
-        PHASE_SUMMONING,
+        self.phase,
     )
     if self.phase == PHASE_FORCED_DISCARD:
         return True
@@ -302,14 +305,13 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         self.defending_player,
         card.template.discard_opponent_on_play,
         card.template.name,
-        PHASE_SUMMONING,
+        self.phase,
     )
     if self.phase == PHASE_FORCED_DISCARD:
         return True
     if recycled_templates:
         recycled_names = ", ".join(self.templates[template_id].name for template_id in recycled_templates)
         self.log(f"Recycle aufgedeckt und zurueck ins Deck gemischt: {recycled_names}.")
-    self.auto_advance_human_summoning_phase_if_needed()
     return True
 
 
@@ -343,7 +345,7 @@ def activate_summoner_draw(self, player: PlayerState) -> bool:
 
 
 def play_selected_card_as_resource(self) -> None:
-    if self.phase != PHASE_RESOURCE or self.active_player.resources_played_this_turn >= 2:
+    if self.phase not in MAIN_PHASES or self.active_player.resources_played_this_turn >= 2:
         return
     card = self.get_selected_hand_card()
     if card is None:
@@ -353,7 +355,7 @@ def play_selected_card_as_resource(self) -> None:
 
 
 def play_hand_card_as_resource(self, card_id: int) -> None:
-    if self.phase != PHASE_RESOURCE or self.active_player.resources_played_this_turn >= 2 or not self.active_player.is_human:
+    if self.phase not in MAIN_PHASES or self.active_player.resources_played_this_turn >= 2 or not self.active_player.is_human:
         return
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
     if card is None:
@@ -362,19 +364,21 @@ def play_hand_card_as_resource(self, card_id: int) -> None:
     self.active_player.hand = [
         existing for existing in self.active_player.hand if existing.instance_id != card.instance_id
     ]
-    self.active_player.resources.append(ResourceCard(template=card.template, resource_id=card.instance_id))
+    comes_in_tapped = self.active_player.resources_played_this_turn >= 1
+    self.active_player.resources.append(
+        ResourceCard(template=card.template, resource_id=card.instance_id, tapped=comes_in_tapped)
+    )
     self.active_player.resources_played_this_turn += 1
     self.selected_hand_ids.clear()
     if self.statistics is not None:
         self.statistics.register_resource_played(self.active_player.player_id)
-    self.log(f"{self.active_player.name} legt {card.template.name} als Ressource.")
+    state_text = "getappt" if comes_in_tapped else "bereit"
+    self.log(f"{self.active_player.name} legt {card.template.name} als Ressource ({state_text}).")
     self.register_hand_card_played(self.active_player)
-    if self.active_player.resources_played_this_turn >= 2:
-        self.enter_summoning_phase()
 
 
 def play_selected_creature_card(self) -> None:
-    if self.phase != PHASE_SUMMONING:
+    if self.phase not in MAIN_PHASES:
         return
     card = self.get_selected_hand_card()
     if card is None:
@@ -387,7 +391,7 @@ def play_hand_card_in_summoning_zone(self, card_id: int) -> None:
     if self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.human_player.player_id:
         self.begin_spell_from_hand(card_id)
         return
-    if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
+    if self.phase not in MAIN_PHASES or not self.active_player.is_human:
         return
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
     if card is None:
@@ -401,6 +405,6 @@ def play_hand_card_in_summoning_zone(self, card_id: int) -> None:
 
 
 def play_hand_card_as_creature(self, card_id: int) -> None:
-    if self.phase != PHASE_SUMMONING or not self.active_player.is_human:
+    if self.phase not in MAIN_PHASES or not self.active_player.is_human:
         return
     self.play_hand_card_in_summoning_zone(card_id)

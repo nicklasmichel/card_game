@@ -127,6 +127,33 @@ class AirReactionMixin:
                     int(comparison["value"] * 10),
                     -card.template.resource_cost,
                 )
+            elif card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+                valid_targets = engine.get_valid_discard_creature_target_refs(player)
+                score = (
+                    2 if len(valid_targets) >= card.template.spell_amount else -10,
+                    len(valid_targets),
+                    -card.template.resource_cost,
+                )
+            elif card.template.spell_effect == SpellEffect.DISCARD_HAND_AND_DRAW:
+                score = (
+                    2 if len(player.deck) >= card.template.spell_draw_count and len(player.hand) <= 2 else -2,
+                    card.template.spell_draw_count - len(player.hand),
+                    -card.template.recycle_cost,
+                )
+            elif card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+                total_targets = len(player.battlefield) + len(engine.human_player.battlefield)
+                score = (
+                    1 if total_targets >= card.template.spell_amount else -10,
+                    len(engine.human_player.battlefield),
+                    -card.template.resource_cost,
+                )
+            elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+                attacker_count = len(engine.get_current_attacker_creatures(player))
+                score = (
+                    2 if attacker_count > 0 else -10,
+                    attacker_count * card.template.spell_amount,
+                    -card.template.resource_cost,
+                )
             elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
                 useful_targets = [creature for creature in player.battlefield if creature.current_hp > 0]
                 score = (1 if useful_targets else -5, len(useful_targets), 0)
@@ -289,6 +316,42 @@ class AirReactionMixin:
             specialized_target = handler.choose_target_ref(self, player, engine, card, pending)
             if specialized_target is not None:
                 return specialized_target
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+            selected_ids = {target.card_instance_id for target in pending.selected_targets if target.card_instance_id is not None}
+            valid_targets = [
+                target for target in engine.get_valid_discard_creature_target_refs(player)
+                if target.card_instance_id not in selected_ids
+            ]
+            if not valid_targets:
+                return None
+            return max(
+                valid_targets,
+                key=lambda target: (
+                    (engine.resolve_target_discard_card(target).template.aw + engine.resolve_target_discard_card(target).template.vw)
+                    if engine.resolve_target_discard_card(target) is not None else -999,
+                    -(engine.resolve_target_discard_card(target).template.resource_cost)
+                    if engine.resolve_target_discard_card(target) is not None else 0,
+                ),
+            )
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            selected_ids = {target.creature_id for target in pending.selected_targets if target.creature_id is not None}
+            candidates = [
+                creature for creature in player.battlefield + enemy.battlefield
+                if creature.unit_id not in selected_ids
+            ]
+            if not candidates:
+                return None
+            chosen = max(
+                candidates,
+                key=lambda creature: (
+                    1 if engine.get_unit_owner(creature.unit_id) == enemy else 0,
+                    creature.aw + creature.current_hp,
+                    creature.aw,
+                ),
+            )
+            return SpellTargetRef("creature", creature_id=chosen.unit_id)
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            return None
         if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
             candidates = enemy.battlefield or player.battlefield
             if not candidates:
@@ -417,6 +480,12 @@ class AirReactionMixin:
                 score = (2 if opposing is not None and opposing.current_hp <= card.template.spell_amount else 0, 0)
             elif card.template.spell_effect == SpellEffect.DAMAGE_AFTER_OWN_CREATURE_DESTROYED:
                 score = (1, 0)
+            elif card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+                total_targets = len(engine.ai_player.battlefield) + len(engine.human_player.battlefield)
+                score = (2 if total_targets >= card.template.spell_amount else -10, len(engine.human_player.battlefield))
+            elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+                attackers = len(engine.get_current_attacker_creatures(engine.ai_player, engine.reaction_context))
+                score = (2 if attackers > 0 else -10, attackers * card.template.spell_amount)
             elif card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
                 comparison = self._evaluate_air_ausweichen_plan(
                     engine.ai_player,
@@ -451,6 +520,10 @@ class AirReactionMixin:
         if chosen.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND and best_score[0] <= 0:
             return None
         if chosen.template.spell_effect == SpellEffect.REROLL_OPEN_DIE and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT and best_score[0] <= 0:
             return None
         if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT and best_score[0] <= 0:
             return None

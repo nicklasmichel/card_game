@@ -87,6 +87,7 @@ class PendingRecyclePayment:
     card_instance_id: int
     required_count: int
     selected_resource_ids: list[int]
+    return_phase: str
 
 
 @dataclass
@@ -103,6 +104,7 @@ class SpellTargetRef:
     target_type: str
     player_id: int | None = None
     creature_id: int | None = None
+    card_instance_id: int | None = None
     die_index: int | None = None
     die_role: str | None = None
     open_die_id: int | None = None

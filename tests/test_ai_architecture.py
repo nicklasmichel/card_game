@@ -24,7 +24,7 @@ class AiArchitectureTests(EngineTestCase):
             "air_spell_ausweichen",
             "air_spell_boeenschub",
             "air_spell_windrausch",
-            "air_spell_nachwehen",
+            "air_ritual_nachwehen",
         ):
             with self.subTest(template_id=template_id):
                 self.assertIsNotNone(get_air_card_handler(template_id))

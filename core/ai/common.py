@@ -3,7 +3,7 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
+from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
 
 class RandomDieStrategy:
     name = "Zufaellig"
@@ -50,21 +50,18 @@ class CommonAIMixin:
             return bool(player.battlefield) and (bool(enemy.battlefield) or enemy.life > 0)
         if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             return bool(player.battlefield or enemy.battlefield)
-        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-            return engine.has_valid_boeenschub_target(player)
+        if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            return engine.has_valid_attacker_combat_bonus_targets(player)
         if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
             return bool(player.battlefield or enemy.battlefield)
-        if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            return len(player.battlefield) + len(enemy.battlefield) >= 2
+        if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+            return len(engine.get_valid_discard_creature_target_refs(player)) >= max(1, card.template.spell_amount)
+        if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+            return len(player.battlefield) + len(enemy.battlefield) >= max(1, card.template.spell_amount)
         if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
             return bool(player.battlefield or enemy.battlefield)
-        if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-            return engine.has_valid_ausweichen_target(player)
         if effect == SpellEffect.REROLL_OPEN_DIE:
             return engine.has_valid_open_die_target()
-        if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-            enemy = engine.players[1 - player.player_id]
-            return bool(self._current_windrausch_attackers(player, engine)) or self._find_probable_unblocked_damage(player, enemy, list(player.hand)) > 0
         return True
 
     def mulligan_indices(self, hand: List[CardInstance]) -> List[int]:
@@ -85,6 +82,28 @@ class CommonAIMixin:
                 card.template.aw + card.template.vw,
             ),
         )
+
+    def choose_resource_card_for_main_phase(self, player: PlayerState, engine, phase: str) -> Optional[CardInstance]:
+        if player.resources_played_this_turn >= 2 or not player.hand:
+            return None
+        if len(player.hand) <= 1:
+            return None
+        if phase == PHASE_MAIN_1:
+            if player.resources_played_this_turn >= 1:
+                return None
+            playable_now = any(engine.can_play_card(player, card) for card in player.hand)
+            if playable_now and player.available_resources() > 0:
+                return None
+            return self.choose_resource_card(player)
+        if phase == PHASE_MAIN_2:
+            if player.resources_played_this_turn == 0:
+                if any(card.template.card_type == CardType.CREATURE and card.template.resource_cost > player.available_resources() for card in player.hand):
+                    return self.choose_resource_card(player)
+                if any(engine.can_play_card(player, card) for card in player.hand):
+                    return self.choose_resource_card(player)
+            if player.resources_played_this_turn == 1 and len(player.hand) >= 3:
+                return self.choose_resource_card(player)
+        return None
 
     def choose_resources_to_recycle(self, player: PlayerState, count: int) -> List[int]:
         if count <= 0:

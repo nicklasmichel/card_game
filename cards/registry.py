@@ -58,11 +58,11 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("air_ritual_windwechsel", 2),
         ("air_ritual_sturmformation", 2),
         ("air_ritual_turbulenz", 2),
+        ("air_ritual_nachwehen", 2),
         ("air_spell_ausweichen", 2),
         ("air_spell_windstoss", 2),
         ("air_spell_boeenschub", 2),
         ("air_spell_windrausch", 2),
-        ("air_spell_nachwehen", 2),
     ],
     "earth": [
         ("earth_creature_steinkobold", 3),

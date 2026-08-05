@@ -381,7 +381,7 @@ class WindrauschHandler(ComparisonRitualHandler):
 
 @dataclass(slots=True)
 class NachwehenHandler(ComparisonRitualHandler):
-    template_id: str = "air_spell_nachwehen"
+    template_id: str = "air_ritual_nachwehen"
     comparison_method_name: str = "_evaluate_air_nachwehen_plan"
     keep_positive: float = 2.3
     keep_negative: float = -3.0

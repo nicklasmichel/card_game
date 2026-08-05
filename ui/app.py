@@ -14,9 +14,9 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
-    PHASE_SUMMONING,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
 )
@@ -102,6 +102,7 @@ from ui.layout import (
 )
 from ui.overlays import (
     draw_block_order_overlay,
+    draw_discard_target_overlay,
     draw_dice_battle_overlay,
     draw_game_over_overlay,
     draw_mulligan_overlay,
@@ -192,6 +193,7 @@ class TcgPrototypeApp:
     handle_log_scroll = handle_log_scroll
     draw_mulligan_overlay = draw_mulligan_overlay
     draw_block_order_overlay = draw_block_order_overlay
+    draw_discard_target_overlay = draw_discard_target_overlay
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
     draw_pause_overlay = draw_pause_overlay
@@ -302,6 +304,7 @@ class TcgPrototypeApp:
             "order_blockers": [],
             "mulligan_hand": [],
             "player_resources": [],
+            "discard_cards": [],
         }
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.models import PHASE_REACTION, PHASE_SUMMONING
+from core.models import MAIN_PHASES, PHASE_REACTION
 from ui.render_helpers import blit_text_with_shadow
 from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLOR
 
@@ -10,8 +10,11 @@ from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLO
 def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -> pygame.Rect:
     surface = self.build_hand_card_surface(card, selected, note)
     if any(existing.instance_id == card.instance_id for existing in self.engine.human_player.hand):
-        in_priority_window = self.engine.phase in {PHASE_SUMMONING, PHASE_REACTION}
-        legal = self.engine.can_play_card(self.engine.active_player if self.engine.phase == PHASE_SUMMONING else self.engine.human_player, card)
+        in_priority_window = self.engine.phase in MAIN_PHASES or self.engine.phase == PHASE_REACTION
+        legal = self.engine.can_play_card(
+            self.engine.active_player if self.engine.phase in MAIN_PHASES else self.engine.human_player,
+            card,
+        )
         if in_priority_window and not legal:
             dim = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
             pygame.draw.rect(

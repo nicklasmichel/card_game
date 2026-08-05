@@ -7,13 +7,14 @@ from core.models import (
     CardInstance,
     CardType,
     Element,
+    MAIN_PHASES,
     PendingSpellCast,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
     PHASE_REACTION,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
     ReactionContext,
     ReactionTrigger,
     SpellEffect,
@@ -244,14 +245,17 @@ def can_play_card(self, player, card: CardInstance) -> bool:
     if not player.can_pay(card.template.cost):
         return False
     if card.template.spell_effect in {
-        SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
-        SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE,
+        SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
     }:
         return self.can_react_with_card(player, card)
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        return len(get_valid_discard_creature_target_refs(self, player)) >= max(1, card.template.spell_amount)
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        return count_valid_return_to_hand_targets(self) >= max(1, card.template.spell_amount)
     if card.template.card_type == CardType.RITUAL:
         return (
             player == self.active_player
-            and self.phase == PHASE_SUMMONING
+            and self.phase in MAIN_PHASES
             and self.pending_spell_cast is None
             and not self.resolving_stack
             and (not card.template.sacrifice_own_creature_on_cast or bool(player.battlefield))
@@ -261,7 +265,7 @@ def can_play_card(self, player, card: CardInstance) -> bool:
             card.template.reaction_trigger is None
             and
             player == self.active_player
-            and self.phase == PHASE_SUMMONING
+            and self.phase in MAIN_PHASES
             and self.pending_spell_cast is None
             and not self.resolving_stack
         ):
@@ -283,24 +287,17 @@ def can_react_with_card(self, player, card: CardInstance) -> bool:
 
 
 def is_reaction_spell_legal_in_context(self, player, card: CardInstance, context: ReactionContext) -> bool:
-    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
+    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
         return (
             context.trigger in {
                 ReactionTrigger.AFTER_ATTACKERS_DECLARED,
                 ReactionTrigger.AFTER_BLOCKERS_DECLARED,
                 ReactionTrigger.BEFORE_FIRST_COMBAT,
             }
-            and has_valid_boeenschub_target(self, player, context)
+            and has_valid_attacker_combat_bonus_targets(self, player, context)
         )
-    if card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-        return (
-            player == self.active_player
-            and context.trigger in {
-                ReactionTrigger.AFTER_BLOCKERS_DECLARED,
-                ReactionTrigger.BEFORE_FIRST_COMBAT,
-            }
-            and has_valid_windrausch_targets(self, player, context)
-        )
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        return count_valid_return_to_hand_targets(self) >= max(1, card.template.spell_amount)
     trigger = card.template.reaction_trigger
     if trigger is None:
         return True
@@ -362,7 +359,7 @@ def has_legal_reaction_for_player(self, player, context: ReactionContext) -> boo
 
 
 def begin_spell_cast(self, card_id: int) -> bool:
-    if not self.active_player.is_human or self.phase != PHASE_SUMMONING:
+    if not self.active_player.is_human or self.phase not in MAIN_PHASES:
         return False
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
     if card is None:
@@ -371,7 +368,7 @@ def begin_spell_cast(self, card_id: int) -> bool:
     if not self.can_play_card(self.active_player, card):
         self.log("Diese Karte kann gerade nicht gespielt werden.")
         return False
-    return self.begin_spell_cast_from_card(card, PHASE_SUMMONING)
+    return self.begin_spell_cast_from_card(card, self.phase)
 
 
 def begin_spell_from_hand(self, card_id: int) -> bool:
@@ -385,12 +382,12 @@ def begin_spell_from_hand(self, card_id: int) -> bool:
 
 
 def begin_spell_cast_from_card(self, card: CardInstance, origin_phase: str) -> bool:
-    controller = self.active_player if origin_phase == PHASE_SUMMONING else (
+    controller = self.active_player if origin_phase in MAIN_PHASES else (
         self.get_player_by_id(self.reaction_priority_player_id) if self.reaction_priority_player_id is not None else None
     )
     if controller is None:
         return False
-    if origin_phase == PHASE_SUMMONING:
+    if origin_phase in MAIN_PHASES:
         if not self.can_play_card(controller, card):
             self.log("Diese Karte kann gerade nicht gespielt werden.")
             return False
@@ -402,7 +399,7 @@ def begin_spell_cast_from_card(self, card: CardInstance, origin_phase: str) -> b
         return self.commit_spell_cast(card, origin_phase, [])
     self.pending_spell_cast = PendingSpellCast(
         card_instance_id=card.instance_id,
-        controller_id=self.active_player.player_id if origin_phase == PHASE_SUMMONING else self.reaction_priority_player_id,
+        controller_id=self.active_player.player_id if origin_phase in MAIN_PHASES else self.reaction_priority_player_id,
         origin_phase=origin_phase,
     )
     self.phase = PHASE_SPELL_TARGETING
@@ -424,21 +421,31 @@ def describe_pending_spell_requirements(self) -> str:
             f"Waehle {card.template.recycle_cost} Ressourcen fuer Recycle von {card.template.name}. "
             f"Ausgewaehlt: {len(pending.selected_recycle_resource_ids)}/{card.template.recycle_cost}."
         )
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        remaining = max(0, card.template.spell_amount - len(pending.selected_targets))
+        if remaining > 0:
+            return (
+                f"Waehle {remaining} Kreaturenkarte(n) aus deinem Ablagestapel fuer {card.template.name}. "
+                f"Ausgewaehlt: {len(pending.selected_targets)}/{card.template.spell_amount}."
+            )
+        return f"Bestaetige {card.template.name}."
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        remaining = max(0, card.template.spell_amount - len(pending.selected_targets))
+        if remaining > 0:
+            return (
+                f"Waehle {remaining} Kreatur(en) fuer {card.template.name}. "
+                f"Ausgewaehlt: {len(pending.selected_targets)}/{card.template.spell_amount}."
+            )
+        return f"Bestaetige {card.template.name}."
+    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+        return f"Bestaetige {card.template.name}. Eigene Angreifer erhalten fuer diesen Kampf +{card.template.spell_amount} AW."
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
         return f"Waehle eine Kreatur als Ziel fuer {card.template.name}."
-    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-        if has_valid_boeenschub_target(self, controller):
-            return f"Waehle eine eigene angreifende Kreatur fuer {card.template.name}."
-        return f"Bestaetige {card.template.name}. Kein gueltiges Ziel vorhanden."
     if card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         if not pending.selected_targets:
             return f"Waehle eine Kreatur als Ziel fuer {card.template.name}."
         if pending.selected_keyword_ability is None:
             return f"Waehle fuer {card.template.name} Schnell oder Fliegend."
-        return f"Bestaetige {card.template.name}."
-    if card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-        if len(pending.selected_targets) < 2:
-            return f"Waehle {2 - len(pending.selected_targets)} weitere Kreatur fuer {card.template.name}."
         return f"Bestaetige {card.template.name}."
     if card.template.spell_effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         own_available = bool(controller.battlefield)
@@ -450,16 +457,10 @@ def describe_pending_spell_requirements(self) -> str:
         if enemy_available and not enemy_selected:
             return f"Waehle eine gegnerische Kreatur fuer {card.template.name}."
         return f"Bestaetige {card.template.name}."
-    if card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        if has_valid_ausweichen_target(self, controller):
-            return f"Waehle eine eigene Kreatur fuer {card.template.name}."
-        return f"Bestaetige {card.template.name}. Kein gueltiges Ziel vorhanden."
     if card.template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
         if has_valid_open_die_target(self):
             return f"Waehle einen offenen Wuerfel fuer {card.template.name}."
         return f"Bestaetige {card.template.name}. Kein gueltiger Wuerfel vorhanden."
-    if card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-        return f"Bestaetige {card.template.name}."
     if card.template.sacrifice_own_creature_on_cast and pending.selected_sacrifice_creature_id is None:
         return f"Waehle eine eigene Kreatur als Opfer fuer {card.template.name}."
     if card.template.target_mode == SpellTargetMode.CREATURE:
@@ -517,9 +518,34 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
         self.log(self.describe_pending_spell_requirements())
         return
     if card.template.target_mode == SpellTargetMode.NONE and card.template.spell_effect not in {
-        SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND,
         SpellEffect.REROLL_OPEN_DIE,
+        SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
+        SpellEffect.RETURN_CREATURES_TO_HAND,
     }:
+        return
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        if target.target_type != "discard_card":
+            self.log("Dieser Zauber benoetigt Kreaturenkarten aus deinem Ablagestapel als Ziele.")
+            return
+        discard_card = resolve_target_discard_card(self, target)
+        if discard_card is None:
+            self.log("Diese Karte ist kein gueltiges Ziel mehr.")
+            return
+        remaining_targets = [existing for existing in pending.selected_targets if existing.card_instance_id != target.card_instance_id]
+        pending.selected_targets = (remaining_targets + [target])[: card.template.spell_amount]
+        self.log(self.describe_pending_spell_requirements())
+        return
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        if target.target_type != "creature":
+            self.log("Dieser Zauber benoetigt Kreaturen als Ziele.")
+            return
+        creature = self.get_unit_by_id(target.creature_id or -1)
+        if creature is None:
+            self.log("Diese Kreatur ist nicht mehr im Spiel.")
+            return
+        remaining_targets = [existing for existing in pending.selected_targets if existing.creature_id != target.creature_id]
+        pending.selected_targets = (remaining_targets + [target])[: card.template.spell_amount]
+        self.log(self.describe_pending_spell_requirements())
         return
     if card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         if target.target_type != "creature":
@@ -532,28 +558,6 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
         if target.target_type != "creature":
             self.log("Dieser Zauber benoetigt eine Kreatur als Ziel.")
-            return
-        pending.selected_targets = [target]
-        self.log(self.describe_pending_spell_requirements())
-        return
-    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-        if target.target_type != "creature":
-            self.log("Dieser Zauber benoetigt eine Kreatur als Ziel.")
-            return
-        creature = self.get_unit_by_id(target.creature_id or -1)
-        if creature is None or not is_valid_boeenschub_target(self, controller, creature):
-            self.log("Diese Kreatur ist fuer Boeenschub nicht gueltig.")
-            return
-        pending.selected_targets = [target]
-        self.log(self.describe_pending_spell_requirements())
-        return
-    if card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        if target.target_type != "creature":
-            self.log("Dieser Zauber benoetigt eine Kreatur als Ziel.")
-            return
-        creature = self.get_unit_by_id(target.creature_id or -1)
-        if creature is None or not is_valid_ausweichen_target(self, controller, creature):
-            self.log("Diese Kreatur ist fuer Ausweichen nicht gueltig.")
             return
         pending.selected_targets = [target]
         self.log(self.describe_pending_spell_requirements())
@@ -595,18 +599,6 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
                 self.log("Waehle zuerst eine eigene Kreatur.")
                 return
             pending.selected_targets = filtered_targets + [target]
-        self.log(self.describe_pending_spell_requirements())
-        return
-    if card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-        if target.target_type != "creature":
-            self.log("Dieser Zauber benoetigt Kreaturen als Ziele.")
-            return
-        creature = self.get_unit_by_id(target.creature_id or -1)
-        if creature is None:
-            self.log("Diese Kreatur ist nicht mehr im Spiel.")
-            return
-        remaining_targets = [existing for existing in pending.selected_targets if existing.creature_id != target.creature_id]
-        pending.selected_targets = (remaining_targets + [target])[:2]
         self.log(self.describe_pending_spell_requirements())
         return
     if card.template.target_mode == SpellTargetMode.CREATURE and target.target_type != "creature":
@@ -668,11 +660,12 @@ def pending_spell_ready(self) -> bool:
         return len(pending.selected_targets) == 1 and pending.selected_keyword_ability is not None
     if card.template.spell_effect in {
         SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
-        SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
     }:
         return len(pending.selected_targets) == 1
-    if card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-        return len(pending.selected_targets) == 2
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        return len(pending.selected_targets) == card.template.spell_amount
+    if card.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        return len(pending.selected_targets) == card.template.spell_amount
     if card.template.spell_effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         controller = self.get_player_by_id(pending.controller_id)
         own_required = 1 if controller.battlefield else 0
@@ -680,8 +673,6 @@ def pending_spell_ready(self) -> bool:
         own_selected = sum(1 for target in pending.selected_targets if is_target_controlled_by(self, target, controller.player_id))
         enemy_selected = len(pending.selected_targets) - own_selected
         return own_selected >= own_required and enemy_selected >= enemy_required
-    if card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        return len(pending.selected_targets) == 1 or not has_valid_ausweichen_target(self, self.get_player_by_id(pending.controller_id))
     if card.template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
         return len(pending.selected_targets) == 1 or not has_valid_open_die_target(self)
     if card.template.sacrifice_own_creature_on_cast and pending.selected_sacrifice_creature_id is None:
@@ -736,7 +727,7 @@ def commit_spell_cast(
     selected_keyword_ability: Ability | None = None,
     recycle_resource_ids: list[int] | None = None,
 ) -> bool:
-    controller = self.active_player if origin_phase == PHASE_SUMMONING else self.get_player_by_id(self.reaction_priority_player_id)
+    controller = self.active_player if origin_phase in MAIN_PHASES else self.get_player_by_id(self.reaction_priority_player_id)
     if not controller.can_pay(card.template.cost):
         self.log("Nicht genuegend Ressourcen fuer diesen Zauber.")
         return False
@@ -822,10 +813,7 @@ def commit_spell_cast(
 
 
 def finish_spell_resolution_after_reaction(self) -> None:
-    if self.phase == PHASE_GAME_OVER:
-        return
-    if self.active_player.is_human and self.phase == PHASE_SUMMONING:
-        self.auto_advance_human_summoning_phase_if_needed()
+    return
 
 
 def begin_reaction_window(
@@ -890,7 +878,7 @@ def finish_reaction_window(self) -> None:
     self.reaction_priority_player_id = None
     self.reaction_pass_count = 0
     self.reaction_base_stack_size = 0
-    self.reaction_resume_phase = PHASE_SUMMONING
+    self.reaction_resume_phase = PHASE_MAIN_1
     self.reaction_continuation = None
     self.phase = resume_phase
     self.resolve_spell_stack_to(base_size, continuation)
@@ -923,6 +911,7 @@ def resolve_stack_item(self, item: StackItem) -> bool:
     effect = item.effect
     if effect == SpellEffect.REDUCE_CREATURE_COST_THIS_TURN:
         item.controller.creature_cost_reduction_this_turn += item.amount
+        self.log(f"{item.source_card.template.name} reduziert Kreaturenkosten in diesem Zug um {item.amount}.")
         return False
     if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
         creature = resolve_target_creature(self, item.targets[0] if item.targets else None)
@@ -931,12 +920,14 @@ def resolve_stack_item(self, item: StackItem) -> bool:
             return False
         creature.temporary_aw_bonus += item.amount
         return False
-    if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
-        creature = resolve_target_creature(self, item.targets[0] if item.targets else None)
-        if creature is None or not is_valid_boeenschub_target(self, item.controller, creature, item.context):
-            self.log(f"{item.source_card.template.name} verpufft, das Ziel ist ungueltig.")
+    if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+        attackers = get_current_attacker_creatures(self, item.controller, item.context)
+        if not attackers:
+            self.log(f"{item.source_card.template.name} verpufft, es gibt keine eigenen Angreifer mehr.")
             return False
-        creature.temporary_aw_bonus += item.amount
+        for creature in attackers:
+            creature.temporary_combat_aw_bonus += item.amount
+        self.log(f"Eigene Angreifer erhalten fuer diesen Kampf +{item.amount} AW.")
         return False
     if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         creature = resolve_target_creature(self, item.targets[0] if item.targets else None)
@@ -946,16 +937,29 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         if item.selected_keyword_ability is not None:
             creature.temporary_abilities.add(item.selected_keyword_ability)
         return False
-    if effect == SpellEffect.DRAW_TWO_THEN_DISCARD_ONE:
-        for _ in range(item.draw_count):
-            drawn = self.draw_card_for_player(item.controller, item.source_card.template.name)
-            if drawn is None and self.phase == PHASE_GAME_OVER:
-                return False
-        return self.begin_forced_discard(item.controller, 1, item.source_card.template.name, PHASE_SUMMONING)
-    if effect == SpellEffect.DISCARD_HAND_AND_DRAW_THREE:
+    if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        returned_names: list[str] = []
+        seen_card_ids: set[int] = set()
+        for target in item.targets[: item.amount]:
+            card = resolve_target_discard_card_for_controller(self, item.controller, target)
+            if card is None or card.instance_id in seen_card_ids:
+                continue
+            seen_card_ids.add(card.instance_id)
+            item.controller.discard_pile = [
+                existing for existing in item.controller.discard_pile if existing.instance_id != card.instance_id
+            ]
+            item.controller.hand.append(card)
+            returned_names.append(card.template.name)
+            self.log(f"{item.controller.name} nimmt {card.template.name} aus dem Ablagestapel auf die Hand.")
+        if not returned_names:
+            self.log(f"{item.source_card.template.name} verpufft, die Ziele sind ungueltig.")
+        return False
+    if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
+        discarded_count = len(item.controller.hand)
         if item.controller.hand:
             item.controller.discard_pile.extend(item.controller.hand)
             item.controller.hand = []
+        self.log(f"{item.controller.name} legt seine Hand ab und zieht {item.draw_count} Karten.")
         for _ in range(item.draw_count):
             drawn = self.draw_card_for_player(item.controller, item.source_card.template.name)
             if drawn is None and self.phase == PHASE_GAME_OVER:
@@ -964,10 +968,10 @@ def resolve_stack_item(self, item: StackItem) -> bool:
     if effect == SpellEffect.BUFF_ATTACKERS_DICE_THIS_TURN:
         item.controller.attackers_die_bonus_this_turn += item.amount
         return False
-    if effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
+    if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
         returned_names: list[str] = []
         seen_creature_ids: set[int] = set()
-        for target in item.targets[:2]:
+        for target in item.targets[: item.amount]:
             creature = resolve_target_creature(self, target)
             if creature is None or creature.unit_id in seen_creature_ids:
                 continue
@@ -976,9 +980,9 @@ def resolve_stack_item(self, item: StackItem) -> bool:
                 continue
             seen_creature_ids.add(creature.unit_id)
             return_creature_to_hand(self, owner, creature)
-            returned_names.append(creature.name)
+            returned_names.append(f"{creature.name} ({owner.name})")
         if returned_names:
-            self.log(f"{item.source_card.template.name} nimmt auf die Hand zurueck: {', '.join(returned_names)}.")
+            self.log(f"{item.source_card.template.name} nimmt auf die Haende ihrer Besitzer zurueck: {', '.join(returned_names)}.")
         return False
     if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         returned_names: list[str] = []
@@ -994,36 +998,11 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         if returned_names:
             self.log(f"{item.source_card.template.name} nimmt auf die Hand zurueck: {', '.join(returned_names)}.")
         return False
-    if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
-        creature = resolve_target_creature(self, item.targets[0] if item.targets else None)
-        if creature is None:
-            return False
-        owner = self.get_unit_owner(creature.unit_id)
-        if owner is None or owner.player_id != item.controller.player_id:
-            return False
-        return_creature_to_hand(self, owner, creature)
-        self.log(f"{item.source_card.template.name} nimmt {creature.name} auf die Hand zurueck.")
-        return False
     if effect == SpellEffect.REROLL_OPEN_DIE:
         die = resolve_target_open_die(self, item.targets[0] if item.targets else None)
         if die is None:
             return False
         die.base_roll = self.rng.randint(1, 20)
-        return False
-    if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-        attackers = get_valid_windrausch_attackers(self, item.controller, item.context)
-        if not attackers:
-            return False
-        for attacker in attackers:
-            current = item.controller.direct_attack_damage_multiplier_this_turn.get(attacker.unit_id, 1)
-            item.controller.direct_attack_damage_multiplier_this_turn[attacker.unit_id] = max(current, 2)
-        return False
-    if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
-        draw_count = self.creatures_died_this_turn * item.amount
-        for _ in range(draw_count):
-            drawn = self.draw_card_for_player(item.controller, item.source_card.template.name)
-            if drawn is None and self.phase == PHASE_GAME_OVER:
-                return False
         return False
     if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
         creature = resolve_target_creature(self, item.targets[0] if item.targets else None)
@@ -1239,6 +1218,53 @@ def resolve_target_creature(self, target: SpellTargetRef | None):
     return self.get_unit_by_id(target.creature_id or -1)
 
 
+def resolve_target_discard_card(self, target: SpellTargetRef | None):
+    if target is None or target.target_type != "discard_card" or target.card_instance_id is None:
+        return None
+    for player in self.players:
+        card = next((existing for existing in player.discard_pile if existing.instance_id == target.card_instance_id), None)
+        if card is not None:
+            return card
+    return None
+
+
+def resolve_target_discard_card_for_controller(self, controller, target: SpellTargetRef | None):
+    if target is None or target.target_type != "discard_card" or target.card_instance_id is None:
+        return None
+    return next((existing for existing in controller.discard_pile if existing.instance_id == target.card_instance_id), None)
+
+
+def get_valid_discard_creature_target_refs(self, player) -> list[SpellTargetRef]:
+    return [
+        SpellTargetRef("discard_card", card_instance_id=card.instance_id)
+        for card in player.discard_pile
+        if card.template.card_type == CardType.CREATURE
+    ]
+
+
+def count_valid_return_to_hand_targets(self) -> int:
+    return sum(len(player.battlefield) for player in self.players)
+
+
+def get_current_attacker_creatures(self, controller, context: ReactionContext | None = None) -> list:
+    active_context = context or self.reaction_context
+    if active_context is None or active_context.trigger not in {
+        ReactionTrigger.AFTER_ATTACKERS_DECLARED,
+        ReactionTrigger.AFTER_BLOCKERS_DECLARED,
+        ReactionTrigger.BEFORE_FIRST_COMBAT,
+    }:
+        return []
+    return [
+        creature
+        for creature in controller.battlefield
+        if creature.unit_id in self.block_assignments
+    ]
+
+
+def has_valid_attacker_combat_bonus_targets(self, controller, context: ReactionContext | None = None) -> bool:
+    return bool(get_current_attacker_creatures(self, controller, context))
+
+
 def clear_open_die_targets(self) -> None:
     self.open_die_targets.clear()
 
@@ -1342,11 +1368,10 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
         return True
     if card.template.spell_effect in {
         SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
-        SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT,
         SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN,
-        SpellEffect.RETURN_TWO_CREATURES_TO_HAND,
+        SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
+        SpellEffect.RETURN_CREATURES_TO_HAND,
         SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND,
-        SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND,
         SpellEffect.REROLL_OPEN_DIE,
     }:
         return True
@@ -1354,7 +1379,7 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
 
 
 def is_valid_ausweichen_target(self, controller, creature) -> bool:
-    return self.get_unit_owner(creature.unit_id) == controller
+    return self.get_unit_owner(creature.unit_id) is not None
 
 
 def has_valid_ausweichen_target(self, controller) -> bool:
@@ -1362,19 +1387,7 @@ def has_valid_ausweichen_target(self, controller) -> bool:
 
 
 def is_valid_boeenschub_target(self, controller, creature, context: ReactionContext | None = None) -> bool:
-    owner = self.get_unit_owner(creature.unit_id)
-    if owner != controller:
-        return False
-    if context is None and self.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING}:
-        return False
-    active_context = context or self.reaction_context
-    if active_context is None or active_context.trigger not in {
-        ReactionTrigger.AFTER_ATTACKERS_DECLARED,
-        ReactionTrigger.AFTER_BLOCKERS_DECLARED,
-        ReactionTrigger.BEFORE_FIRST_COMBAT,
-    }:
-        return False
-    return creature.unit_id in self.block_assignments
+    return creature in get_current_attacker_creatures(self, controller, context)
 
 
 def has_valid_boeenschub_target(self, controller, context: ReactionContext | None = None) -> bool:
@@ -1382,17 +1395,7 @@ def has_valid_boeenschub_target(self, controller, context: ReactionContext | Non
 
 
 def get_valid_windrausch_attackers(self, controller, context: ReactionContext | None = None) -> list:
-    active_context = context or self.reaction_context
-    if active_context is None or active_context.trigger not in {
-        ReactionTrigger.AFTER_BLOCKERS_DECLARED,
-        ReactionTrigger.BEFORE_FIRST_COMBAT,
-    }:
-        return []
-    return [
-        creature
-        for creature in controller.battlefield
-        if creature.unit_id in self.block_assignments and not self.block_assignments.get(creature.unit_id)
-    ]
+    return get_current_attacker_creatures(self, controller, context)
 
 
 def has_valid_windrausch_targets(self, controller, context: ReactionContext | None = None) -> bool:
@@ -1421,6 +1424,11 @@ def remove_creature_from_combat(self, creature_id: int) -> None:
         self.blocked_attackers.discard(creature_id)
         self.combat_queue = [attacker_id for attacker_id in self.combat_queue if attacker_id != creature_id]
         self.block_assignments.pop(creature_id, None)
+        self.pending_direct_attacks = [
+            attack for attack in self.pending_direct_attacks if attack.attacker_id != creature_id
+        ]
+        if self.pending_direct_attack is not None and self.pending_direct_attack.attacker_id == creature_id:
+            self.pending_direct_attack = None
     self.blocker_to_attackers.pop(creature_id, None)
     if was_attacker:
         self.current_blocker_order = [blocker_id for blocker_id in self.current_blocker_order if blocker_id != creature_id]

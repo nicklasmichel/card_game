@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import CardInstance, PHASE_SUMMONING
+from core.models import CardInstance, PHASE_MAIN_1
 
 
 class AIScenarioBuilder:
@@ -34,5 +34,6 @@ class AIScenarioBuilder:
 
     def build(self):
         if not self.engine.phase:
-            self.engine.phase = PHASE_SUMMONING
+            self.engine.phase = PHASE_MAIN_1
         return self.engine
+

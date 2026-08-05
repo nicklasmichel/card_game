@@ -11,13 +11,13 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
     ResourceCard,
     SpellEffect,
     SpellTargetRef,
@@ -38,6 +38,9 @@ def _format_ai_target_name(self, target: SpellTargetRef) -> str:
     if target.target_type == "creature":
         creature = self.get_unit_by_id(target.creature_id or -1)
         return creature.name if creature is not None else "ungueltiges Ziel"
+    if target.target_type == "discard_card":
+        card = self.resolve_target_discard_card(target)
+        return card.template.name if card is not None else "ungueltige Karte"
     if target.target_type == "die":
         role = "Angreifer" if target.die_role == "attacker" else "Blocker"
         index = 1 if target.die_index is None else target.die_index + 1
@@ -83,15 +86,24 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
         target = self.ai.choose_spell_target_ref(controller, self, card, shadow_pending)
         if target is None:
             break
-        if card.template.spell_effect == SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
-            remaining_targets = [existing for existing in selected_targets if existing.creature_id != target.creature_id]
-            selected_targets = (remaining_targets + [target])[:2]
+        if card.template.spell_effect in {
+            SpellEffect.RETURN_CREATURES_TO_HAND,
+            SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
+        }:
+            if target.target_type == "creature":
+                remaining_targets = [existing for existing in selected_targets if existing.creature_id != target.creature_id]
+            else:
+                remaining_targets = [existing for existing in selected_targets if existing.card_instance_id != target.card_instance_id]
+            selected_targets = (remaining_targets + [target])[: card.template.spell_amount]
         else:
             selected_targets = [target]
         shadow_pending.selected_targets = selected_targets
-        if card.template.spell_effect != SpellEffect.RETURN_TWO_CREATURES_TO_HAND:
+        if card.template.spell_effect not in {
+            SpellEffect.RETURN_CREATURES_TO_HAND,
+            SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
+        }:
             break
-        if len(selected_targets) >= 2:
+        if len(selected_targets) >= card.template.spell_amount:
             break
 
     shadow_pending.card_instance_id = pending.card_instance_id
@@ -142,23 +154,16 @@ def prepare_ai_turn_action(self) -> bool:
     if not self.ai_turn_initialized:
         self.ai_turn_initialized = True
 
-    if self.phase == PHASE_RESOURCE:
-        planned_resources = self.ai.choose_resource_cards_to_play(self.active_player, self)
-        parts: list[str] = []
-        if planned_resources:
-            resource_names = ", ".join(card.template.name for card in planned_resources)
-            parts.append(f"als Ressourcen legen: {resource_names}")
-        else:
-            parts.append("keine weiteren Ressourcen legen")
-            parts.append("in die Beschwoerungsphase wechseln")
-        self.pending_ai_action = {
-            "kind": "resource_phase",
-            "description": "Gegner wird " + ", ".join(parts) + ".",
-            "resource_card_ids": [card.instance_id for card in planned_resources],
-        }
-        return True
-
-    if self.phase == PHASE_SUMMONING:
+    if self.phase in {PHASE_MAIN_1, PHASE_MAIN_2}:
+        resource_card = self.ai.choose_resource_card_for_main_phase(self.active_player, self, self.phase)
+        if resource_card is not None:
+            main_label = "vor dem Kampf" if self.phase == PHASE_MAIN_1 else "nach dem Kampf"
+            self.pending_ai_action = {
+                "kind": "play_resource",
+                "description": f"Gegner wird {resource_card.template.name} als Ressource {main_label} legen.",
+                "card_id": resource_card.instance_id,
+            }
+            return True
         chosen = self.ai.choose_main_phase_card(self.active_player, self)
         if (
             chosen is not None
@@ -169,7 +174,7 @@ def prepare_ai_turn_action(self) -> bool:
                 "kind": "cast_spell",
                 "description": f"Gegner wird {chosen.template.name} spielen.",
                 "card_id": chosen.instance_id,
-                "origin_phase": PHASE_SUMMONING,
+                "origin_phase": self.phase,
             }
             return True
         if chosen is not None and chosen.template.card_type == CardType.CREATURE and self.can_play_card(self.active_player, chosen):
@@ -182,13 +187,21 @@ def prepare_ai_turn_action(self) -> bool:
                     "recycle_resource_ids": recycle_ids,
                 }
                 return True
-        if not self.available_attackers(self.active_player):
-            self.begin_attack_declaration()
-            return False
-        self.pending_ai_action = {
-            "kind": "to_combat",
-            "description": "Gegner wird in die Kampfphase wechseln.",
-        }
+        self.pending_ai_action = (
+            {
+                "kind": "to_combat",
+                "description": "Gegner wird in die Kampfphase wechseln.",
+            }
+            if self.phase == PHASE_MAIN_1
+            else {
+                "kind": "end_turn",
+                "description": "Gegner wird den Zug beenden.",
+            }
+        )
+        if self.phase == PHASE_MAIN_1 and not self.available_attackers(self.active_player):
+            self.pending_ai_action = None
+            self.enter_combat_or_second_main()
+            return self.prepare_ai_turn_action()
         return True
 
     if self.phase == PHASE_SPELL_TARGETING and ai_spell_targeting:
@@ -239,14 +252,10 @@ def execute_prepared_ai_action(self) -> None:
     if action is None:
         return
     kind = action["kind"]
-    if kind == "resource_phase":
-        for card_id in action.get("resource_card_ids", []):
-            chosen = next((card for card in self.active_player.hand if card.instance_id == card_id), None)
-            if chosen is None or self.active_player.resources_played_this_turn >= 2:
-                continue
+    if kind == "play_resource":
+        chosen = next((card for card in self.active_player.hand if card.instance_id == action["card_id"]), None)
+        if chosen is not None and self.active_player.resources_played_this_turn < 2:
             self.ai_play_resource(chosen)
-        self.phase = PHASE_SUMMONING
-        self.log("Gegner wechselt in die Beschwoerungsphase.")
         return
     if kind == "cast_spell":
         card = next((card for card in self.ai_player.hand if card.instance_id == action["card_id"]), None)
@@ -259,7 +268,10 @@ def execute_prepared_ai_action(self) -> None:
             self.resolve_creature_play(chosen, action.get("recycle_resource_ids", []))
         return
     if kind == "to_combat":
-        self.begin_attack_declaration()
+        self.enter_combat_or_second_main()
+        return
+    if kind == "end_turn":
+        self.end_turn()
         return
     if kind == "spell_targeting":
         pending = self.pending_spell_cast
@@ -301,10 +313,14 @@ def ai_play_resource(self, chosen=None) -> None:
     self.active_player.hand = [
         card for card in self.active_player.hand if card.instance_id != chosen.instance_id
     ]
-    self.active_player.resources.append(ResourceCard(template=chosen.template, resource_id=chosen.instance_id))
+    comes_in_tapped = self.active_player.resources_played_this_turn >= 1
+    self.active_player.resources.append(
+        ResourceCard(template=chosen.template, resource_id=chosen.instance_id, tapped=comes_in_tapped)
+    )
     self.active_player.resources_played_this_turn += 1
     self.statistics.register_resource_played(self.active_player.player_id)
-    self.log(f"Gegner legt {chosen.template.name} als Ressource.")
+    state_text = "getappt" if comes_in_tapped else "bereit"
+    self.log(f"Gegner legt {chosen.template.name} als Ressource ({state_text}).")
     self.register_hand_card_played(self.active_player)
 
 
@@ -313,8 +329,8 @@ def ai_play_creatures(self) -> None:
         spell = self.ai.choose_ritual(self.active_player, self)
         if spell is None:
             break
-        self.begin_spell_cast_from_card(spell, PHASE_SUMMONING)
-        if self.phase != PHASE_SUMMONING:
+        self.begin_spell_cast_from_card(spell, PHASE_MAIN_1)
+        if self.phase != PHASE_MAIN_1:
             return
     while True:
         chosen = self.ai.choose_playable_creature(self.active_player)
@@ -327,7 +343,7 @@ def ai_play_creatures(self) -> None:
             break
         if not self.resolve_creature_play(chosen, recycle_ids):
             break
-        if self.phase != PHASE_SUMMONING:
+        if self.phase != PHASE_MAIN_1:
             break
 
 
@@ -344,6 +360,9 @@ def handle_click(self, area: str, item_id: int) -> None:
             return
         if area == "enemy_creatures":
             self.select_spell_target_ref(SpellTargetRef("creature", creature_id=item_id))
+            return
+        if area == "discard_cards":
+            self.select_spell_target_ref(SpellTargetRef("discard_card", card_instance_id=item_id))
             return
         if area == "player_summoner":
             self.select_spell_target_ref(SpellTargetRef("player", player_id=item_id))
@@ -456,10 +475,14 @@ def current_prompt(self) -> str:
         return self.pending_ai_action.get("description", "Gegnerische Aktion wartet auf Bestaetigung.")
     if self.phase == PHASE_MULLIGAN:
         return "Waehle Karten fuer den Mulligan oder behalte die Starthand."
-    if self.phase == PHASE_RESOURCE:
-        return "Lege bis zu 2 Handkarten als Ressource."
-    if self.phase == PHASE_SUMMONING:
-        return "Spiele Kreaturen, Rituale oder Zauber aus, beginne den Kampf oder beende den Zug."
+    if self.phase == PHASE_MAIN_1:
+        next_resource = "erste" if self.active_player.resources_played_this_turn == 0 else "zweite"
+        next_state = "bereit" if self.active_player.resources_played_this_turn == 0 else "getappt"
+        return f"Erste Hauptphase. Spiele Karten oder gehe zum Kampf. Naechste Ressource: {next_resource} ({next_state})."
+    if self.phase == PHASE_MAIN_2:
+        next_resource = "erste" if self.active_player.resources_played_this_turn == 0 else "zweite"
+        next_state = "bereit" if self.active_player.resources_played_this_turn == 0 else "getappt"
+        return f"Zweite Hauptphase. Spiele weitere Karten oder beende den Zug. Naechste Ressource: {next_resource} ({next_state})."
     if self.phase == PHASE_SPELL_TARGETING:
         return self.describe_pending_spell_requirements()
     if self.phase == PHASE_RECYCLE_PAYMENT:
@@ -538,11 +561,9 @@ def get_button_specs(self) -> List[ButtonSpec]:
         return []
 
     buttons: List[ButtonSpec] = []
-    if self.phase == PHASE_RESOURCE:
-        buttons.append(ButtonSpec("Zur Beschwoerungsphase", True, "to_summoning"))
-    elif self.phase == PHASE_SUMMONING:
-        if self.available_attackers(self.active_player):
-            buttons.append(ButtonSpec("Kampfphase", True, "to_combat"))
+    if self.phase == PHASE_MAIN_1:
+        buttons.append(ButtonSpec("Zum Kampf", True, "to_combat"))
+    elif self.phase == PHASE_MAIN_2:
         buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
     elif self.phase == PHASE_SPELL_TARGETING:
         pending = self.pending_spell_cast

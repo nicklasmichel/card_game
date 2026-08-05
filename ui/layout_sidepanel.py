@@ -12,11 +12,11 @@ from core.models import (
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
-    PHASE_RESOURCE,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
     SpellEffect,
 )
 from ui.style import (
@@ -32,12 +32,12 @@ from ui.style import (
 
 
 def get_overview_phase_label(phase: str) -> str:
-    if phase == PHASE_RESOURCE:
-        return "Ressource"
-    if phase == PHASE_SUMMONING:
-        return "Beschwoerung"
+    if phase == PHASE_MAIN_1:
+        return "Hauptphase 1"
+    if phase == PHASE_MAIN_2:
+        return "Hauptphase 2"
     if phase == "Recycle auswaehlen":
-        return "Beschwoerung"
+        return "Hauptphase"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
     return phase
@@ -153,17 +153,21 @@ def draw_side_log(self, rect: pygame.Rect) -> None:
 
 def get_spell_target_summary(self, card) -> str:
     effect = getattr(card.template, "spell_effect", None)
+    if effect == SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        return f"{card.template.spell_amount} Kreaturenkarte(n) aus eigenem Ablagestapel"
+    if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
+        return f"{card.template.spell_amount} beliebige Kreatur(en)"
+    if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+        return "Keine Ziele"
     if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         return "Beliebige Kreatur, danach Schnell oder Fliegend"
     if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
         return "Eigene Kreatur und gegnerische Kreatur"
     if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
         return "Eigene kaempfende Kreatur"
-    if effect in {SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE, SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE}:
-        return "Unbenutzter eigener Kampfwuerfel"
-    if effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-        return "Aktueller ungeblockter Angreifer"
-    if effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
+    if effect == SpellEffect.REROLL_OPEN_DIE:
+        return "Offener Kampfwuerfel"
+    if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
         return "Keine Ziele"
     target_mode = getattr(card.template, "target_mode", None)
     if target_mode is None:
@@ -195,6 +199,11 @@ def format_target_ref(self, target) -> str:
     if target.target_type == "creature":
         creature = self.engine.get_unit_by_id(target.creature_id or -1)
         return creature.name if creature is not None else "Kreatur nicht mehr im Spiel"
+    if target.target_type == "discard_card":
+        card = self.engine.resolve_target_discard_card(target)
+        if card is None:
+            return "Karte nicht mehr im Ablagestapel"
+        return f"{card.template.name} ({self.engine.human_player.name if card in self.engine.human_player.discard_pile else self.engine.ai_player.name})"
     if target.target_type == "die":
         role = "Angreifer" if target.die_role == "attacker" else "Blocker"
         return f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}"

@@ -26,13 +26,12 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
     PendingBlockOrder,
     PendingDiceBattle,
     PendingRecyclePayment,
@@ -105,7 +104,6 @@ class GameEngine:
     from engine.flow import (
         apply_ai_mulligan,
         apply_human_mulligan,
-        auto_advance_human_summoning_phase_if_needed,
         auto_resolve_human_no_blockers_if_needed,
         available_attackers,
         available_blockers,
@@ -116,7 +114,8 @@ class GameEngine:
         confirm_forced_discard,
         discard_cards,
         draw_card_for_player,
-        enter_summoning_phase,
+        enter_combat_or_second_main,
+        enter_second_main_phase,
         get_creature_by_id,
         get_selected_hand_card,
         get_mandatory_attackers,
@@ -126,6 +125,7 @@ class GameEngine:
         handle_human_timeout,
         has_more_dice_battles_after_current,
         has_playable_creature_in_hand,
+        is_own_main_phase,
         lose_game_from_empty_deck,
         resolve_stalled_dice_battle_if_needed,
         start_turn,
@@ -171,6 +171,8 @@ class GameEngine:
         finish_reaction_window,
         finish_spell_resolution_after_reaction,
         get_card_from_pending_spell,
+        get_current_attacker_creatures,
+        get_valid_discard_creature_target_refs,
         get_context_die_for_player,
         get_open_die_target_refs,
         get_player_by_id,
@@ -180,6 +182,7 @@ class GameEngine:
         get_reaction_window_title,
         has_valid_open_die_target,
         has_valid_ausweichen_target,
+        has_valid_attacker_combat_bonus_targets,
         has_valid_boeenschub_target,
         has_valid_combat_die_target,
         is_general_spell_window_trigger,
@@ -193,6 +196,8 @@ class GameEngine:
         clear_open_die_targets,
         resolve_spell_stack_to,
         resolve_stack_item,
+        resolve_target_discard_card,
+        resolve_target_discard_card_for_controller,
         resolve_target_open_die,
         resolve_target_creature,
         resume_stack_resolution,
@@ -202,6 +207,9 @@ class GameEngine:
         set_open_die_targets,
         toggle_pending_spell_recycle_resource,
     )
+    from engine.turns import (
+        clear_combat_temporary_effects,
+    )
 
     def __init__(self) -> None:
         self.templates = build_card_templates()
@@ -210,7 +218,7 @@ class GameEngine:
         self.active_player_index = 0
         self.starting_player_id = 0
         self.turn_number = 0
-        self.phase = PHASE_MULLIGAN if ENABLE_MULLIGAN else PHASE_RESOURCE
+        self.phase = PHASE_MULLIGAN if ENABLE_MULLIGAN else PHASE_MAIN_1
         self.game_over_text = ""
         self.log_messages: List[str] = []
         self.game_over_summary_lines: List[str] = []
@@ -244,7 +252,7 @@ class GameEngine:
         self.reaction_priority_player_id: Optional[int] = None
         self.reaction_pass_count = 0
         self.reaction_base_stack_size = 0
-        self.reaction_resume_phase = PHASE_SUMMONING
+        self.reaction_resume_phase = PHASE_MAIN_1
         self.reaction_continuation = None
         self.pending_stack_resolution_base_size = 0
         self.pending_stack_resolution_continuation = None
@@ -300,7 +308,12 @@ class GameEngine:
 
     def get_creature_attack_value(self, creature: BattlefieldCreature) -> int:
         aw_bonus, _ = self.get_creature_stat_bonuses(creature)
-        return creature.aw + getattr(creature, "temporary_aw_bonus", 0) + aw_bonus
+        return (
+            creature.aw
+            + getattr(creature, "temporary_aw_bonus", 0)
+            + getattr(creature, "temporary_combat_aw_bonus", 0)
+            + aw_bonus
+        )
 
     def get_creature_defense_value(self, creature: BattlefieldCreature) -> int:
         _, vw_bonus = self.get_creature_stat_bonuses(creature)
@@ -503,7 +516,7 @@ class GameEngine:
         self.reaction_priority_player_id = None
         self.reaction_pass_count = 0
         self.reaction_base_stack_size = 0
-        self.reaction_resume_phase = PHASE_SUMMONING
+        self.reaction_resume_phase = PHASE_MAIN_1
         self.reaction_continuation = None
         self.pending_stack_resolution_base_size = 0
         self.pending_stack_resolution_continuation = None

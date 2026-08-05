@@ -3,7 +3,7 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
+from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
 
 class AirPlanningMixin:
     def choose_attackers_for_player(
@@ -56,6 +56,33 @@ class AirPlanningMixin:
         if forced_attackers:
             return forced_attackers
         return []
+
+    def choose_resource_card_for_main_phase(self, player: PlayerState, engine, phase: str) -> Optional[CardInstance]:
+        if player.resources_played_this_turn >= 2 or not player.hand:
+            return None
+        if phase == PHASE_MAIN_1:
+            if player.resources_played_this_turn >= 1:
+                return None
+            if any(
+                card.template.card_type in {CardType.RITUAL, CardType.SPELL}
+                and engine.can_play_card(player, card)
+                for card in player.hand
+            ):
+                return None
+            playable_without_resource = self.choose_main_phase_card(player, engine)
+            if playable_without_resource is not None and engine.can_play_card(player, playable_without_resource):
+                return None
+            planned = self._choose_air_resource_cards_to_play(player, engine)
+            return planned[0] if planned else None
+        if phase == PHASE_MAIN_2:
+            planned = self._choose_air_resource_cards_to_play(player, engine)
+            if not planned:
+                return None
+            if player.resources_played_this_turn == 0:
+                return planned[0]
+            if player.resources_played_this_turn == 1 and len(player.hand) >= 3:
+                return planned[0]
+        return None
 
     def choose_resource_cards_to_play(self, player: PlayerState, engine) -> List[CardInstance]:
         if player.resources_played_this_turn >= 2 or not player.hand:
@@ -308,8 +335,9 @@ class AirPlanningMixin:
         self._planned_turbulenz_target_ids = []
         self._planned_attacker_ids = []
 
-    def _get_air_turn_key(self, player: PlayerState, engine) -> tuple[int, int, int]:
-        return player.player_id, player.turns_started, engine.turn_number
+    def _get_air_turn_key(self, player: PlayerState, engine) -> tuple[int, int, int, str]:
+        phase_key = "post_combat" if engine.phase == PHASE_MAIN_2 else "pre_combat"
+        return player.player_id, player.turns_started, engine.turn_number, phase_key
 
     def _get_committed_air_sequence(self, player: PlayerState, engine) -> list[int]:
         if self._committed_air_plan is None or self._committed_air_plan.get("turn_key") != self._get_air_turn_key(player, engine):

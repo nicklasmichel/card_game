@@ -10,13 +10,13 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
     PHASE_MULLIGAN,
     PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
-    PHASE_RESOURCE,
     PHASE_SPELL_TARGETING,
-    PHASE_SUMMONING,
     PlayerState,
 )
 
@@ -98,8 +98,7 @@ def confirm_forced_discard(self) -> None:
     if self.resolving_stack:
         self.resume_stack_resolution()
         return
-    if self.active_player.is_human:
-        self.auto_advance_human_summoning_phase_if_needed()
+    return
 
 
 def get_selected_hand_card(self) -> Optional[CardInstance]:
@@ -128,7 +127,7 @@ def toggle_hand_card(self, card_id: int) -> None:
         else:
             self.selected_hand_ids.append(card_id)
         return
-    if self.active_player.is_human and self.phase in {PHASE_RESOURCE, PHASE_SUMMONING, PHASE_REACTION}:
+    if self.active_player.is_human and self.phase in {PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION}:
         if card_id in self.selected_hand_ids:
             self.selected_hand_ids.clear()
         else:
@@ -164,8 +163,6 @@ def handle_action(self, action: str) -> None:
 
     if action == "play_resource":
         self.play_selected_card_as_resource()
-    elif action == "to_summoning":
-        self.enter_summoning_phase()
     elif action == "play_creature":
         self.play_selected_creature_card()
     elif action == "play_spell":
@@ -191,7 +188,7 @@ def handle_action(self, action: str) -> None:
     elif action == "confirm_forced_discard":
         self.confirm_forced_discard()
     elif action == "to_combat":
-        self.begin_attack_declaration()
+        self.enter_combat_or_second_main()
     elif action == "confirm_attackers":
         self.confirm_attackers()
     elif action == "clear_blocks":

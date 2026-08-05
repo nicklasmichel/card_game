@@ -214,6 +214,65 @@ def draw_pause_overlay(self) -> None:
     self.blit_centered_text(self.font, "Enter setzt das Spiel fort.", MUTED_TEXT, pygame.Rect(panel.x + 20, panel.y + 68, panel.width - 40, 24))
 
 
+def draw_discard_target_overlay(self) -> None:
+    if self.engine.phase != PHASE_SPELL_TARGETING or self.engine.pending_spell_cast is None:
+        return
+    card = self.engine.get_card_from_pending_spell()
+    if card is None or card.template.spell_effect != SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND:
+        return
+    pending = self.engine.pending_spell_cast
+    controller = self.engine.get_player_by_id(pending.controller_id)
+    valid_targets = self.engine.get_valid_discard_creature_target_refs(controller)
+    overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+    overlay.fill(OVERLAY_COLOR)
+    _, _, _, action_rect, _ = self.get_side_panel_layout()
+    pygame.draw.rect(overlay, (0, 0, 0, 0), action_rect)
+    self.screen.blit(overlay, (0, 0))
+
+    panel_width = min(self.window_width - 120, 1100)
+    panel_height = min(self.window_height - 160, 720)
+    panel = pygame.Rect(
+        max(40, (self.window_width - panel_width) // 2),
+        max(40, (self.window_height - panel_height) // 2),
+        panel_width,
+        panel_height,
+    )
+    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
+    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
+    self.blit_text(self.title_font, f"{card.template.name} - Ablagestapel", TEXT_COLOR, panel.x + 24, panel.y + 20)
+    self.blit_text(
+        self.font,
+        f"Waehle {card.template.spell_amount} Kreaturenkarte(n) aus deinem Ablagestapel. Ausgewaehlt: {len(pending.selected_targets)}/{card.template.spell_amount}.",
+        MUTED_TEXT,
+        panel.x + 24,
+        panel.y + 54,
+    )
+
+    row_height = 64
+    top = panel.y + 98
+    selected_ids = {target.card_instance_id for target in pending.selected_targets if target.card_instance_id is not None}
+    for index, target in enumerate(valid_targets):
+        discard_card = self.engine.resolve_target_discard_card_for_controller(controller, target)
+        if discard_card is None:
+            continue
+        row_rect = pygame.Rect(panel.x + 24, top + index * (row_height + 10), panel.width - 48, row_height)
+        if row_rect.bottom > panel.bottom - 20:
+            break
+        is_selected = discard_card.instance_id in selected_ids
+        pygame.draw.rect(self.screen, SECTION_COLOR if not is_selected else BUTTON_COLOR, row_rect, border_radius=6)
+        pygame.draw.rect(self.screen, HIGHLIGHT if is_selected else CARD_BORDER, row_rect, 2, border_radius=6)
+        abilities = ", ".join(ability.value for ability in discard_card.template.abilities) or "-"
+        self.blit_text(self.font, discard_card.template.name, TEXT_COLOR, row_rect.x + 14, row_rect.y + 9)
+        self.blit_text(
+            self.small_font,
+            f"Kosten {discard_card.template.cost.resources}/R{discard_card.template.cost.recycle} | {discard_card.template.aw}/{discard_card.template.vw} | {abilities} | Besitzer: {controller.name}",
+            MUTED_TEXT,
+            row_rect.x + 14,
+            row_rect.y + 34,
+        )
+        self.click_targets["discard_cards"].append((row_rect, discard_card.instance_id))
+
+
 def draw_reaction_context_boxes(self, preview_panel_rect: pygame.Rect) -> None:
     if self.engine.phase != PHASE_REACTION or self.engine.reaction_context is None:
         return

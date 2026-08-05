@@ -8,8 +8,8 @@ from core.models import (
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_GAME_OVER,
+    PHASE_MAIN_1,
     PHASE_ORDER_BLOCKERS,
-    PHASE_SUMMONING,
     PHASE_REACTION,
     ReactionContext,
     ReactionTrigger,
@@ -27,12 +27,12 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
 
 
 def begin_attack_declaration(self) -> None:
-    if self.phase != PHASE_SUMMONING:
+    if self.phase != PHASE_MAIN_1:
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("Keine Kreaturen koennen angreifen. Kampfphase endet automatisch.")
-        self.end_turn()
+        self.log("Keine Kreaturen koennen angreifen. Kampfphase wird uebersprungen.")
+        self.enter_second_main_phase()
         return
     self.phase = PHASE_DECLARE_ATTACKERS
     self.selected_attackers = [creature.unit_id for creature in self.get_mandatory_attackers(self.active_player)]
@@ -172,7 +172,7 @@ def confirm_attackers(self) -> None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
         self.log("Keine Angreifer gewaehlt.")
-        self.end_turn()
+        self.enter_second_main_phase()
         return
     if not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
@@ -432,7 +432,7 @@ def advance_combat_resolution(self) -> None:
                 return
             self.current_blocker_order = []
             self.current_blocker_index = 0
-            self.end_turn()
+            self.enter_second_main_phase()
             return
         if self.pending_dice_battle is not None:
             self.phase = PHASE_DICE_BATTLE

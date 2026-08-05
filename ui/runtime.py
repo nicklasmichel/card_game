@@ -4,8 +4,8 @@ import pygame
 
 from core.models import (
     PHASE_GAME_OVER,
+    MAIN_PHASES,
     PHASE_MULLIGAN,
-    PHASE_SUMMONING,
 )
 from ui.style import BG_COLOR, FPS
 
@@ -124,10 +124,7 @@ def handle_mouse_up(self, position: tuple[int, int]) -> None:
     if self.dragged_hand_card_id is None:
         return
     if self.drag_active and self.can_drag_hand_card_to_resource() and self.can_drop_on_resource_area(position):
-        if self.engine.phase == PHASE_SUMMONING:
-            self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
-        else:
-            self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
+        self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
     elif self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
         self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
     else:
@@ -200,6 +197,7 @@ def draw(self) -> None:
         self.draw_block_order_overlay()
     if self.engine.pending_dice_battle is not None:
         self.draw_dice_battle_overlay()
+    self.draw_discard_target_overlay()
     self.draw_reaction_focus_preview()
     self.draw_pause_overlay()
     if self.engine.phase == PHASE_GAME_OVER:

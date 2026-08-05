@@ -31,6 +31,7 @@ class BattlefieldCreature:
     own_flying_attack_aura: int
     current_hp: int
     temporary_aw_bonus: int = 0
+    temporary_combat_aw_bonus: int = 0
     temporary_abilities: set[Ability] = field(default_factory=set)
     tapped: bool = True
     summoning_sick: bool = True
@@ -61,6 +62,7 @@ class BattlefieldCreature:
             own_flying_attack_aura=card.template.own_flying_attack_aura,
             current_hp=card.template.vw,
             temporary_aw_bonus=0,
+            temporary_combat_aw_bonus=0,
             tapped=not has_haste,
             summoning_sick=not has_haste,
         )
