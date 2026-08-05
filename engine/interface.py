@@ -256,21 +256,31 @@ def execute_prepared_ai_action(self) -> None:
         chosen = next((card for card in self.active_player.hand if card.instance_id == action["card_id"]), None)
         if chosen is not None and self.active_player.resources_played_this_turn < 2:
             self.ai_play_resource(chosen)
+            if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+                self.ai._mark_turn_plan_step_completed("play_resource", card_instance_id=chosen.instance_id)
         return
     if kind == "cast_spell":
         card = next((card for card in self.ai_player.hand if card.instance_id == action["card_id"]), None)
         if card is not None:
             self.begin_spell_cast_from_card(card, action["origin_phase"])
+            if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+                self.ai._mark_turn_plan_step_completed("cast_spell", card_instance_id=card.instance_id)
         return
     if kind == "play_creature":
         chosen = next((card for card in self.active_player.hand if card.instance_id == action["card_id"]), None)
         if chosen is not None and self.can_play_card(self.active_player, chosen):
             self.resolve_creature_play(chosen, action.get("recycle_resource_ids", []))
+            if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+                self.ai._mark_turn_plan_step_completed("play_creature", card_instance_id=chosen.instance_id)
         return
     if kind == "to_combat":
+        if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+            self.ai._mark_turn_plan_step_completed("to_combat")
         self.enter_combat_or_second_main()
         return
     if kind == "end_turn":
+        if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+            self.ai._mark_turn_plan_step_completed("end_turn")
         self.end_turn()
         return
     if kind == "spell_targeting":
@@ -289,6 +299,8 @@ def execute_prepared_ai_action(self) -> None:
         attackers = [attacker for attacker in self.available_attackers(self.active_player) if attacker.unit_id in attacker_ids]
         self.selected_attackers = [attacker.unit_id for attacker in attackers]
         self.confirm_attackers()
+        if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+            self.ai._mark_turn_plan_step_completed("declare_attackers")
         return
     if kind == "reaction_pass":
         self.pass_reaction()

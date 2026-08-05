@@ -1,4 +1,4 @@
-from core.ai.simple_ai import SimpleAI
+from core.ai.simple_ai import HeuristicStrategicAI, SimpleAI, StrategicAI
 from core.ai.common import (
     HighestFirstDieStrategy,
     LowestFirstDieStrategy,
@@ -8,6 +8,8 @@ from core.ai.common import (
 
 __all__ = [
     "SimpleAI",
+    "StrategicAI",
+    "HeuristicStrategicAI",
     "RandomDieStrategy",
     "HighestFirstDieStrategy",
     "LowestFirstDieStrategy",

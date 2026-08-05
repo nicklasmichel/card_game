@@ -9,8 +9,9 @@ class Element(Enum):
 
 
 class Ability(Enum):
+    ENRAGED = "Wütend"
     IGNITE = "Entzuenden"
-    TRAMPLE = "Trampelschaden"
+    TRAMPLE = "Trampelnd"
     HASTE = "Schnell"
     FLYING = "Fliegend"
     DEFENDER = "Verteidiger"

@@ -123,8 +123,9 @@ class CommonAIMixin:
         return [resource.resource_id for resource in chosen if resource.resource_id is not None]
 
     def choose_attackers(self, creatures: List[BattlefieldCreature]) -> List[BattlefieldCreature]:
-        if self._planned_attacker_ids:
-            planned = [creature for creature in creatures if creature.unit_id in self._planned_attacker_ids and creature.is_ready()]
+        planned_ids = tuple(getattr(self, "_get_planned_attacker_ids", lambda: ())())
+        if planned_ids:
+            planned = [creature for creature in creatures if creature.unit_id in planned_ids and creature.is_ready()]
             if planned:
                 return planned
         return [creature for creature in creatures if creature.is_ready()]

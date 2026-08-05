@@ -62,6 +62,7 @@ def get_display_creature_stats(self, creature) -> tuple[str, str]:
 
 def get_ability_names(self, abilities) -> List[str]:
     order = [
+        Ability.ENRAGED,
         Ability.IGNITE,
         Ability.TRAMPLE,
         Ability.HASTE,
@@ -71,7 +72,11 @@ def get_ability_names(self, abilities) -> List[str]:
         Ability.REGENERATION,
         Ability.ADAPTATION,
     ]
-    return [ability.value for ability in order if ability in abilities]
+    display_names = {
+        Ability.ENRAGED: "Wütend",
+        Ability.TRAMPLE: "Trampelnd",
+    }
+    return [display_names.get(ability, ability.value) for ability in order if ability in abilities]
 
 
 def normalize_rules_text(rules_text: str, ability_names: List[str]) -> str:

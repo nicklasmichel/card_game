@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from random import Random
@@ -181,9 +181,9 @@ class GameEngine:
         get_reaction_window_description,
         get_reaction_window_title,
         has_valid_open_die_target,
-        has_valid_ausweichen_target,
+        has_valid_verwehung_target,
         has_valid_attacker_combat_bonus_targets,
-        has_valid_boeenschub_target,
+        has_valid_jagdwind_target,
         has_valid_combat_die_target,
         is_general_spell_window_trigger,
         is_spell_card,

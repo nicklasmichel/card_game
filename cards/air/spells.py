@@ -5,8 +5,8 @@ from core.models import CardCost, CardTemplate, CardType, Element, SpellEffect, 
 
 AIR_SPELLS = [
     CardTemplate(
-        template_id="air_spell_ausweichen",
-        name="Ausweichen",
+        template_id="air_spell_verwehung",
+        name="Verwehung",
         cost=CardCost(resources=1),
         aw=0,
         vw=0,
@@ -18,8 +18,8 @@ AIR_SPELLS = [
         rules_text="Nimm 1 Kreatur auf die Hand ihres Besitzers zurueck.",
     ),
     CardTemplate(
-        template_id="air_spell_windstoss",
-        name="Windstoss",
+        template_id="air_spell_verwirbelung",
+        name="Verwirbelung",
         cost=CardCost(resources=2),
         aw=0,
         vw=0,
@@ -31,8 +31,8 @@ AIR_SPELLS = [
         rules_text="Nimm 2 Kreaturen auf die Haende ihrer Besitzer zurueck.",
     ),
     CardTemplate(
-        template_id="air_spell_boeenschub",
-        name="Boeenschub",
+        template_id="air_spell_jagdwind",
+        name="Jagdwind",
         cost=CardCost(resources=1),
         aw=0,
         vw=0,
@@ -44,8 +44,8 @@ AIR_SPELLS = [
         rules_text="Deine angreifenden Kreaturen erhalten fuer diesen Kampf +1 AW.",
     ),
     CardTemplate(
-        template_id="air_spell_windrausch",
-        name="Windrausch",
+        template_id="air_spell_sturmjagd",
+        name="Sturmjagd",
         cost=CardCost(resources=2),
         aw=0,
         vw=0,

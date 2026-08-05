@@ -73,8 +73,8 @@ def load_card_art_images(self) -> dict[str, pygame.Surface]:
         "water_creatures": "water_creature_",
         "earth_creatures": "earth_creature_",
         "air_creatures": "air_creature_",
-        "air_rituals": "air_ritual_",
-        "air_spells": "air_spell_",
+        "air_rituals": None,
+        "air_spells": None,
     }
     for folder_name, template_prefix in folder_prefixes.items():
         resources_dir = base_dir / folder_name
@@ -86,7 +86,7 @@ def load_card_art_images(self) -> dict[str, pygame.Surface]:
             normalized_stem = normalize_asset_stem(image_path.stem)
             image_map[normalized_stem] = surface
             stem_parts = normalized_stem.split("_", maxsplit=1)
-            if len(stem_parts) == 2:
+            if template_prefix is not None and len(stem_parts) == 2:
                 image_map[f"{template_prefix}{stem_parts[1]}"] = surface
     for template_id, template in getattr(self.engine, "templates", {}).items():
         normalized_name = normalize_card_art_name(template.name)

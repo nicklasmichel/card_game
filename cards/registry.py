@@ -21,16 +21,14 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("water_creature_uralter_leviathan", 1),
     ],
     "fire": [
-        ("fire_creature_funkenwicht", 2),
-        ("fire_creature_bombenwicht", 2),
-        ("fire_creature_funkenkobold", 2),
-        ("fire_creature_flammenrekrut", 2),
-        ("fire_creature_lavakrieger", 2),
-        ("fire_creature_brandstifter", 2),
-        ("fire_creature_flammenmagier", 2),
-        ("fire_creature_feuerwidder", 2),
-        ("fire_creature_magmabestie", 2),
-        ("fire_creature_infernodrache", 2),
+        ("fire_creature_aschebestie", 2),
+        ("fire_creature_aschebrecher", 2),
+        ("fire_creature_glutbestie", 2),
+        ("fire_creature_glutbrecher", 2),
+        ("fire_creature_flammenbestie", 2),
+        ("fire_creature_flammenbrecher", 2),
+        ("fire_creature_infernobestie", 2),
+        ("fire_creature_infernobrecher", 2),
         ("fire_ritual_funkenwurf", 2),
         ("fire_ritual_feuerball", 2),
         ("fire_ritual_flammenwelle", 2),
@@ -43,26 +41,26 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_spell_flammenzorn", 2),
     ],
     "air": [
-        ("air_creature_sturmfalke", 2),
-        ("air_creature_sturmkrieger", 2),
-        ("air_creature_wolkenfalke", 2),
-        ("air_creature_wolkenkrieger", 2),
-        ("air_creature_windfalke", 2),
-        ("air_creature_windkrieger", 2),
-        ("air_creature_himmelsfalke", 2),
-        ("air_creature_himmelskrieger", 2),
-        ("air_creature_orkanfalke", 2),
-        ("air_creature_orkankrieger", 2),
+        ("air_creature_sturmschwinge", 2),
+        ("air_creature_sturmgeist", 2),
+        ("air_creature_wolkenschwinge", 2),
+        ("air_creature_wolkengeist", 2),
+        ("air_creature_windschwinge", 2),
+        ("air_creature_windgeist", 2),
+        ("air_creature_himmelsschwinge", 2),
+        ("air_creature_himmelsgeist", 2),
+        ("air_creature_orkanschwinge", 2),
+        ("air_creature_orkangeist", 2),
         ("air_ritual_aufwind", 2),
         ("air_ritual_rueckenwind", 2),
-        ("air_ritual_windwechsel", 2),
-        ("air_ritual_sturmformation", 2),
-        ("air_ritual_turbulenz", 2),
-        ("air_ritual_nachwehen", 2),
-        ("air_spell_ausweichen", 2),
-        ("air_spell_windstoss", 2),
-        ("air_spell_boeenschub", 2),
-        ("air_spell_windrausch", 2),
+        ("air_ritual_windruf", 2),
+        ("air_ritual_sturmruf", 2),
+        ("air_ritual_himmelswende", 2),
+        ("air_ritual_orkanwende", 2),
+        ("air_spell_verwehung", 2),
+        ("air_spell_verwirbelung", 2),
+        ("air_spell_jagdwind", 2),
+        ("air_spell_sturmjagd", 2),
     ],
     "earth": [
         ("earth_creature_steinkobold", 3),
@@ -87,11 +85,10 @@ def validate_deck_definitions(templates: dict[str, CardTemplate]) -> None:
         missing = [template_id for template_id, _copies in decklist if template_id not in templates]
         if missing:
             raise ValueError(f"Deck {deck_name} referenziert unbekannte Karten: {', '.join(missing)}")
-        if deck_name in {"fire", "air"}:
+        if deck_name == "air":
             total_cards = sum(copies for _template_id, copies in decklist)
             if total_cards != 40:
-                deck_label = "Feuerdeck" if deck_name == "fire" else "Luftdeck"
-                raise ValueError(f"{deck_label} muss genau 40 Karten enthalten, gefunden: {total_cards}")
+                raise ValueError(f"Luftdeck muss genau 40 Karten enthalten, gefunden: {total_cards}")
 
 
 def get_deck_templates(

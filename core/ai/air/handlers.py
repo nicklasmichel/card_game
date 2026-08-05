@@ -63,8 +63,8 @@ class AirCardHandler(Protocol):
 
 
 @dataclass(slots=True)
-class WindstossHandler:
-    template_id: str = "air_spell_windstoss"
+class VerwirbelungHandler:
+    template_id: str = "air_spell_verwirbelung"
 
     def _comparison(self, ai, player: PlayerState, engine, card: CardInstance, **kwargs) -> dict[str, Any]:
         return ai._evaluate_air_bounce_plan(
@@ -122,9 +122,10 @@ class ComparisonRitualHandler:
         method = getattr(ai, self.comparison_method_name)
         if self.comparison_method_name in {
             "_evaluate_air_cost_reduction_support_plan",
-            "_evaluate_air_windwechsel_plan",
-            "_evaluate_air_sturmformation_plan",
-            "_evaluate_air_turbulenz_plan",
+            "_evaluate_air_windruf_plan",
+            "_evaluate_air_sturmruf_plan",
+            "_evaluate_air_himmelswende_plan",
+            "_evaluate_air_orkanwende_plan",
         }:
             return method(
                 player,
@@ -136,15 +137,6 @@ class ComparisonRitualHandler:
                 own_creature_count=kwargs["own_creature_count"],
                 ready_attacker_count=kwargs["ready_attacker_count"],
                 creature_discount=kwargs["creature_discount"],
-            )
-        if self.comparison_method_name == "_evaluate_air_nachwehen_plan":
-            return method(
-                player,
-                engine,
-                card,
-                hand=kwargs["hand"],
-                available_resources=kwargs["available_resources"],
-                total_resources=kwargs["total_resources"],
             )
         if self.comparison_method_name == "_evaluate_air_global_attack_bonus_reaction_plan":
             return method(player, engine, card)
@@ -216,8 +208,8 @@ class RueckenwindHandler(ComparisonRitualHandler):
 
 
 @dataclass(slots=True)
-class BoeenschubHandler(ComparisonRitualHandler):
-    template_id: str = "air_spell_boeenschub"
+class JagdwindHandler(ComparisonRitualHandler):
+    template_id: str = "air_spell_jagdwind"
     comparison_method_name: str = "_evaluate_air_global_attack_bonus_reaction_plan"
     keep_positive: float = 2.6
     keep_negative: float = -2.8
@@ -226,8 +218,8 @@ class BoeenschubHandler(ComparisonRitualHandler):
 
 
 @dataclass(slots=True)
-class WindrauschHandler(ComparisonRitualHandler):
-    template_id: str = "air_spell_windrausch"
+class SturmjagdHandler(ComparisonRitualHandler):
+    template_id: str = "air_spell_sturmjagd"
     comparison_method_name: str = "_evaluate_air_global_attack_bonus_reaction_plan"
     keep_positive: float = 2.4
     keep_negative: float = -2.8
@@ -236,9 +228,9 @@ class WindrauschHandler(ComparisonRitualHandler):
 
 
 @dataclass(slots=True)
-class NachwehenHandler(ComparisonRitualHandler):
-    template_id: str = "air_ritual_nachwehen"
-    comparison_method_name: str = "_evaluate_air_nachwehen_plan"
+class OrkanwendeHandler(ComparisonRitualHandler):
+    template_id: str = "air_ritual_orkanwende"
+    comparison_method_name: str = "_evaluate_air_orkanwende_plan"
     keep_positive: float = 2.3
     keep_negative: float = -3.0
     reaction_floor: int = -4
@@ -276,11 +268,11 @@ class NachwehenHandler(ComparisonRitualHandler):
 
 
 @dataclass(slots=True)
-class AusweichenHandler:
-    template_id: str = "air_spell_ausweichen"
+class VerwehungHandler:
+    template_id: str = "air_spell_verwehung"
 
     def _comparison(self, ai, player: PlayerState, engine, card: CardInstance, *, hand, available_resources, total_resources) -> dict[str, Any]:
-        return ai._evaluate_air_ausweichen_plan(
+        return ai._evaluate_air_verwehung_plan(
             player,
             engine,
             card,
@@ -320,9 +312,9 @@ class AusweichenHandler:
 
 
 @dataclass(slots=True)
-class TurbulenzHandler(ComparisonRitualHandler):
-    template_id: str = "air_ritual_turbulenz"
-    comparison_method_name: str = "_evaluate_air_turbulenz_plan"
+class HimmelswendeHandler(ComparisonRitualHandler):
+    template_id: str = "air_ritual_himmelswende"
+    comparison_method_name: str = "_evaluate_air_himmelswende_plan"
     keep_positive: float = 3.0
     keep_negative: float = -3.2
 
@@ -351,21 +343,21 @@ SPECIALIZED_AIR_HANDLERS: tuple[AirCardHandler, ...] = (
     ),
     RueckenwindHandler(),
     ComparisonRitualHandler(
-        template_id="air_ritual_windwechsel",
-        comparison_method_name="_evaluate_air_windwechsel_plan",
+        template_id="air_ritual_windruf",
+        comparison_method_name="_evaluate_air_windruf_plan",
         keep_positive=2.3,
         keep_negative=-2.2,
     ),
     ComparisonRitualHandler(
-        template_id="air_ritual_sturmformation",
-        comparison_method_name="_evaluate_air_sturmformation_plan",
+        template_id="air_ritual_sturmruf",
+        comparison_method_name="_evaluate_air_sturmruf_plan",
         keep_positive=2.8,
         keep_negative=-3.0,
     ),
-    TurbulenzHandler(),
-    WindstossHandler(),
-    AusweichenHandler(),
-    BoeenschubHandler(),
-    WindrauschHandler(),
-    NachwehenHandler(),
+    HimmelswendeHandler(),
+    VerwirbelungHandler(),
+    VerwehungHandler(),
+    JagdwindHandler(),
+    SturmjagdHandler(),
+    OrkanwendeHandler(),
 )

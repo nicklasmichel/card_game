@@ -87,6 +87,8 @@ def begin_first_turn(self) -> None:
 
 
 def start_turn(self) -> None:
+    if hasattr(self.ai, "clear_active_turn_plan"):
+        self.ai.clear_active_turn_plan()
     player = self.active_player
     self.turn_number += 1
     self.creatures_died_this_turn = 0

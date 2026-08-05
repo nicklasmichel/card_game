@@ -110,7 +110,7 @@ def draw_dice_battle_overlay(self) -> None:
     if getattr(attacker_owner, "attackers_die_bonus_this_turn", 0) > 0:
         self.blit_text(
             self.font,
-            f"Sturmformation aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre Wuerfelergebnisse.",
+            f"Sturmruf aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre Wuerfelergebnisse.",
             HIGHLIGHT,
             panel.x + 56,
             panel.y + 52,

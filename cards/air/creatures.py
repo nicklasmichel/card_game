@@ -5,8 +5,8 @@ from core.models import Ability, CardCost, CardTemplate, Element
 
 AIR_CREATURES = [
     CardTemplate(
-        template_id="air_creature_sturmfalke",
-        name="Sturmfalke",
+        template_id="air_creature_sturmschwinge",
+        name="Sturmschwinge",
         cost=CardCost(resources=0, recycle=1),
         aw=1,
         vw=1,
@@ -14,8 +14,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.FLYING}),
     ),
     CardTemplate(
-        template_id="air_creature_sturmkrieger",
-        name="Sturmkrieger",
+        template_id="air_creature_sturmgeist",
+        name="Sturmgeist",
         cost=CardCost(resources=0, recycle=2),
         aw=2,
         vw=2,
@@ -23,8 +23,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.HASTE}),
     ),
     CardTemplate(
-        template_id="air_creature_wolkenfalke",
-        name="Wolkenfalke",
+        template_id="air_creature_wolkenschwinge",
+        name="Wolkenschwinge",
         cost=CardCost(resources=1),
         aw=1,
         vw=1,
@@ -32,8 +32,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.FLYING}),
     ),
     CardTemplate(
-        template_id="air_creature_wolkenkrieger",
-        name="Wolkenkrieger",
+        template_id="air_creature_wolkengeist",
+        name="Wolkengeist",
         cost=CardCost(resources=1),
         aw=1,
         vw=1,
@@ -41,8 +41,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.HASTE}),
     ),
     CardTemplate(
-        template_id="air_creature_windfalke",
-        name="Windfalke",
+        template_id="air_creature_windschwinge",
+        name="Windschwinge",
         cost=CardCost(resources=2),
         aw=1,
         vw=2,
@@ -50,8 +50,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.FLYING}),
     ),
     CardTemplate(
-        template_id="air_creature_windkrieger",
-        name="Windkrieger",
+        template_id="air_creature_windgeist",
+        name="Windgeist",
         cost=CardCost(resources=2),
         aw=2,
         vw=1,
@@ -59,8 +59,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.HASTE}),
     ),
     CardTemplate(
-        template_id="air_creature_himmelsfalke",
-        name="Himmelsfalke",
+        template_id="air_creature_himmelsschwinge",
+        name="Himmelsschwinge",
         cost=CardCost(resources=3),
         aw=1,
         vw=3,
@@ -68,8 +68,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.FLYING}),
     ),
     CardTemplate(
-        template_id="air_creature_himmelskrieger",
-        name="Himmelskrieger",
+        template_id="air_creature_himmelsgeist",
+        name="Himmelsgeist",
         cost=CardCost(resources=3),
         aw=3,
         vw=1,
@@ -77,8 +77,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.HASTE}),
     ),
     CardTemplate(
-        template_id="air_creature_orkanfalke",
-        name="Orkanfalke",
+        template_id="air_creature_orkanschwinge",
+        name="Orkanschwinge",
         cost=CardCost(resources=4, recycle=1),
         aw=2,
         vw=4,
@@ -86,8 +86,8 @@ AIR_CREATURES = [
         abilities=frozenset({Ability.FLYING}),
     ),
     CardTemplate(
-        template_id="air_creature_orkankrieger",
-        name="Orkankrieger",
+        template_id="air_creature_orkangeist",
+        name="Orkangeist",
         cost=CardCost(resources=4, recycle=1),
         aw=4,
         vw=2,

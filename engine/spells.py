@@ -1177,7 +1177,7 @@ def destroy_creature_immediately(self, owner, creature, source_name: str, *, die
         if destroyed_card in owner.discard_pile:
             owner.discard_pile.remove(destroyed_card)
         owner.hand.append(destroyed_card)
-        self.log(f"{creature.name} wird durch Orkankrieger auf die Hand zurueckgenommen.")
+        self.log(f"{creature.name} wird durch Orkangeist auf die Hand zurueckgenommen.")
     if self.statistics is not None:
         self.statistics.player_stats[owner.player_id].creatures_destroyed += 1
     return ReactionContext(
@@ -1378,28 +1378,28 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
     return card.template.target_mode != SpellTargetMode.NONE
 
 
-def is_valid_ausweichen_target(self, controller, creature) -> bool:
+def is_valid_verwehung_target(self, controller, creature) -> bool:
     return self.get_unit_owner(creature.unit_id) is not None
 
 
-def has_valid_ausweichen_target(self, controller) -> bool:
-    return any(is_valid_ausweichen_target(self, controller, creature) for creature in controller.battlefield)
+def has_valid_verwehung_target(self, controller) -> bool:
+    return any(is_valid_verwehung_target(self, controller, creature) for creature in controller.battlefield)
 
 
-def is_valid_boeenschub_target(self, controller, creature, context: ReactionContext | None = None) -> bool:
+def is_valid_jagdwind_target(self, controller, creature, context: ReactionContext | None = None) -> bool:
     return creature in get_current_attacker_creatures(self, controller, context)
 
 
-def has_valid_boeenschub_target(self, controller, context: ReactionContext | None = None) -> bool:
-    return any(is_valid_boeenschub_target(self, controller, creature, context) for creature in controller.battlefield)
+def has_valid_jagdwind_target(self, controller, context: ReactionContext | None = None) -> bool:
+    return any(is_valid_jagdwind_target(self, controller, creature, context) for creature in controller.battlefield)
 
 
-def get_valid_windrausch_attackers(self, controller, context: ReactionContext | None = None) -> list:
+def get_valid_sturmjagd_attackers(self, controller, context: ReactionContext | None = None) -> list:
     return get_current_attacker_creatures(self, controller, context)
 
 
-def has_valid_windrausch_targets(self, controller, context: ReactionContext | None = None) -> bool:
-    return bool(get_valid_windrausch_attackers(self, controller, context))
+def has_valid_sturmjagd_targets(self, controller, context: ReactionContext | None = None) -> bool:
+    return bool(get_valid_sturmjagd_attackers(self, controller, context))
 
 
 def get_player_combat_dice(self, player_id: int) -> tuple[str | None, list]:

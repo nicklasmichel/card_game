@@ -39,9 +39,9 @@ def get_attackers_die_bonus(self) -> int:
 
 def get_attacker_die_bonus_sources(self, attacker: BattlefieldCreature, attacker_owner) -> list[tuple[str, int]]:
     sources: list[tuple[str, int]] = [("AW", self.get_creature_attack_value(attacker))]
-    sturmformation_bonus = getattr(attacker_owner, "attackers_die_bonus_this_turn", 0)
-    if sturmformation_bonus > 0:
-        sources.append(("Sturmformation", sturmformation_bonus))
+    sturmruf_bonus = getattr(attacker_owner, "attackers_die_bonus_this_turn", 0)
+    if sturmruf_bonus > 0:
+        sources.append(("Sturmruf", sturmruf_bonus))
     return sources
 
 

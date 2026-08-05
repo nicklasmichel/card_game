@@ -31,8 +31,8 @@ AIR_RITUALS = [
         rules_text="Kreaturen, die du in diesem Zug ausspielst, kosten 2 Ressourcen weniger.",
     ),
     CardTemplate(
-        template_id="air_ritual_windwechsel",
-        name="Windwechsel",
+        template_id="air_ritual_windruf",
+        name="Windruf",
         cost=CardCost(resources=1),
         aw=0,
         vw=0,
@@ -44,8 +44,8 @@ AIR_RITUALS = [
         rules_text="Nimm 1 Kreaturenkarte aus deinem Ablagestapel auf deine Hand.",
     ),
     CardTemplate(
-        template_id="air_ritual_sturmformation",
-        name="Sturmformation",
+        template_id="air_ritual_sturmruf",
+        name="Sturmruf",
         cost=CardCost(resources=2),
         aw=0,
         vw=0,
@@ -57,8 +57,8 @@ AIR_RITUALS = [
         rules_text="Nimm 2 Kreaturenkarten aus deinem Ablagestapel auf deine Hand.",
     ),
     CardTemplate(
-        template_id="air_ritual_turbulenz",
-        name="Turbulenz",
+        template_id="air_ritual_himmelswende",
+        name="Himmelswende",
         cost=CardCost(recycle=1),
         aw=0,
         vw=0,
@@ -70,8 +70,8 @@ AIR_RITUALS = [
         rules_text="Lege deine Hand auf den Ablagestapel. Ziehe 3 Karten.",
     ),
     CardTemplate(
-        template_id="air_ritual_nachwehen",
-        name="Nachwehen",
+        template_id="air_ritual_orkanwende",
+        name="Orkanwende",
         cost=CardCost(recycle=2),
         aw=0,
         vw=0,

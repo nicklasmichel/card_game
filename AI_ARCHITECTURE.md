@@ -2,63 +2,60 @@
 
 ## Oeffentliche Einstiegspunkte
 
-- `core.ai.simple_ai.SimpleAI`
+- `core.ai.simple_ai.HeuristicStrategicAI`
+- `core.ai.simple_ai.SimpleAI` als Alias
 - `core.ai.context.build_ai_context`
-- `core.ai_logic` nur als Kompatibilitsstsfassade fssr bestehende Importe
+- `core.ai_logic` als Kompatibilitaetsfassade
 
 ## Verzeichnisstruktur
 
-- `core/ai/common.py`: allgemeine KI-Auswahl, Blocken, Recycle, Wssrfelstrategie
-- `core/ai/air/planning.py`: Ressourcen- und Main-Phase-Planung der Luft-KI
-- `core/ai/air/effects.py`: kartennahe Effektvergleiche fssr Luft
-- `core/ai/air/assessment.py`: Handwert, Kartenwert, Angriffsbewertung, Luft-spezifische Keep-Heuristiken
-- `core/ai/air/reactions.py`: Reaktionsfenster, Zauberauswahl, Zielauswahl
+- `core/ai/common.py`: allgemeine KI-Auswahl, Blocken, Recycle, Wuerfelstrategie
+- `core/ai/plan_manager.py`: alleiniger Besitzer des aktiven `TurnPlan`
+- `core/ai/strategy_registry.py`: waehlt pro Element die passende Strategie
+- `core/ai/turn_planner.py`: orchestriert Zugkandidaten und deren Auswahl
+- `core/ai/reaction_planner.py`: kapselt Reaktionsentscheidungen
+- `core/ai/assessment_component.py`: kompakter Assessment-Zugang
+- `core/ai/effect_evaluator_component.py`: kompakter Effektbewertungs-Zugang
+- `core/ai/strategies/base.py`: allgemeine Strategievertraege und Gewichte
+- `core/ai/strategies/air.py`: Luft-Strategie, Modusauswahl und strategischer Snapshot
+- `core/ai/strategies/generic.py`: generische Fallback-Strategie
 - `core/ai/context.py`: kompakter, regelkonformer KI-Kontext ohne verdeckte Informationen
-- `core/ai/types.py`: Kandidat-, Plan- und Begruendungstypen
+- `core/ai/types.py`: kompakte Begruendungstypen fuer aeltere API-Stellen
 
 ## Entscheidungsablauf
 
-1. Engine ruft `SimpleAI` auf.
-2. KI bewertet Ressourcenplan, Main-Phase-Plan, Angriff oder Reaktion.
-3. Luft-spezifische Effekte werden in den Luftmodulen verglichen.
-4. Nach Kartenziehen, Zufall oder gegnerischer Reaktion darf die KI neu planen.
+1. Engine ruft `HeuristicStrategicAI` auf.
+2. `StrategyRegistry` liefert die passende Strategie oder den generischen Fallback.
+3. `TurnPlanner` erzeugt Kandidaten und der `PlanManager` aktiviert den besten `TurnPlan`.
+4. `ReactionPlanner` arbeitet mit aktivem Plan, Reservierungen und `ReactionIntent`.
+5. Nach Kartenziehen, Zufall oder gegnerischer Reaktion darf die KI neu planen.
 
-## Allgemeine Mechanik vs. Elementstrategie vs. Kartenlogik
+## Komponenten und Verantwortlichkeiten
 
-- Allgemeine Mechanik: Recycle, Blockwahl, Wssrfelstrategie, konservative Fallbacks
-- Elementstrategie: Luft priorisiert Tempo, kleine Ressourcenbasis, vierte Handkarte, Fliegend/Schnell
-- Kartenlogik: `Aufwind`, `Rssckenwind`, `Sturmformation`, `Turbulenz`, `Ausweichen`, `Windstoss`, `Bssenschub`, `Windrausch`, `Nachwehen`
+- `HeuristicStrategicAI`: zentraler Orchestrator, oeffentliche KI-Einstiegspunkte, Komponentenverdrahtung
+- `PlanManager`: aktivieren, verwerfen, Fortschritt markieren, letzten Plan archivieren
+- `StrategyRegistry`: Strategieauswahl pro Element
+- `TurnPlanner`: vollstaendige Zugkandidaten erzeugen und vergleichen
+- `AssessmentComponent`: kompakter Einstieg in Zustands- und Kampfabschaetzungen
+- `EffectEvaluatorComponent`: kompakter Einstieg in lokale Effektbewertungen
+- `ReactionPlanner`: Reaktionszauber und Zielwahl ueber aktiven Plan
 
-## Aktionskandidaten und Planbindung
+## Planverwaltung und Mixins
 
-`core.ai.types` definiert kompakte Typen fssr:
-- `DecisionReason`
-- `ActionCandidate`
-- `BoundPlan`
-
-Bestehende Luftplssne bleiben aktuell noch als leichte Dictionaries in `SimpleAI` gebunden, damit das Verhalten stabil bleibt. Die neuen Typen sind die Zieloberflssche fssr weitere inkrementelle Umstellungen.
-
-## Neue Karte ergaenzen
-
-1. Passende allgemeine Mechanik oder Luftdatei wsshlen.
-2. Bewertungslogik im passenden Luftmodul ergaenzen.
-3. Falls noetig Ziel- oder Reaktionsauswahl in `air/reactions.py` ergaenzen.
-4. Regression in `tests/test_ai_confirmation.py` und Regeltest in `tests/test_spells.py` anlegen.
+- `PlanManager` ist alleiniger Besitzer des aktiven `TurnPlan`.
+- Aktive Luft-Orchestrierung liegt in `TurnPlanner`, `ReactionPlanner`, `AssessmentComponent` und `EffectEvaluatorComponent`.
+- Versteckte MRO-Ketten sind nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Neues Element ergaenzen
 
-1. Neues Unterverzeichnis unter `core/ai/` anlegen, z. B. `fire/`.
-2. Elementeigene Planungs-, Bewertungs- und Reaktionsmodule dort kapseln.
-3. `SimpleAI` um die neue Strategieanbindung erweitern, ohne Luftmodule zu veraendern.
-
-## Wichtigste Tests
-
-- Ressourcen / Recycle: `tests/test_resource_and_recycle.py`
-- Zauber / Timing: `tests/test_spells.py`
-- KI-Regressionen: `tests/test_ai_confirmation.py`
+1. Neue Strategieklasse implementieren.
+2. Strategie in `StrategyRegistry.register(...)` anbinden.
+3. Elementeigene Planungs-, Bewertungs- und Reaktionsmodule unter `core/ai/<element>/` kapseln.
+4. Orchestrierung, `PlanManager` und Engine-Schnittstellen unveraendert lassen.
 
 ## Informationsgrenzen der KI
 
 - Keine Kenntnis verdeckter Karten
-- Keine Kenntnis zukssnftiger Wssrfelergebnisse
-- Bewertung nur aus sichtbarem Spielzustand, Deckstruktur und Wahrscheinlichkeiten
+- Keine Kenntnis zukuenftiger Ziehkarten
+- Keine Kenntnis unbekannter Wuerfelergebnisse
+- Bewertung nur aus sichtbarem Spielzustand, Deckstruktur und Heuristiken

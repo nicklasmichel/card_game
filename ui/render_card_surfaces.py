@@ -126,7 +126,8 @@ def build_full_art_card_surface(
         shield_text_color = (255, 142, 142) if shield_text.startswith("0/") else (255, 255, 255)
     header_y = max(s(4), int(self.card_height * 0.02))
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
-    cost_text = str(cost_value.resources) if cost_value.resources > 0 else ""
+    show_zero_cost = cost_value.resources == 0
+    cost_text = str(cost_value.resources) if cost_value.resources > 0 or show_zero_cost else ""
     cost_width = number_font.size(cost_text)[0] if cost_text else 0
     cost_x = self.card_width - s(8) - cost_width
     title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
@@ -157,9 +158,9 @@ def build_full_art_card_surface(
         blit_text_with_shadow(base, number_font, aw_text, (255, 255, 255), aw_x, self.card_height - s(25))
         blit_text_with_shadow(base, number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
     recycle_icon_gap = 0
-    recycle_icon_size = s(22)
-    recycle_x = s(10)
-    recycle_y = keyword_y + s(2)
+    recycle_icon_size = s(33)
+    recycle_x = s(6)
+    recycle_y = max(header_y + s(18), keyword_y - s(3))
     for recycle_index in range(cost_value.recycle):
         icon_rect = pygame.Rect(
             recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),
