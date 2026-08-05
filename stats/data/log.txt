@@ -1459,3 +1459,13 @@ Startspieler: Spieler
 Mulligan ist deaktiviert. Das Spiel startet direkt.
 Zug 1: Spieler ist am Zug.
 Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 994877875213
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 311696803901
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.

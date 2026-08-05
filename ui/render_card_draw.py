@@ -95,7 +95,7 @@ def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     number_size = max(body_size + 8, title_size + 5, 22)
     card_number_font = pygame.font.SysFont("arial", number_size, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
-    rules_text = "Wenn in deinem Zug mindestens drei deiner Kreaturen angreifen, ziehe 1 Karte."
+    rules_text = "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte."
     rules_rect = pygame.Rect(s(10), self.card_height - s(86), self.card_width - s(20), s(54))
     rule_lines = self.wrap_text(rules_font, rules_text, rules_rect.width)
     rule_line_height = rules_font.get_height() + s(1)
