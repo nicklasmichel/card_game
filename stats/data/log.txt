@@ -2751,3 +2751,1209 @@ Startspieler: Spieler
 Mulligan ist deaktiviert. Das Spiel startet direkt.
 Zug 1: Spieler ist am Zug.
 Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 615916121370
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 344209483171
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 721723490296
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 410206411176
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 973462783729
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 373112725719
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 565975579733
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 150726054729
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 650916590005
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 782536123827
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 405139285267
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 179219070549
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 818999007583
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 206175499630
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 292587932184
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 928167751971
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 559368511952
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 52686868538
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 83664132868
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 703825581054
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 575967010277
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 58914077015
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 187539192573
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 590117768144
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 354207360260
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 772155892520
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 287136299616
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 680057516712
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 994703004276
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 839710305356
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 259094112105
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 423855631210
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 852502896993
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 446946513960
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 795831813047
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 158455264655
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 428990782253
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 460737946760
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 672134576333
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 996770776662
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 914877439858
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 114692181238
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 762543034350
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 583290896877
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 123195097824
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 108977133141
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 75288178560
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 549728775483
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 192157553282
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 85753673107
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 341106250037
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 840329272313
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 694559589878
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Ressourcen fuer Recycle von Wutanfall. Ausgewaehlt: 0/1.
+Neue Partie gestartet. Seed: 532107425624
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 325679122926
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 712619729992
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Gegner legt Orkanschwinge als Ressource (bereit).
+Neue Partie gestartet. Seed: 351859027026
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 365676381231
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 513434814104
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 317906074934
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 496532023339
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Gegner spielt Wolkenschwinge (1/1) fuer 1.
+Neue Partie gestartet. Seed: 463790658086
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 3: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet. Seed: 901697981516
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Gegner zieht 1 Karte durch den Beschwoerer.
+Keine Kreaturen koennen blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 1 Schaden an Spieler.
+Wolkengeist ist ungeblockt und verursacht 1 Schaden an Spieler.
+Windgeist ist ungeblockt und verursacht 2 Schaden an Spieler.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet. Seed: 116418996753
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Gegner spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Neue Partie gestartet. Seed: 963543268056
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 769643740315
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Gegner spielt Verwehung.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Orkangeist (Gegner).
+Neue Partie gestartet. Seed: 350759284718
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 766185916160
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 850400885059
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 395865697864
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 821254930625
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 825940966095
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 481478494189
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 1 Schaden an Gegner.
+Wolkengeist ist ungeblockt und verursacht 1 Schaden an Gegner.
+Windgeist ist ungeblockt und verursacht 2 Schaden an Gegner.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet. Seed: 536317212833
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 81928345410
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 701007678878
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 2: Gegner ist am Zug.
+Gegner zieht eine Karte.
+Neue Partie gestartet. Seed: 678422853586
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 2: Gegner ist am Zug.
+Gegner zieht eine Karte.
+Gegner zieht 1 zusaetzliche Karte durch den Beschwoerer.
+Neue Partie gestartet. Seed: 35988916759
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 409660920930
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 7874313840
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 816345852448
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 916648101789
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 733221139292
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 502142979748
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 26553569138
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 858714514941
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 898715660393
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 2: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet. Seed: 370841404710
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Ressourcen fuer Recycle von Himmelswende. Ausgewaehlt: 0/1.
+Bestaetige Himmelswende.
+Spieler spielt Himmelswende.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt seine Hand ab und zieht 3 Karten.
+Neue Partie gestartet. Seed: 876880893704
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler spielt Jagdwind.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Gegner passt.
+Spieler passt.
+Eigene Angreifer erhalten fuer diesen Kampf +1 AW.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet. Seed: 496868271239
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 2 Ressourcen fuer Recycle von Orkanwende. Ausgewaehlt: 0/2.
+Waehle 2 Ressourcen fuer Recycle von Orkanwende. Ausgewaehlt: 1/2.
+Bestaetige Orkanwende.
+Spieler spielt Orkanwende.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt seine Hand ab und zieht 5 Karten.
+Neue Partie gestartet. Seed: 84835428917
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Rueckenwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Rueckenwind reduziert Kreaturenkosten in diesem Zug um 2.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 169026392467
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Unmittelbar vor dem ersten Kampf koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler spielt Sturmjagd.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Gegner passt.
+Spieler passt.
+Eigene Angreifer erhalten fuer diesen Kampf +2 AW.
+Neue Partie gestartet. Seed: 74520067610
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 921605291325
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Felsensoldat (Gegner).
+Neue Partie gestartet. Seed: 167585832072
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 2 Kreatur(en) fuer Verwirbelung. Ausgewaehlt: 0/2.
+Waehle 1 Kreatur(en) fuer Verwirbelung. Ausgewaehlt: 1/2.
+Bestaetige Verwirbelung.
+Spieler spielt Verwirbelung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwirbelung nimmt auf die Haende ihrer Besitzer zurueck: Windschwinge (Spieler), Felsensoldat (Gegner).
+Neue Partie gestartet. Seed: 335463960279
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Kreaturenkarte(n) aus deinem Ablagestapel fuer Windruf. Ausgewaehlt: 0/1.
+Bestaetige Windruf.
+Spieler spielt Windruf.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler nimmt Windschwinge aus dem Ablagestapel auf die Hand.
+Neue Partie gestartet. Seed: 917290353354
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Spieler spielt Glutbestie (3/2) fuer 2.
+Spieler spielt Windschwinge (1/2) fuer 1.
+Neue Partie gestartet. Seed: 154069057860
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Neue Partie gestartet. Seed: 384001874649
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Gegner ueberlegt seine Blocker.
+Neue Partie gestartet. Seed: 477714717926
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 2: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet. Seed: 112035395028
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Zug 2: Spieler ist am Zug.
+Gegner gewinnt. Spieler kann durch Ziehphase keine Karte mehr ziehen.
+Neue Partie gestartet. Seed: 877861660156
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Feuerwelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Feuerwelle fuegt allen Kreaturen 2 Schaden zu.
+Aschebrecher wird durch Zauberschaden zerstoert und auf den Ablagestapel gelegt.
+Steinkobold wird durch Zauberschaden zerstoert und auf den Ablagestapel gelegt.
+Aschebestie wird durch Zauberschaden zerstoert und auf den Ablagestapel gelegt.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 391244765366
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 580415203597
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 906787947347
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Flammenvision.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler zieht 3 Karten.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 698490627913
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 281575988766
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nachdem die Wuerfel fuer den Vergleich ausgewaehlt wurden, aber vor der Auswertung koennen Zauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler passt.
+Himmelsschwinge: 20 + 1 = 21 | Bastionshueter: 1 + 3 = 4 -> Himmelsschwinge gewinnt den Wuerfelvergleich und verursacht 1 Schaden.
+Reaktionsfenster: Eine eigene Kreatur hat im Wuerfelvergleich Schaden erhalten. Passende Zauber koennen darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Gegner passt.
+Allgemeines Zauberfenster: Nach dem Wuerfelvergleich koennen weitere Zauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Neue Partie gestartet. Seed: 946598127368
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 385660473396
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Glutvision.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler zieht 2 Karten.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 944084455927
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 830297995048
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 114562714232
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 441470638394
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 906815306340
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 353158727232
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 727865615830
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 615783810015
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Hitzewelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Hitzewelle fuegt allen Kreaturen 1 Schaden zu.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 242800602199
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Holzvorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt die oberste Karte seines Decks getappt als Ressource ins Spiel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 673121995316
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Neue Partie gestartet. Seed: 746485796548
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 124332581105
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 667114517824
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 37180721135
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 236114226183
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Wuerfelkampf startet: Wolkenschwinge gegen Felsensoldat.
+Neue Partie gestartet. Seed: 306695156081
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler passt.
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Allgemeines Zauberfenster: Unmittelbar vor dem ersten Kampf koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler spielt Jagdwind.
+Neue Partie gestartet. Seed: 576768074127
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler passt.
+Gegner ueberlegt seine Blocker.
+Allgemeines Zauberfenster: Nach der Blockerdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Gegner passt.
+Allgemeines Zauberfenster: Unmittelbar vor dem ersten Kampf koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler spielt Jagdwind.
+Neue Partie gestartet. Seed: 941145937466
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler passt.
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Allgemeines Zauberfenster: Unmittelbar vor dem ersten Kampf koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler spielt Jagdwind.
+Neue Partie gestartet. Seed: 754346692669
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Kohlevorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt 2 Karten seines Decks getappt als Ressourcen ins Spiel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Spieler legt Wassertropfen als Ressource (bereit).
+Neue Partie gestartet. Seed: 12371158628
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler spielt Kohlevorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Gegner gewinnt. Spieler kann durch Kohlevorrat keine Karte mehr ziehen.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet. Seed: 972918055759
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 584580971753
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 596279247014
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 220364319533
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 782802498760
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 467471817827
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 704275311136
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Felsensoldat (Gegner).
+Neue Partie gestartet. Seed: 555418640271
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Neue Partie gestartet. Seed: 817901043619
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 632424273598
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Gegner passt.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Windgeist (Spieler).
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 1 Schaden an Gegner.
+Wolkengeist ist ungeblockt und verursacht 1 Schaden an Gegner.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet. Seed: 945458005292
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 9488675677
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 166920017510
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 646493085419
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 320147732741
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 229488088170
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Neue Partie gestartet. Seed: 949671196060
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 816077592035
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 407469594264
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 233645268131
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 664424572622
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 61738291777
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 738311436128
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 24532190340
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 352386552393
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 1 Schaden an Gegner.
+Wolkengeist ist ungeblockt und verursacht 1 Schaden an Gegner.
+Windgeist ist ungeblockt und verursacht 2 Schaden an Gegner.
+Zweite Hauptphase begonnen.
+Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 1 Schaden an Gegner.
+Wolkengeist ist ungeblockt und verursacht 1 Schaden an Gegner.
+Windgeist ist ungeblockt und verursacht 2 Schaden an Gegner.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet. Seed: 893422893648
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Gegner passt.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Wolkenschwinge (Spieler).
+Neue Partie gestartet. Seed: 682757254689
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Wolkenschwinge (Spieler).
+Neue Partie gestartet. Seed: 112672286319
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Wuerfelkampf startet: Glutbestie gegen Felsensoldat.
+Allgemeines Zauberfenster: Vor dem ersten Wuerfelvergleich koennen Zauber gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Allgemeines Zauberfenster: Nach dem Wuerfelvergleich koennen weitere Zauber gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Gegner passt.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Felsensoldat (Spieler).
+Neue Partie gestartet. Seed: 971392852116
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Wuerfelkampf startet: Glutbestie gegen Felsensoldat.
+Allgemeines Zauberfenster: Vor dem ersten Wuerfelvergleich koennen Zauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Allgemeines Zauberfenster: Nach dem Wuerfelvergleich koennen weitere Zauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Gegner passt.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Glutbestie (Spieler).
+Neue Partie gestartet. Seed: 963942458954
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 941934102022
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 119218678095
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 985956261329
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 757917965833
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Diese Karte kann gerade nicht gespielt werden.
+Neue Partie gestartet. Seed: 293146442064
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 91153060107
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 134576572287
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 629296648815
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 282455510065
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 935484582011
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 806408111220
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 777958955411
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 573982827193
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 915353250116
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 378494821206
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 89503749815
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 707237823334
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 984220290009
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 741456022704
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 369429854684
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 33122049158
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 128095100052
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 458722185686
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 119626602703
+Startspieler: Gegner
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Gegner ist am Zug.
+Gegner ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 46994514196
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.

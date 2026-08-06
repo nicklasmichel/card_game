@@ -528,6 +528,31 @@ class HeuristicStrategicAI(CommonAIMixin):
     def _evaluate_air_global_attack_bonus_reaction_plan(self, player, engine, card):
         return self.effect_evaluator.evaluate_global_attack_bonus_reaction_plan(self, player, engine, card)
 
+    def _score_air_graveyard_creature_target(
+        self,
+        player,
+        engine,
+        discard_card,
+        *,
+        available_resources: int,
+        total_resources: int,
+        creature_discount: int = 0,
+    ) -> float:
+        template = discard_card.template
+        resource_gap = max(0, template.resource_cost - creature_discount - available_resources)
+        score = template.aw + template.vw * 0.8 + len(template.abilities) * 1.2
+        if template.has_ability(Ability.HASTE):
+            score += 2.2
+        if template.has_ability(Ability.FLYING):
+            score += 1.8
+        if resource_gap == 0:
+            score += 2.0
+        else:
+            score -= resource_gap * 1.1
+        if total_resources + creature_discount < template.resource_cost:
+            score -= 0.8
+        return score
+
     def _evaluate_air_strategy(self, player, engine, *, hand=None, available_resources: int | None = None, total_resources: int | None = None, phase: str | None = None):
         return self.turn_planner.evaluate_strategy(
             self,
