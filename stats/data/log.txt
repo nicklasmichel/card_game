@@ -3957,3 +3957,42 @@ Startspieler: Spieler
 Mulligan ist deaktiviert. Das Spiel startet direkt.
 Zug 1: Spieler ist am Zug.
 Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Neue Partie gestartet. Seed: 460686419993
+Startspieler: Spieler
+Mulligan ist deaktiviert. Das Spiel startet direkt.
+Zug 1: Spieler ist am Zug.
+Spieler ist Startspieler und zieht im ersten Zug keine Karte.
+Spieler legt Hitzewelle als Ressource (bereit).
+Spieler legt Verbrennen als Ressource (getappt).
+Zug 2: Gegner ist am Zug.
+Gegner zieht eine Karte.
+Gegner legt Himmelswende als Ressource (bereit).
+Gegner spielt Wolkenschwinge (1/1) fuer 1.
+Gegner spielt Sturmschwinge (1/1) fuer Recycle 1.
+Recycle aufgedeckt und zurueck ins Deck gemischt: Himmelswende.
+Gegner legt Orkanwende als Ressource (getappt).
+Zug 3: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Spieler spielt Kohlevorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt 2 Karten seines Decks getappt als Ressourcen ins Spiel.
+Zug 4: Gegner ist am Zug.
+Gegner zieht eine Karte.
+Waehle deine Angreifer.
+Allgemeines Zauberfenster: Nach der Angreiferdeklaration koennen Zauber fuer die Kampfvorbereitung gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Gegner spielt Jagdwind.
+Spieler passt.
+Gegner passt.
+Eigene Angreifer erhalten fuer diesen Kampf +1 AW.
+Keine Kreaturen koennen blocken. Schaden geht automatisch durch.
+Wolkenschwinge ist ungeblockt und verursacht 2 Schaden an Spieler.
+Sturmschwinge ist ungeblockt und verursacht 2 Schaden an Spieler.
+Zweite Hauptphase begonnen.
+Zug 5: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Zug 6: Gegner ist am Zug.
+Gegner zieht eine Karte.
