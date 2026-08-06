@@ -45,6 +45,9 @@ class ReactionPlanner:
             elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
                 attackers = len(engine.get_current_attacker_creatures(engine.ai_player, engine.reaction_context))
                 score = (2 if attackers > 0 else -10, attackers * card.template.spell_amount)
+            elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
+                attackers = len(engine.get_valid_turn_attack_bonus_targets(engine.ai_player, engine.reaction_context))
+                score = (2 if attackers > 0 else -10, attackers * card.template.spell_amount)
             elif card.template.spell_effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
                 comparison = ai._evaluate_air_verwehung_plan(
                     engine.ai_player,
@@ -83,6 +86,8 @@ class ReactionPlanner:
         if chosen.template.spell_effect == SpellEffect.RETURN_CREATURES_TO_HAND and best_score[0] <= 0:
             return None
         if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT and best_score[0] <= 0:
+            return None
+        if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN and best_score[0] <= 0:
             return None
         if chosen.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT and best_score[0] <= 0:
             return None
@@ -249,19 +254,28 @@ class ReactionPlanner:
         if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             planned_targets = ai._get_planned_target_ids_for_card(card.instance_id)
             if planned_targets:
-                chosen = next((creature for creature in player.battlefield if creature.unit_id == planned_targets[0]), None)
+                chosen = next(
+                    (
+                        creature
+                        for creature in engine.get_valid_turn_attack_bonus_targets(player, engine.reaction_context)
+                        if creature.unit_id == planned_targets[0]
+                    ),
+                    None,
+                )
                 if chosen is not None:
                     return SpellTargetRef("creature", creature_id=chosen.unit_id)
-            best_plan = ai._estimate_best_air_attack_plan(
-                player,
-                enemy,
-                list(player.hand),
-                [],
-                attack_bonus_amount=card.template.spell_amount,
-            )
-            if best_plan["target_id"] is None:
+            candidates = engine.get_valid_turn_attack_bonus_targets(player, engine.reaction_context)
+            if not candidates:
                 return None
-            return SpellTargetRef("creature", creature_id=best_plan["target_id"])
+            chosen = max(
+                candidates,
+                key=lambda creature: (
+                    engine.get_creature_attack_value(creature),
+                    engine.get_creature_current_hp(creature),
+                    creature.unit_id,
+                ),
+            )
+            return SpellTargetRef("creature", creature_id=chosen.unit_id)
         if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
             comparison = ai._evaluate_air_jagdwind_reaction_plan(player, engine, card)
             if comparison["target_id"] is None or not comparison["is_useful"]:

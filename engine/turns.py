@@ -94,6 +94,7 @@ def start_turn(self) -> None:
     self.creatures_died_this_turn = 0
     player.untap_for_turn()
     self.log(f"Zug {self.turn_number}: {player.name} ist am Zug.")
+    player.summoner_passive_draw_used_this_turn = False
     draw_allowed = not (player.player_id == self.starting_player_id and player.turns_started == 0)
     if draw_allowed:
         drawn = self.draw_card_for_player(player, "Ziehphase")
@@ -105,9 +106,17 @@ def start_turn(self) -> None:
             self.log(f"{player.name} kann keine Karte ziehen.")
     else:
         self.log(f"{player.name} ist Startspieler und zieht im ersten Zug keine Karte.")
+    if getattr(player, "summoner_key", "") == "fire" and player.life < 10 and not player.summoner_passive_draw_used_this_turn:
+        player.summoner_passive_draw_used_this_turn = True
+        drawn = self.draw_card_for_player(player, "Beschwoerer-Passiv")
+        if drawn is not None:
+            self.log(f"{player.name} zieht 1 zusaetzliche Karte durch den Beschwoerer.")
+        elif self.phase != PHASE_GAME_OVER:
+            self.log("Es kann keine zusaetzliche Karte durch den Beschwoerer gezogen werden.")
+        if self.phase == PHASE_GAME_OVER:
+            return
     player.turns_started += 1
     player.resources_played_this_turn = 0
-    player.summoner_passive_draw_used_this_turn = False
     self.phase = PHASE_MAIN_1
     self.selected_hand_ids.clear()
     self.selected_attackers.clear()

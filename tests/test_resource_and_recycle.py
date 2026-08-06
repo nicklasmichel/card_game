@@ -221,6 +221,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(len(self.engine.human_player.hand), 0)
 
     def test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
+        self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
         ]
@@ -235,6 +236,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
     def test_three_attackers_trigger_summoner_draw_before_blockers(self) -> None:
+        self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
         ]
@@ -251,6 +253,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertIn("Spieler zieht 1 Karte durch den Beschwoerer.", self.engine.log_messages)
 
     def test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
+        self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
@@ -270,6 +273,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertTrue(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
     def test_summoner_passive_resets_next_own_turn(self) -> None:
+        self.engine.human_player.summoner_key = "air"
         self.engine.human_player.summoner_passive_draw_used_this_turn = True
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
@@ -284,6 +288,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
     def test_opponent_attack_does_not_trigger_human_summoner_passive(self) -> None:
+        self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
         ]

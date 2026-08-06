@@ -154,9 +154,10 @@ def build_full_art_card_surface(
     shield_icon_size = s(22)
     if stats:
         shield_width = number_font.size(shield_text)[0]
-        shield_x = self.card_width - s(6) - shield_width - shield_icon_size
+        shield_text_x = self.card_width - s(6) - shield_width
+        shield_icon_x = shield_text_x - s(4) - shield_icon_size
         blit_text_with_shadow(base, number_font, aw_text, (255, 255, 255), aw_x, self.card_height - s(25))
-        blit_text_with_shadow(base, number_font, shield_text, shield_text_color, shield_x, self.card_height - s(25))
+        blit_text_with_shadow(base, number_font, shield_text, shield_text_color, shield_text_x, self.card_height - s(25))
     recycle_icon_gap = 0
     recycle_icon_size = s(33)
     recycle_x = s(6)
@@ -172,7 +173,7 @@ def build_full_art_card_surface(
     if stats:
         aw_width = number_font.size(aw_text)[0]
         self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(3), footer_y - s(12), s(22), s(22)))
-        self.blit_symbol_image(base, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, footer_y - s(12), shield_icon_size, shield_icon_size))
+        self.blit_symbol_image(base, "shield_symbol", pygame.Rect(shield_icon_x, footer_y - s(12), shield_icon_size, shield_icon_size))
 
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))

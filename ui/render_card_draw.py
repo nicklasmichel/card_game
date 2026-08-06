@@ -94,23 +94,23 @@ def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     title_size = max(self.small_font.get_height() + 3, 15)
     number_size = max(body_size + 8, title_size + 5, 22)
     card_number_font = pygame.font.SysFont("arial", number_size, bold=True)
+    life_font = pygame.font.SysFont("arial", number_size * 2, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
     rules_text = "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte."
-    rules_rect = pygame.Rect(s(10), self.card_height - s(86), self.card_width - s(20), s(54))
+    rules_start_y = int(self.card_height * 0.5)
+    rules_rect = pygame.Rect(s(10), rules_start_y, self.card_width - s(20), self.card_height - rules_start_y - s(12))
     rule_lines = self.wrap_text(rules_font, rules_text, rules_rect.width)
     rule_line_height = rules_font.get_height() + s(1)
     rule_y = rules_rect.y
     for line in rule_lines:
         blit_text_with_shadow(surface, rules_font, line, (255, 255, 255), rules_rect.x, rule_y)
         rule_y += rule_line_height
-    shield_text = f"{life}/20"
-    shield_text_color = (255, 142, 142) if life <= 0 else (255, 255, 255)
-    shield_icon_size = s(22)
-    shield_width = card_number_font.size(shield_text)[0]
-    shield_x = self.card_width - s(6) - shield_width - shield_icon_size
-    shield_y = self.card_height - s(25)
-    blit_text_with_shadow(surface, card_number_font, shield_text, shield_text_color, shield_x, shield_y)
-    self.blit_symbol_image(surface, "shield_symbol", pygame.Rect(self.card_width - s(6) - shield_icon_size, self.card_height - s(26), shield_icon_size, shield_icon_size))
+    life_text = str(life)
+    life_text_color = (255, 142, 142) if life <= 0 else (255, 255, 255)
+    life_width, life_height = life_font.size(life_text)
+    life_x = (self.card_width - life_width) // 2
+    life_y = int(self.card_height * 0.32) - life_height // 2
+    blit_text_with_shadow(surface, life_font, life_text, life_text_color, life_x, life_y)
 
 
 def draw_card_badge(

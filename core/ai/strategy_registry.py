@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.ai.strategies.air import AirStrategy
 from core.ai.strategies.base import DeckStrategy
+from core.ai.strategies.fire import FireStrategy
 from core.ai.strategies.generic import DefaultDeckStrategy
 
 
@@ -9,6 +10,7 @@ class StrategyRegistry:
     def __init__(self) -> None:
         self._strategies: dict[str, DeckStrategy] = {
             "air": AirStrategy(),
+            "fire": FireStrategy(),
         }
         self._default_strategy: DeckStrategy = DefaultDeckStrategy()
 

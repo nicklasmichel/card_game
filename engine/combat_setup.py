@@ -173,7 +173,7 @@ def confirm_attackers(self) -> None:
         self.log("Keine Angreifer gewaehlt.")
         self.enter_second_main_phase()
         return
-    if not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
+    if getattr(self.active_player, "summoner_key", "") == "air" and not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
         drawn = self.draw_card_for_player(self.active_player, "Beschwoerer-Passiv")
         if drawn is not None:
@@ -518,7 +518,7 @@ def resolve_pending_direct_attack_after_reaction(self) -> None:
     self.pending_direct_attack = None
     attacker = self.get_unit_by_id(pending.attacker_id)
     if attacker is not None and self.get_unit_owner(attacker.unit_id) == self.active_player:
-        damage = pending.base_damage * pending.damage_multiplier
+        damage = self.get_creature_attack_value(attacker) * pending.damage_multiplier
         self.defending_player.life -= damage
         self.queue_player_damage_event(
             target_player_id=self.defending_player.player_id,

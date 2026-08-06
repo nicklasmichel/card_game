@@ -49,7 +49,7 @@ class CommonAIMixin:
         if effect == SpellEffect.SACRIFICE_FOR_DAMAGE:
             return bool(player.battlefield) and (bool(enemy.battlefield) or enemy.life > 0)
         if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-            return bool(player.battlefield or enemy.battlefield)
+            return engine.has_valid_turn_attack_bonus_targets(player)
         if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
             return engine.has_valid_attacker_combat_bonus_targets(player)
         if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:

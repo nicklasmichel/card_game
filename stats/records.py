@@ -22,9 +22,6 @@ class PlayerCounters:
     spells_played: int = 0
     spell_damage_dealt: int = 0
     spell_self_damage_taken: int = 0
-    forbidden_glut_cards_drawn: int = 0
-    flammenwelle_destroyed_creatures: int = 0
-    brandopfer_sacrificed_creatures: int = 0
     hitzeschub_swung_comparisons: int = 0
     letzter_funke_damage: int = 0
     brandzeichen_destroyed_blockers: int = 0

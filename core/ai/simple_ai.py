@@ -4,6 +4,9 @@ from dataclasses import replace
 from random import Random
 
 from core.ai.air.registry import get_air_card_handler, get_air_creature_handler
+from core.ai.fire.assessment import build_fire_snapshot
+from core.ai.fire.planning import build_fire_turn_candidates, build_fire_turn_plan_payload
+from core.ai.fire.reactions import choose_fire_reaction_spell, choose_fire_spell_target_ref
 from core.ai.assessment_component import AssessmentComponent
 from core.ai.common import CommonAIMixin
 from core.ai.effect_evaluator_component import EffectEvaluatorComponent
@@ -55,6 +58,17 @@ class HeuristicStrategicAI(CommonAIMixin):
                 total_resources=player.total_resources(),
                 phase=engine.phase,
             )
+        if getattr(player, "summoner_key", "") == "fire":
+            return build_fire_turn_plan_payload(
+                self.turn_planner,
+                self,
+                player,
+                engine,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                phase=engine.phase,
+            )
         return None
 
     def notify_action_resolved(self, action_type: str, *, card_instance_id: int | None = None) -> None:
@@ -66,10 +80,14 @@ class HeuristicStrategicAI(CommonAIMixin):
     def choose_attackers_for_player(self, player, engine, creatures):
         if getattr(player, "summoner_key", "") == "air":
             return self.turn_planner.choose_attackers_for_player(self, player, engine, creatures)
+        if getattr(player, "summoner_key", "") == "fire":
+            return self.turn_planner.choose_attackers_for_player(self, player, engine, creatures)
         return CommonAIMixin.choose_attackers_for_player(self, player, engine, creatures)
 
     def choose_resource_card_for_main_phase(self, player, engine, phase):
         if getattr(player, "summoner_key", "") == "air":
+            return self.turn_planner.choose_resource_card_for_main_phase(self, player, engine, phase)
+        if getattr(player, "summoner_key", "") == "fire":
             return self.turn_planner.choose_resource_card_for_main_phase(self, player, engine, phase)
         return CommonAIMixin.choose_resource_card_for_main_phase(self, player, engine, phase)
 
@@ -90,6 +108,8 @@ class HeuristicStrategicAI(CommonAIMixin):
 
     def choose_main_phase_card(self, player, engine):
         if getattr(player, "summoner_key", "") == "air":
+            return self.turn_planner.choose_main_phase_card(self, player, engine)
+        if getattr(player, "summoner_key", "") == "fire":
             return self.turn_planner.choose_main_phase_card(self, player, engine)
         return self.choose_ritual(player, engine) or self.choose_playable_creature(player)
 
@@ -306,10 +326,36 @@ class HeuristicStrategicAI(CommonAIMixin):
         return Ability.HASTE
 
     def choose_spell(self, hand, engine):
+        if getattr(engine.ai_player, "summoner_key", "") == "fire":
+            return choose_fire_reaction_spell(self, hand, engine)
         return self.reaction_planner.choose_spell(self, hand, engine)
 
     def choose_spell_target_ref(self, player, engine, card, pending):
+        if getattr(player, "summoner_key", "") == "fire":
+            return choose_fire_spell_target_ref(self, player, engine, card, pending)
         return self.reaction_planner.choose_spell_target_ref(self, player, engine, card, pending)
+
+    def _evaluate_fire_strategy(self, player, engine, *, hand=None, available_resources: int | None = None, total_resources: int | None = None, phase: str | None = None):
+        return self.strategy_registry.resolve("fire").evaluate(
+            self,
+            player,
+            engine,
+            hand=list(player.hand) if hand is None else list(hand),
+            available_resources=player.available_resources() if available_resources is None else available_resources,
+            total_resources=player.total_resources() if total_resources is None else total_resources,
+            phase=engine.phase if phase is None else phase,
+        )
+
+    def _build_fire_snapshot(self, player, engine, *, hand=None, available_resources: int | None = None, total_resources: int | None = None, phase: str | None = None):
+        return build_fire_snapshot(
+            self,
+            player,
+            engine,
+            hand=list(player.hand) if hand is None else list(hand),
+            available_resources=player.available_resources() if available_resources is None else available_resources,
+            total_resources=player.total_resources() if total_resources is None else total_resources,
+            phase=engine.phase if phase is None else phase,
+        )
 
     def _air_template_is_generally_draw_worthy(self, player, engine, template, hand, *, available_resources: int, total_resources: int):
         return self.assessment.template_is_generally_draw_worthy(

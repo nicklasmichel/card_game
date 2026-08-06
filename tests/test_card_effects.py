@@ -130,7 +130,25 @@ class CardEffectsTests(EngineTestCase):
 
     def test_fire_deck_builds_with_intermediate_size(self) -> None:
         deck = build_test_deck("fire", self.engine.templates, self.engine.make_instance_id)
-        self.assertEqual(len(deck), 36)
+        self.assertEqual(len(deck), 38)
+
+    def test_fire_deck_contains_each_new_ritual_exactly_twice(self) -> None:
+        fire_ritual_ids = [
+            template_id
+            for template_id, copies in DECK_DEFINITIONS["fire"]
+            if template_id.startswith("fire_ritual_")
+            for _ in range(copies)
+        ]
+        self.assertEqual(len(fire_ritual_ids), 12)
+        for template_id in (
+            "fire_ritual_holzvorrat",
+            "fire_ritual_kohlevorrat",
+            "fire_ritual_glutvision",
+            "fire_ritual_flammenvision",
+            "fire_ritual_hitzewelle",
+            "fire_ritual_feuerwelle",
+        ):
+            self.assertEqual(fire_ritual_ids.count(template_id), 2)
 
     def test_enraged_creatures_are_selected_as_mandatory_attackers(self) -> None:
         glutbestie = self.make_creature("fire_creature_aschebestie", owner_id=0)

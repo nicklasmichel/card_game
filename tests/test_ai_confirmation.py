@@ -287,6 +287,29 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(prepared)
         self.assertEqual(self.engine.pending_ai_action["kind"], "end_turn")
 
+    def test_air_ai_with_zero_resources_prioritizes_playing_a_resource_before_combat(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.active_player_index = 1
+        self.engine.ai_player.summoner_key = "air"
+        self.make_creature("air_creature_sturmschwinge", owner_id=1, ready=True)
+        self.engine.ai_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkangeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
+        ]
+        self.engine.ai_player.resources = []
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "play_resource")
+        self.assertEqual(self.engine.ai_player.total_resources(), 0)
+        self.assertIn(
+            self.engine.pending_ai_action["card_id"],
+            {card.instance_id for card in self.engine.ai_player.hand},
+        )
+
     def test_ai_does_not_prepare_unplayable_creature_and_spam_resource_error(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.active_player_index = 1
@@ -489,19 +512,19 @@ class AiConfirmationTests(EngineTestCase):
 
     def test_ai_reaction_spell_waits_for_confirmation(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_gegenfeuer"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_wutanfall"]),
         ]
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_glutbestie"),
-            self.make_resource("water_creature_wassertropfen"),
         ]
-        target = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        attacker = self.make_creature("fire_creature_glutbestie", owner_id=1)
+        self.engine.block_assignments = {attacker.unit_id: []}
         self.engine.begin_reaction_window(
             context=ReactionContext(
-                trigger=ReactionTrigger.OWN_CREATURE_TARGETED,
+                trigger=ReactionTrigger.AFTER_ATTACKERS_DECLARED,
                 active_player=self.engine.ai_player,
-                source_player=self.engine.human_player,
-                target_creature=target,
+                source_player=self.engine.ai_player,
+                attacker_creature=attacker,
             ),
             first_responder_id=self.engine.ai_player.player_id,
             base_stack_size=0,
@@ -518,7 +541,8 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.execute_prepared_ai_action()
 
         self.assertFalse(self.engine.has_pending_ai_action())
-        self.assertEqual(len(self.engine.ai_player.hand), 0)
+        self.assertEqual(len(self.engine.ai_player.hand), 1)
+        self.assertIsNotNone(self.engine.pending_spell_cast)
 
     def test_ai_rerolls_its_own_very_low_decisive_die_with_verwirbelung(self) -> None:
         self.engine.ai_player.hand = [

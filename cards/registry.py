@@ -29,16 +29,18 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_creature_flammenbrecher", 2),
         ("fire_creature_infernobestie", 2),
         ("fire_creature_infernobrecher", 2),
-        ("fire_ritual_funkenwurf", 2),
-        ("fire_ritual_feuerball", 2),
-        ("fire_ritual_flammenwelle", 2),
-        ("fire_ritual_brandopfer", 2),
-        ("fire_ritual_verbotene_glut", 2),
-        ("fire_spell_hitzeschub", 2),
-        ("fire_spell_letzter_funke", 2),
-        ("fire_spell_brandzeichen", 2),
-        ("fire_spell_gegenfeuer", 2),
-        ("fire_spell_flammenzorn", 2),
+        ("fire_ritual_holzvorrat", 2),
+        ("fire_ritual_kohlevorrat", 2),
+        ("fire_ritual_glutvision", 2),
+        ("fire_ritual_flammenvision", 2),
+        ("fire_ritual_hitzewelle", 2),
+        ("fire_ritual_feuerwelle", 2),
+        ("fire_spell_wutanfall", 2),
+        ("fire_spell_raserei", 2),
+        ("fire_spell_versengen", 2),
+        ("fire_spell_verbrennen", 2),
+        ("fire_spell_verkohlen", 2),
+        ("fire_spell_verzehren", 2),
     ],
     "air": [
         ("air_creature_sturmschwinge", 2),
@@ -85,10 +87,10 @@ def validate_deck_definitions(templates: dict[str, CardTemplate]) -> None:
         missing = [template_id for template_id, _copies in decklist if template_id not in templates]
         if missing:
             raise ValueError(f"Deck {deck_name} referenziert unbekannte Karten: {', '.join(missing)}")
-        if deck_name == "air":
+        if deck_name in {"air", "fire"}:
             total_cards = sum(copies for _template_id, copies in decklist)
             if total_cards != 40:
-                raise ValueError(f"Luftdeck muss genau 40 Karten enthalten, gefunden: {total_cards}")
+                raise ValueError(f"{deck_name.capitalize()}deck muss genau 40 Karten enthalten, gefunden: {total_cards}")
 
 
 def get_deck_templates(

@@ -92,18 +92,6 @@ class GameStatistics:
     def register_spell_self_damage(self, player_id: int, damage: int) -> None:
         self.player_stats[player_id].spell_self_damage_taken += damage
 
-    def register_feuerball_player_damage(self, player_id: int, damage: int) -> None:
-        self.player_stats[player_id].spell_damage_dealt += 0
-
-    def register_flammenwelle_resolution(self, player_id: int) -> None:
-        self.player_stats[player_id].flammenwelle_destroyed_creatures += 0
-
-    def register_brandopfer_sacrifice(self, player_id: int) -> None:
-        self.player_stats[player_id].brandopfer_sacrificed_creatures += 1
-
-    def register_verbotene_glut_draw(self, player_id: int) -> None:
-        self.player_stats[player_id].forbidden_glut_cards_drawn += 1
-
     def register_hitzeschub_play(self, player_id: int) -> None:
         self.player_stats[player_id].hitzeschub_swung_comparisons += 1
 
@@ -293,8 +281,6 @@ class GameStatistics:
             "ai_spell_damage_dealt": str(self.player_stats[1].spell_damage_dealt),
             "human_spell_self_damage_taken": str(self.player_stats[0].spell_self_damage_taken),
             "ai_spell_self_damage_taken": str(self.player_stats[1].spell_self_damage_taken),
-            "human_verbotene_glut_cards_drawn": str(self.player_stats[0].forbidden_glut_cards_drawn),
-            "ai_verbotene_glut_cards_drawn": str(self.player_stats[1].forbidden_glut_cards_drawn),
             "avg_dice_comparisons_per_combat": f"{average:.2f}",
             "start_player": self.start_player,
         }

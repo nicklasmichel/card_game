@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from core.ai.candidates import AttackCandidate, EvaluationBreakdown, MainPhaseSequenceCandidate, PlanningState, TurnPlanCandidate
+from core.ai.fire.planning import build_fire_turn_candidates, build_fire_turn_plan_payload
 from core.ai.plans import (
     PLAN_STATUS_COMPLETED,
     PLAN_STATUS_DISCARDED,
@@ -280,6 +281,28 @@ class TurnPlanner:
         )
 
     def choose_attackers_for_player(self, ai, player: PlayerState, engine, creatures: List) -> List:
+        if getattr(player, "summoner_key", "") == "fire":
+            self.ensure_valid_active_air_plan(ai, player, engine)
+            planned_ids = set(self.get_planned_attacker_ids(ai))
+            if planned_ids:
+                planned = [creature for creature in creatures if creature.unit_id in planned_ids and creature.is_ready()]
+                if planned:
+                    return planned
+            payload = build_fire_turn_plan_payload(
+                self,
+                ai,
+                player,
+                engine,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                phase=engine.phase,
+            )
+            attacker_ids = set(payload.get("attacker_ids", []))
+            if attacker_ids:
+                self.set_active_turn_plan(ai, self.build_air_turn_plan_from_candidate(ai, player, engine, payload))
+                return [creature for creature in creatures if creature.unit_id in attacker_ids and creature.is_ready()]
+            return []
         if getattr(player, "summoner_key", "") != "air":
             return ai.choose_attackers(creatures)
         self.ensure_valid_active_air_plan(ai, player, engine)
@@ -327,6 +350,28 @@ class TurnPlanner:
     def choose_resource_card_for_main_phase(self, ai, player: PlayerState, engine, phase: str) -> Optional[CardInstance]:
         if player.resources_played_this_turn >= 2 or not player.hand:
             return None
+        if getattr(player, "summoner_key", "") == "fire":
+            self.ensure_valid_active_air_plan(ai, player, engine)
+            planned_step = self.get_active_turn_plan_step(ai, ("play_resource",))
+            if planned_step is not None and planned_step.expected_phase == phase:
+                return next((card for card in player.hand if card.instance_id == planned_step.card_instance_id), None)
+            if self.get_active_turn_plan(ai) is not None:
+                return None
+            projected_plan = build_fire_turn_plan_payload(
+                self,
+                ai,
+                player,
+                engine,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                phase=phase,
+            )
+            resource_ids = projected_plan.get("main1_resource_card_ids", ()) if phase == PHASE_MAIN_1 else projected_plan.get("main2_resource_card_ids", ())
+            if resource_ids:
+                self.set_active_turn_plan(ai, self.build_air_turn_plan_from_candidate(ai, player, engine, projected_plan))
+                return next((card for card in player.hand if card.instance_id == resource_ids[0]), None)
+            return None
         self.ensure_valid_active_air_plan(ai, player, engine)
         planned_step = self.get_active_turn_plan_step(ai, ("play_resource",))
         if planned_step is not None and planned_step.expected_phase == phase:
@@ -346,9 +391,36 @@ class TurnPlanner:
         if resource_ids:
             self.set_active_turn_plan(ai, self.build_air_turn_plan_from_candidate(ai, player, engine, projected_plan))
             return next((card for card in player.hand if card.instance_id == resource_ids[0]), None)
+        if player.total_resources() == 0:
+            emergency_pick = self.select_air_resource_cards(ai, player, engine, 1)
+            if emergency_pick:
+                return emergency_pick[0]
         return None
 
     def choose_main_phase_card(self, ai, player: PlayerState, engine) -> Optional[CardInstance]:
+        if getattr(player, "summoner_key", "") == "fire":
+            self.ensure_valid_active_air_plan(ai, player, engine)
+            current_step = self.get_active_turn_plan_step(ai, ("play_creature", "cast_spell"))
+            if current_step is not None:
+                return next((card for card in player.hand if card.instance_id == current_step.card_instance_id), None)
+            if self.get_active_turn_plan(ai) is not None:
+                return None
+            plan = build_fire_turn_plan_payload(
+                self,
+                ai,
+                player,
+                engine,
+                hand=list(player.hand),
+                available_resources=player.available_resources(),
+                total_resources=player.total_resources(),
+                phase=engine.phase,
+            )
+            has_steps = bool(plan["sequence"] or plan.get("main2_sequence") or plan.get("attacker_ids") or plan.get("main1_resource_card_ids"))
+            if not has_steps:
+                return None
+            self.set_active_turn_plan(ai, self.build_air_turn_plan_from_candidate(ai, player, engine, plan))
+            next_id = plan["sequence"][0] if plan["sequence"] else None
+            return next((card for card in player.hand if card.instance_id == next_id), None)
         if getattr(player, "summoner_key", "") != "air":
             self.clear_active_turn_plan(ai)
             spell = ai.choose_ritual(player, engine)
@@ -869,6 +941,17 @@ class TurnPlanner:
         return filtered[:AIR_MAX_TOTAL_TURN_CANDIDATES]
 
     def build_turn_candidates(self, ai, player, engine, *, hand, available_resources: int, total_resources: int, phase: str):
+        if getattr(player, "summoner_key", "") == "fire":
+            return build_fire_turn_candidates(
+                self,
+                ai,
+                player,
+                engine,
+                hand=hand,
+                available_resources=available_resources,
+                total_resources=total_resources,
+                phase=phase,
+            )
         candidates: list[TurnPlanCandidate] = []
         variants = self.get_air_resource_variants(ai, player, engine, hand, phase=phase)
         for main1_resource_ids, main2_resource_ids in variants:
@@ -919,6 +1002,17 @@ class TurnPlanner:
         }
 
     def build_turn_plan_payload(self, ai, player, engine, *, hand, available_resources: int, total_resources: int, phase: str) -> dict:
+        if getattr(player, "summoner_key", "") == "fire":
+            return build_fire_turn_plan_payload(
+                self,
+                ai,
+                player,
+                engine,
+                hand=hand,
+                available_resources=available_resources,
+                total_resources=total_resources,
+                phase=phase,
+            )
         candidates = self.build_turn_candidates(
             ai,
             player,
@@ -1155,7 +1249,10 @@ class TurnPlanner:
             )
         score = plan["score"] - keep_penalty * 0.12
         if player.total_resources() == 0:
-            score += len(selected) * 0.95
+            if not selected:
+                score -= 4.0
+            else:
+                score += 4.5 + len(selected) * 1.2
             if len(selected) == 2 and len(player.hand) >= 5:
                 score += 0.8
         elif player.total_resources() <= 2:
