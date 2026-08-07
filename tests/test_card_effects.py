@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from cards.registry import DECK_DEFINITIONS, build_test_deck
 from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardTemplate, CardType, Element, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1
 from tests.helpers import EngineTestCase
-from ui.render_helpers import get_display_creature_stats, get_display_template_stats, normalize_rules_text
+from ui.assets import handle_preview_start
+from ui.render_helpers import get_ability_description, get_ability_names, get_card_preview_ability_details, get_display_creature_stats, get_display_template_stats, normalize_rules_text
 
 
 class CardEffectsTests(EngineTestCase):
@@ -308,6 +309,41 @@ class CardEffectsTests(EngineTestCase):
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
         self.assertNotIn(windgeist.unit_id, self.engine.selected_attackers)
+
+    def test_preview_ability_details_use_full_haste_explanation(self) -> None:
+        helper_stub = SimpleNamespace(get_ability_names=lambda abilities: get_ability_names(None, abilities))
+        details = get_card_preview_ability_details(
+            helper_stub,
+            self.engine.templates["air_creature_windgeist"],
+        )
+
+        self.assertIn(
+            (
+                "Schnell",
+                "Schnelle Kreaturen kommen ungetappt ins Spiel und koennen direkt angreifen oder blocken.",
+            ),
+            details,
+        )
+        self.assertEqual(
+            get_ability_description(Ability.HASTE),
+            "Schnelle Kreaturen kommen ungetappt ins Spiel und koennen direkt angreifen oder blocken.",
+        )
+
+    def test_preview_start_keeps_info_builder_from_preview_target(self) -> None:
+        preview_builder = lambda: "card"
+        info_builder = lambda: [("Schnell", "Schnelle Kreaturen kommen ungetappt ins Spiel und koennen direkt angreifen oder blocken.")]
+        app = SimpleNamespace(
+            preview_targets=[(SimpleNamespace(collidepoint=lambda pos: True), preview_builder, info_builder)],
+            preview_builder=None,
+            preview_info_builder=None,
+            preview_surface="cached",
+        )
+
+        handle_preview_start(app, (10, 10))
+
+        self.assertIs(app.preview_builder, preview_builder)
+        self.assertIs(app.preview_info_builder, info_builder)
+        self.assertIsNone(app.preview_surface)
 
 
 

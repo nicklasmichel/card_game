@@ -6,6 +6,29 @@ from tests.helpers import EngineTestCase
 
 
 class ResourceAndRecycleTests(EngineTestCase):
+    def test_resource_logs_use_slot_counter_format(self) -> None:
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
+        second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
+        self.engine.human_player.hand = [first, second]
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.play_hand_card_as_resource(first.instance_id)
+        self.engine.play_hand_card_as_resource(second.instance_id)
+
+        self.assertIn("Spieler legt Ressource 1/2 (Gluthetzer).", self.engine.log_messages)
+        self.assertIn("Spieler legt Ressource 2/2 (Wassertropfen).", self.engine.log_messages)
+
+    def test_creature_play_log_is_shortened(self) -> None:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
+        self.engine.human_player.hand = [card]
+        self.engine.human_player.resources = [self.make_resource("fire_creature_gluthetzer")]
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.resolve_creature_play(card, recycle_resource_ids=[self.engine.human_player.resources[0].resource_id])
+
+        self.assertIn("Spieler spielt Windschwinge.", self.engine.log_messages)
+        self.assertFalse(any("AW " in message and "Windschwinge" in message for message in self.engine.log_messages))
+
     def test_mixed_cost_can_recycle_one_of_the_tapped_resources(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobestie"])
         self.engine.human_player.hand = [card]

@@ -106,7 +106,7 @@ def start_turn(self) -> None:
         else:
             self.log(f"{player.name} kann keine Karte ziehen.")
     else:
-        self.log(f"{player.name} ist Startspieler und zieht im ersten Zug keine Karte.")
+        self.log(f"{player.name} beginnt und zieht im ersten Zug keine Karte.")
     if getattr(player, "summoner_key", "") == "fire" and player.life < 5 and not player.summoner_passive_draw_used_this_turn:
         player.summoner_passive_draw_used_this_turn = True
         drawn = self.draw_card_for_player(player, "Beschwoerer-Passiv")

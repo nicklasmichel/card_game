@@ -21,7 +21,11 @@ def run(self) -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 self.handle_ui_action("ui_toggle_pause")
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                self.trigger_primary_action_button()
+                if not self.primary_action_space_down:
+                    self.primary_action_space_down = True
+                    self.trigger_primary_action_button()
+            elif event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
+                self.primary_action_space_down = False
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_log_scroll(-event.y * 36)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -173,6 +177,7 @@ def draw(self) -> None:
     self.preview_targets.clear()
     self.creature_overlay_draws.clear()
     self.combat_overlay_card_rects.clear()
+    self.creature_rects.clear()
     self.summoner_rects.clear()
 
     previous_show_enemy_hand_cards = self.show_enemy_hand_cards
@@ -193,7 +198,7 @@ def draw(self) -> None:
 
     if self.engine.phase == PHASE_MULLIGAN:
         self.draw_mulligan_overlay()
-    if self.engine.pending_dice_battle is not None:
+    if getattr(self.engine, "pending_dice_battles", None) or self.engine.pending_dice_battle is not None:
         self.draw_dice_battle_overlay()
     self.draw_discard_target_overlay()
     self.draw_reaction_focus_preview()

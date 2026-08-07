@@ -6,6 +6,49 @@ from core.models import PHASE_REACTION, PHASE_SPELL_TARGETING, SpellEffect
 from ui.style import CARD_BORDER, HIGHLIGHT, MUTED_TEXT, OVERLAY_COLOR, PANEL_COLOR, SECTION_COLOR, TEXT_COLOR
 
 
+def _die_pip_offsets(value: int) -> list[tuple[float, float]]:
+    positions = {
+        1: [(0.5, 0.5)],
+        2: [(0.28, 0.28), (0.72, 0.72)],
+        3: [(0.28, 0.28), (0.5, 0.5), (0.72, 0.72)],
+        4: [(0.28, 0.28), (0.72, 0.28), (0.28, 0.72), (0.72, 0.72)],
+        5: [(0.28, 0.28), (0.72, 0.28), (0.5, 0.5), (0.28, 0.72), (0.72, 0.72)],
+        6: [(0.28, 0.26), (0.72, 0.26), (0.28, 0.5), (0.72, 0.5), (0.28, 0.74), (0.72, 0.74)],
+    }
+    return positions.get(value, positions[1])
+
+
+def _draw_rendered_die(self, rect: pygame.Rect, value: int) -> None:
+    pygame.draw.rect(self.screen, (248, 248, 244), rect, border_radius=5)
+    pygame.draw.rect(self.screen, (24, 24, 26), rect, 2, border_radius=5)
+    pip_radius = max(2, rect.width // 10)
+    for rel_x, rel_y in _die_pip_offsets(max(1, min(6, value))):
+        center = (rect.x + int(rect.width * rel_x), rect.y + int(rect.height * rel_y))
+        pygame.draw.circle(self.screen, (24, 24, 26), center, pip_radius)
+
+
+def _draw_dice_row(self, card_rect: pygame.Rect, rolls: list[int], *, title: str, winner: bool, top_row: bool) -> None:
+    if not rolls:
+        return
+    die_size = max(16, min(22, (card_rect.width - 20) // max(3, min(len(rolls), 6))))
+    gap = max(3, die_size // 6)
+    rows = [rolls[index:index + 3] for index in range(0, len(rolls), 3)]
+    label_font = pygame.font.SysFont("arial", max(12, die_size - 4), bold=True)
+    label_y = card_rect.y + 8 if top_row else card_rect.bottom - (len(rows) * (die_size + gap) + 30)
+    label_surface = label_font.render(title, True, (255, 244, 220) if winner else (230, 236, 244))
+    label_bg = pygame.Rect(card_rect.x + 8, label_y - 2, max(42, label_surface.get_width() + 10), label_surface.get_height() + 6)
+    pygame.draw.rect(self.screen, (36, 40, 48), label_bg, border_radius=6)
+    pygame.draw.rect(self.screen, HIGHLIGHT if winner else CARD_BORDER, label_bg, 1, border_radius=6)
+    self.screen.blit(label_surface, (label_bg.x + 5, label_bg.y + 3))
+    start_y = label_bg.bottom + 4
+    for row_index, row in enumerate(rows):
+        row_width = len(row) * die_size + max(0, len(row) - 1) * gap
+        start_x = card_rect.x + (card_rect.width - row_width) // 2
+        for die_index, roll in enumerate(row):
+            die_rect = pygame.Rect(start_x + die_index * (die_size + gap), start_y + row_index * (die_size + gap), die_size, die_size)
+            _draw_rendered_die(self, die_rect, roll)
+
+
 def draw_mulligan_overlay(self) -> None:
     overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
     overlay.fill(OVERLAY_COLOR)
@@ -24,115 +67,30 @@ def draw_mulligan_overlay(self) -> None:
 
 
 def draw_dice_battle_overlay(self) -> None:
-    battle = self.engine.pending_dice_battle
-    if battle is None:
+    battles = list(getattr(self.engine, "pending_dice_battles", []) or ([] if self.engine.pending_dice_battle is None else [self.engine.pending_dice_battle]))
+    if not battles:
         return
-
-    overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
-    overlay.fill(OVERLAY_COLOR)
-    _, _, log_rect, action_rect, _ = self.get_side_panel_layout()
-    pygame.draw.rect(overlay, (0, 0, 0, 0), log_rect)
-    pygame.draw.rect(overlay, (0, 0, 0, 0), action_rect)
-    self.screen.blit(overlay, (0, 0))
-
-    panel_width = min(self.window_width - 100, 1560)
-    panel_height = min(self.window_height - 100, 920)
-    panel = pygame.Rect(
-        max(40, (self.window_width - panel_width) // 2),
-        max(40, (self.window_height - panel_height) // 2),
-        panel_width,
-        panel_height,
-    )
-    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
-    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
-
-    attacker = self.engine.get_unit_by_id(battle.attacker_id) or battle.attacker_snapshot
-    blocker = self.engine.get_unit_by_id(battle.blocker_id) or battle.blocker_snapshot
-    attacker_owner = self.engine.get_player_by_id(battle.attacker_owner)
-    blocker_owner = self.engine.get_player_by_id(battle.blocker_owner)
-    attacker_is_human = battle.attacker_owner == self.engine.human_player.player_id
-    blocker_is_human = battle.blocker_owner == self.engine.human_player.player_id
-    attacker_rolls = battle.attacker_rolls
-    blocker_rolls = battle.blocker_rolls
-
-    attacker_surface = self.build_preview_creature_surface(attacker, attacker_is_human, attacking=True)
-    blocker_surface = self.build_preview_creature_surface(blocker, blocker_is_human)
-    card_y = panel.y + 84
-    attacker_rect = attacker_surface.get_rect(topleft=(panel.x + 56, card_y))
-    blocker_rect = blocker_surface.get_rect(topright=(panel.right - 56, card_y))
-    self.combat_overlay_card_rects["attacker"] = attacker_rect
-    self.combat_overlay_card_rects["blocker"] = blocker_rect
-
-    self.screen.blit(attacker_surface, attacker_rect.topleft)
-    self.screen.blit(blocker_surface, blocker_rect.topleft)
-    pygame.draw.rect(self.screen, CARD_BORDER, attacker_rect, 3, border_radius=10)
-    pygame.draw.rect(self.screen, CARD_BORDER, blocker_rect, 3, border_radius=10)
-    self.draw_combat_damage_popups()
-
-    dice_panel_y = attacker_rect.bottom + 18
-    content_start_y = dice_panel_y + 58
-    side_panel_height = max(len(attacker_rolls), len(blocker_rolls), 1) * 58 + 178
-    panel_width = max(attacker_rect.width, blocker_rect.width)
-    attacker_panel_rect = pygame.Rect(attacker_rect.x, dice_panel_y, panel_width, side_panel_height)
-    blocker_panel_rect = pygame.Rect(blocker_rect.x, dice_panel_y, panel_width, side_panel_height)
-    pygame.draw.rect(self.screen, (78, 58, 52), attacker_panel_rect, border_radius=8)
-    pygame.draw.rect(self.screen, CARD_BORDER, attacker_panel_rect, 2, border_radius=8)
-    pygame.draw.rect(self.screen, (52, 86, 138), blocker_panel_rect, border_radius=8)
-    pygame.draw.rect(self.screen, CARD_BORDER, blocker_panel_rect, 2, border_radius=8)
-    self.blit_text(self.title_font, f"{attacker_owner.name} greift an", TEXT_COLOR, attacker_panel_rect.x + 12, attacker_panel_rect.y + 10)
-    self.blit_text(self.title_font, f"{blocker_owner.name} blockt", TEXT_COLOR, blocker_panel_rect.x + 12, blocker_panel_rect.y + 10)
-
-    for index, roll in enumerate(attacker_rolls):
-        rect = pygame.Rect(
-            attacker_panel_rect.x + 10,
-            content_start_y + index * 58,
-            attacker_panel_rect.width - 20,
-            46,
-        )
-        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=6)
-        pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, f"W6 {index + 1}: {roll}", TEXT_COLOR, rect.x + 10, rect.y + 11)
-
-    for index, roll in enumerate(blocker_rolls):
-        rect = pygame.Rect(
-            blocker_panel_rect.x + 10,
-            content_start_y + index * 58,
-            blocker_panel_rect.width - 20,
-            46,
-        )
-        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=6)
-        pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, f"W6 {index + 1}: {roll}", TEXT_COLOR, rect.x + 10, rect.y + 11)
-
-    summary_y = content_start_y + max(len(attacker_rolls), len(blocker_rolls), 1) * 58 + 16
-    self.blit_text(
-        self.font,
-        f"AW {self.engine.get_creature_attack_value(attacker)} -> {len(attacker_rolls)}W6 | Summe {battle.attack_sum}",
-        TEXT_COLOR,
-        attacker_panel_rect.x + 10,
-        summary_y,
-    )
-    self.blit_text(
-        self.font,
-        f"VW {self.engine.get_creature_defense_value(blocker)} -> {len(blocker_rolls)}W6 | Summe {battle.defense_sum}",
-        TEXT_COLOR,
-        blocker_panel_rect.x + 10,
-        summary_y,
-    )
-
-    if battle.history and "Gleichstand" in battle.history[-1].outcome_text and battle.winner is None:
-        self.blit_text(self.font, battle.history[-1].outcome_text, HIGHLIGHT, panel.x + 56, summary_y + 42)
-
-    result_y = summary_y + 74
-    winner_name = attacker.name if battle.winner == "attacker" else blocker.name
-    winner_sw = battle.creature_damage
-    loser_hp = battle.blocker_snapshot.current_hp if battle.winner == "attacker" else battle.attacker_snapshot.current_hp
-    loser_max_lw = battle.blocker_snapshot.lw if battle.winner == "attacker" else battle.attacker_snapshot.lw
-    result_text = f"Gewinner: {winner_name} | SW {winner_sw} | Verbleibendes LW des Verlierers: {max(0, loser_hp)}/{loser_max_lw}"
-    self.blit_text(self.font, result_text, TEXT_COLOR, panel.x + 56, result_y)
-    if battle.trample_damage > 0:
-        self.blit_text(self.font, f"Trampelschaden: {battle.trample_damage}", HIGHLIGHT, panel.x + 56, result_y + 34)
-    self.blit_text(self.small_font, f"Rerolls: {battle.reroll_count}", MUTED_TEXT, panel.x + 56, result_y + 66)
+    for battle in battles:
+        attacker_rect = self.creature_rects.get(battle.attacker_id)
+        blocker_rect = self.creature_rects.get(battle.blocker_id)
+        if attacker_rect is None or blocker_rect is None:
+            continue
+        self.combat_overlay_card_rects["attacker"] = attacker_rect
+        self.combat_overlay_card_rects["blocker"] = blocker_rect
+        pygame.draw.rect(self.screen, HIGHLIGHT if battle.winner == "attacker" else CARD_BORDER, attacker_rect, 3, border_radius=8)
+        pygame.draw.rect(self.screen, HIGHLIGHT if battle.winner == "blocker" else CARD_BORDER, blocker_rect, 3, border_radius=8)
+        _draw_dice_row(self, attacker_rect, battle.attacker_rolls, title=str(battle.attack_sum), winner=battle.winner == "attacker", top_row=True)
+        _draw_dice_row(self, blocker_rect, battle.blocker_rolls, title=str(battle.defense_sum), winner=battle.winner == "blocker", top_row=False)
+        if battle.reroll_count > 0:
+            reroll_rect = pygame.Rect(
+                min(attacker_rect.centerx, blocker_rect.centerx) - 46,
+                min(attacker_rect.top, blocker_rect.top) - 26,
+                92,
+                22,
+            )
+            pygame.draw.rect(self.screen, (36, 40, 48), reroll_rect, border_radius=6)
+            pygame.draw.rect(self.screen, CARD_BORDER, reroll_rect, 1, border_radius=6)
+            self.blit_centered_text(self.small_font, f"Reroll {battle.reroll_count}", MUTED_TEXT, reroll_rect)
 
 
 def draw_game_over_overlay(self) -> None:

@@ -84,6 +84,10 @@ def format_card_cost(self, cost: CardCost) -> str:
     return f"Recycle {cost.recycle}"
 
 
+def format_resource_play_log(self, player: PlayerState, card_name: str) -> str:
+    return f"{player.name} legt Ressource {player.resources_played_this_turn}/2 ({card_name})."
+
+
 def get_card_cost_to_pay(self, player: PlayerState, card: CardInstance) -> CardCost:
     if card.template.card_type != CardType.CREATURE:
         return card.template.cost
@@ -247,11 +251,7 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
             self.active_player.player_id,
             card.template.recycle_cost,
         )
-        self.log(
-            f"{self.active_player.name} spielt {card.template.name} "
-            f"(AW {card.template.aw} / VW {card.template.vw} / LW {card.template.effective_lw} / SW {card.template.effective_sw}) "
-            f"fuer {self.format_card_cost(cost)}."
-        )
+        self.log(f"{self.active_player.name} spielt {card.template.name}.")
     self.register_hand_card_played(self.active_player)
     if card.template.draw_on_play > 0:
         for _ in range(card.template.draw_on_play):
@@ -373,8 +373,7 @@ def play_hand_card_as_resource(self, card_id: int) -> None:
     self.selected_hand_ids.clear()
     if self.statistics is not None:
         self.statistics.register_resource_played(self.active_player.player_id)
-    state_text = "getappt" if comes_in_tapped else "bereit"
-    self.log(f"{self.active_player.name} legt {card.template.name} als Ressource ({state_text}).")
+    self.log(self.format_resource_play_log(self.active_player, card.template.name))
     self.register_hand_card_played(self.active_player)
 
 

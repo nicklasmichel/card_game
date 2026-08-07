@@ -19,7 +19,7 @@ FIRE_SPELLS = [
         spell_amount=1,
         combat_aw_bonus=2,
         combat_sw_bonus=2,
-        rules_text="Eine Kreatur erhaelt +2 AW und +2 SW fuer diesen Kampf.",
+        rules_text="Eine Kreatur erhaelt +2A und +2S fuer diesen Kampf.",
     ),
     CardTemplate(
         template_id="fire_spell_raserei",
@@ -36,7 +36,7 @@ FIRE_SPELLS = [
         spell_amount=1,
         combat_aw_bonus=4,
         combat_sw_bonus=4,
-        rules_text="Eine Kreatur erhaelt +4 AW und +4 SW fuer diesen Kampf.",
+        rules_text="Eine Kreatur erhaelt +4A und +4S fuer diesen Kampf.",
     ),
     CardTemplate(
         template_id="fire_spell_versengen",

@@ -325,8 +325,7 @@ def ai_play_resource(self, chosen=None) -> None:
     )
     self.active_player.resources_played_this_turn += 1
     self.statistics.register_resource_played(self.active_player.player_id)
-    state_text = "getappt" if comes_in_tapped else "bereit"
-    self.log(f"Gegner legt {chosen.template.name} als Ressource ({state_text}).")
+    self.log(self.format_resource_play_log(self.active_player, chosen.template.name))
     self.register_hand_card_played(self.active_player)
 
 

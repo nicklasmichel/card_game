@@ -87,8 +87,9 @@ def draw_combat_damage_popups(self) -> None:
 def draw_creature_overlays(self) -> None:
     for creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key in self.creature_overlay_draws:
         rect = self.draw_creature_card(creature, is_human, draw_x, draw_y, selected, extra_line, attacking)
+        self.creature_rects[creature.unit_id] = rect.copy()
         if self.last_preview_builder is not None:
-            self.preview_targets.append((rect, self.last_preview_builder))
+            self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
         self.click_targets[target_key].append((rect, creature.unit_id))
 
 

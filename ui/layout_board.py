@@ -253,7 +253,7 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
         )
         self.summoner_rects[player.player_id] = summoner_rect.copy()
         if self.last_preview_builder is not None:
-            self.preview_targets.append((summoner_rect.copy(), self.last_preview_builder))
+            self.preview_targets.append((summoner_rect.copy(), self.last_preview_builder, self.last_preview_info_builder))
         if target_key == "player_resources":
             self.click_targets["player_summoner"].append((summoner_rect.copy(), player.player_id))
         elif target_key is None and player is not None and player.player_id == self.engine.ai_player.player_id:
@@ -324,7 +324,7 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
                 pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=8)
             self.click_targets[target_key].append((rect, resource.resource_id))
         if self.last_preview_builder is not None:
-            self.preview_targets.append((rect, self.last_preview_builder))
+            self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
 
 
 def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: int, start_y: int, lane_width: int, lane_height: int) -> None:
@@ -370,8 +370,9 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
 
     for creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key in render_queue:
         rect = self.draw_creature_card(creature, is_human, draw_x, draw_y, selected, extra_line, attacking)
+        self.creature_rects[creature.unit_id] = rect.copy()
         if self.last_preview_builder is not None:
-            self.preview_targets.append((rect, self.last_preview_builder))
+            self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
         self.click_targets[target_key].append((rect, creature.unit_id))
     self.creature_overlay_draws.extend(overlay_queue)
 
@@ -396,6 +397,6 @@ def draw_hand(self, player, start_x: int, start_y: int, available_width: int, in
         else:
             rect = self.draw_hidden_hand_card(card, x, start_y)
         if self.last_preview_builder is not None:
-            self.preview_targets.append((rect, self.last_preview_builder))
+            self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
         if interactive:
             self.click_targets["hand"].append((rect, card.instance_id))

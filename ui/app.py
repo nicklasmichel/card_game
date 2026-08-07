@@ -272,6 +272,7 @@ class TcgPrototypeApp:
         self.log_viewport_rect = pygame.Rect(0, 0, 0, 0)
         self.buttons: List[Tuple[pygame.Rect, ButtonSpec]] = []
         self.show_enemy_hand_cards = False
+        self.primary_action_space_down = False
         self.paused = False
         self.pause_started_at_ms: int | None = None
         self.player_creature_rect = pygame.Rect(0, 0, 0, 0)
@@ -285,7 +286,7 @@ class TcgPrototypeApp:
         self.last_rendered_card_surface: pygame.Surface | None = None
         self.last_preview_builder: Callable[[], pygame.Surface] | None = None
         self.last_preview_info_builder: Callable[[], list[tuple[str, str]]] | None = None
-        self.preview_targets: List[Tuple[pygame.Rect, Callable[[], pygame.Surface]]] = []
+        self.preview_targets: List[Tuple] = []
         self.preview_builder: Callable[[], pygame.Surface] | None = None
         self.preview_info_builder: Callable[[], list[tuple[str, str]]] | None = None
         self.preview_surface: pygame.Surface | None = None
@@ -294,6 +295,7 @@ class TcgPrototypeApp:
         self.creature_lunges: Dict[int, dict] = {}
         self.creature_overlay_draws: List[tuple] = []
         self.combat_overlay_card_rects: Dict[str, pygame.Rect] = {}
+        self.creature_rects: Dict[int, pygame.Rect] = {}
         self.summoner_rects: Dict[int, pygame.Rect] = {}
         self.click_targets: Dict[str, List[Tuple[pygame.Rect, int]]] = {
             "hand": [],

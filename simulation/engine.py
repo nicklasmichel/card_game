@@ -158,9 +158,8 @@ class SimulationGameEngine(GameEngine):
                 1: PlayerTelemetry(1, self.players[1].name, self.players[1].summoner_key),
             },
         )
-        self.log(f"Neue Partie gestartet. Seed: {self.seed}")
-        self.log(f"Startspieler: {self.players[self.starting_player_id].name}")
-        self.log("Mulligan ist deaktiviert. Das Spiel startet direkt.")
+        self.log("Neue Partie gestartet.")
+        self.log("Mulligan ist deaktiviert.")
         self.begin_first_turn()
 
     def _record_turn_state(self) -> None:
@@ -252,8 +251,7 @@ class SimulationGameEngine(GameEngine):
                     telemetry.resources_second_main_1 += 1
                 else:
                     telemetry.resources_second_main_2 += 1
-        state_text = "getappt" if comes_in_tapped else "bereit"
-        self.log(f"{player.name} legt {card.template.name} als Ressource ({state_text}).")
+        self.log(self.format_resource_play_log(player, card.template.name))
         return True
 
     def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: list[int] | None = None) -> bool:

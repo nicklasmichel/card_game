@@ -98,9 +98,9 @@ def get_ability_names(self, abilities) -> List[str]:
 
 def get_ability_description(ability: Ability) -> str:
     descriptions = {
-        Ability.HASTE: "Kann direkt angreifen, wenn diese Kreatur ins Spiel kommt.",
-        Ability.FLYING: "Kann nur von Kreaturen mit Fliegend geblockt werden.",
-        Ability.TRAMPLE: "Gewinnt diese Kreatur als Angreifer einen geblockten Kampf, geht ueberschuessiger SW-Schaden ueber die verbleibenden LW des Blockers hinaus an den gegnerischen Spieler.",
+        Ability.HASTE: "Schnelle Kreaturen kommen ungetappt ins Spiel und koennen direkt angreifen oder blocken.",
+        Ability.FLYING: "Fliegende Kreaturen koennen nur von Kreaturen mit Fliegend geblockt werden.",
+        Ability.TRAMPLE: "Gewinnt diese Kreatur als Angreifer einen geblockten Kampf, geht Schaden oberhalb des verbleibenden Lebens des Blockers an den gegnerischen Spieler.",
         Ability.ENRAGED: "Wenn diese Kreatur angreift, darfst du eine gegnerische Kreatur bestimmen, die sie legal blocken kann. Diese Kreatur muss sie blocken.",
         Ability.VIGILANT: "Diese Kreatur wird beim Angreifen nicht getappt.",
         Ability.MAGIC_RESISTANT: "Diese Kreatur kann nicht das Ziel von Ritualen, Spontanzaubern oder Kampfzaubern sein.",

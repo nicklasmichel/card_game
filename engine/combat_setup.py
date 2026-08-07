@@ -140,7 +140,7 @@ def confirm_attackers(self) -> None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
         self.log("Keine Angreifer gewaehlt.")
-        self.enter_second_main_phase()
+        self.phase = PHASE_MAIN_1
         return
     if getattr(self.active_player, "summoner_key", "") == "air" and not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
@@ -306,6 +306,9 @@ def begin_pre_first_combat_window(self) -> None:
 
 
 def begin_post_combat_window(self) -> None:
+    self.selected_attackers.clear()
+    self.selected_blocker_id = None
+    self.selected_attack_target_id = None
     self.begin_general_spell_window(
         trigger=ReactionTrigger.COMBAT_END,
         first_responder_id=self.active_player.player_id,
@@ -351,8 +354,46 @@ def begin_combat_resolution(self) -> None:
     }
     self.current_attack_index = 0
     self.pending_dice_battle = None
+    self.pending_dice_battles = []
     self.pending_direct_attack = None
     self.pending_direct_attacks = []
+    for attacker_id in ordered_attackers:
+        attacker = self.get_unit_by_id(attacker_id)
+        if attacker is None or self.is_creature_destroyed(attacker):
+            continue
+        blocker_id = self.block_assignments.get(attacker_id)
+        if blocker_id is None:
+            if attacker_id in self.blocked_attackers:
+                continue
+            self.pending_direct_attacks.append(
+                PendingDirectAttack(
+                    attacker_id=attacker.unit_id,
+                    attacker_owner=self.active_player.player_id,
+                    defending_player_id=self.defending_player.player_id,
+                    base_damage=self.get_creature_damage_value(attacker),
+                )
+            )
+            continue
+        blocker = self.get_unit_by_id(blocker_id)
+        if blocker is None or self.is_creature_destroyed(blocker):
+            self.block_assignments[attacker_id] = None
+            self.pending_direct_attacks.append(
+                PendingDirectAttack(
+                    attacker_id=attacker.unit_id,
+                    attacker_owner=self.active_player.player_id,
+                    defending_player_id=self.defending_player.player_id,
+                    base_damage=self.get_creature_damage_value(attacker),
+                )
+            )
+            continue
+        battle = self.create_pending_dice_battle(attacker_id, blocker_id)
+        if battle is not None:
+            self.pending_dice_battles.append(battle)
+    self.current_attack_index = len(self.combat_queue)
+    if self.pending_dice_battles:
+        self.pending_dice_battle = self.pending_dice_battles[0]
+        self.phase = PHASE_DICE_BATTLE
+        return
     self.advance_combat_resolution()
 
 

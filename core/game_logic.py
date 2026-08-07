@@ -57,6 +57,7 @@ class GameEngine:
         cleanup_destroyed_units,
         clear_block_assignments,
         confirm_attackers,
+        create_pending_dice_battle,
         get_legal_enraged_targets,
         set_enraged_block_assignment,
         ai_assign_enraged_blocks,
@@ -126,6 +127,7 @@ class GameEngine:
         cancel_recycle_payment,
         confirm_recycle_payment,
         format_card_cost,
+        format_resource_play_log,
         get_card_cost_to_pay,
         handle_creature_player_damage_triggers,
         play_hand_card_in_summoning_zone,
@@ -226,6 +228,7 @@ class GameEngine:
         self.block_assignments: Dict[int, Optional[int]] = {}
         self.enraged_forced_attackers: set[int] = set()
         self.pending_dice_battle: Optional[PendingDiceBattle] = None
+        self.pending_dice_battles: List[PendingDiceBattle] = []
         self.pending_recycle_payment: Optional[PendingRecyclePayment] = None
         self.pending_forced_discard: Optional[PendingForcedDiscard] = None
         self.pending_spell_cast: Optional[PendingSpellCast] = None
@@ -430,15 +433,14 @@ class GameEngine:
             start_player=self.players[self.starting_player_id].name,
             player_names={0: "Spieler", 1: "Gegner"},
         )
-        self.log(f"Neue Partie gestartet. Seed: {self.seed}")
-        self.log(f"Startspieler: {self.players[self.starting_player_id].name}")
+        self.log("Neue Partie gestartet.")
         self.selected_hand_ids.clear()
         if ENABLE_MULLIGAN:
             self.apply_ai_mulligan()
             self.phase = PHASE_MULLIGAN
             self.log("Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.")
         else:
-            self.log("Mulligan ist deaktiviert. Das Spiel startet direkt.")
+            self.log("Mulligan ist deaktiviert.")
             self.begin_first_turn()
 
     def start_test_combat(self) -> None:
@@ -494,6 +496,7 @@ class GameEngine:
         self.block_assignments = {}
         self.enraged_forced_attackers = set()
         self.pending_dice_battle = None
+        self.pending_dice_battles = []
         self.pending_recycle_payment = None
         self.pending_forced_discard = None
         self.pending_spell_cast = None

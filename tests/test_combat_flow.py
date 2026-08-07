@@ -36,16 +36,79 @@ class CombatFlowTests(EngineTestCase):
     def test_unblocked_attack_uses_sw_not_aw(self) -> None:
         attacker = self.make_creature("fire_creature_hoellenbestie", owner_id=0)
         self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DECLARE_ATTACKERS
-        self.engine.selected_attackers = [attacker.unit_id]
-
-        self.engine.confirm_attackers()
+        self.engine.block_assignments = {attacker.unit_id: None}
         self.engine.begin_combat_resolution()
-        self.engine.end_dice_battle()
 
         self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - attacker.sw)
         self.assertEqual(attacker.sw, 3)
         self.assertEqual(attacker.aw, 6)
+
+    def test_unblocked_attacker_is_no_longer_marked_selected_after_combat(self) -> None:
+        attacker = self.make_creature("fire_creature_glutbrecher", owner_id=0)
+        self.engine.human_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
+        ]
+        self.engine.active_player_index = 0
+        self.engine.selected_attackers = [attacker.unit_id]
+        self.engine.block_assignments = {attacker.unit_id: None}
+
+        self.engine.begin_combat_resolution()
+
+        self.assertTrue(attacker.tapped)
+        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
+        self.assertNotIn(attacker.unit_id, self.engine.selected_attackers)
+
+    def test_first_turn_log_uses_begins_wording(self) -> None:
+        self.engine.players[0].deck = [CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])]
+        self.engine.players[1].deck = [CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])]
+        self.engine.starting_player_id = 0
+        self.engine.turn_number = 0
+        self.engine.players[0].turns_started = 0
+        self.engine.log_messages.clear()
+
+        self.engine.start_turn()
+
+        self.assertIn("Spieler beginnt und zieht im ersten Zug keine Karte.", self.engine.log_messages)
+
+    def test_no_attackers_keeps_game_in_first_main_phase(self) -> None:
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0, ready=True)
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.begin_attack_declaration()
+        self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
+        self.assertIn(attacker, self.engine.available_attackers(self.engine.human_player))
+
+        self.engine.confirm_attackers()
+
+        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
+        self.assertIn("Keine Angreifer gewaehlt.", self.engine.log_messages)
+        self.assertNotIn("Zweite Hauptphase begonnen.", self.engine.log_messages)
+
+    def test_multiple_blocked_combats_share_one_dice_phase(self) -> None:
+        attacker_one = self.make_creature("fire_creature_gluthetzer", owner_id=0)
+        attacker_two = self.make_creature("fire_creature_glutbrecher", owner_id=0)
+        blocker_one = self.make_creature("earth_creature_felswesen", owner_id=1)
+        blocker_two = self.make_creature("earth_creature_steinwesen", owner_id=1)
+        self.engine.human_player.hand = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutwesen"]),
+        ]
+        self.engine.active_player_index = 0
+        self.engine.block_assignments = {
+            attacker_one.unit_id: blocker_one.unit_id,
+            attacker_two.unit_id: blocker_two.unit_id,
+        }
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 1, 1, 1, 6, 6, 1, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
+        self.assertEqual(len(self.engine.pending_dice_battles), 2)
+
+        self.engine.end_dice_battle()
+
+        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
+        self.assertLess(blocker_one.current_hp, blocker_one.lw)
+        self.assertIsNone(self.engine.get_unit_by_id(blocker_two.unit_id))
 
     def test_blocked_combat_uses_aw_and_vw_as_w6_pool_sizes(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)

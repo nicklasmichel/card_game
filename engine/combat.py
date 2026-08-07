@@ -1,4 +1,5 @@
 from .combat_dice import (
+    create_pending_dice_battle,
     cleanup_destroyed_units,
     end_dice_battle,
     make_combat_unit_snapshot,
@@ -43,6 +44,7 @@ __all__ = [
     "cleanup_destroyed_units",
     "clear_block_assignments",
     "confirm_attackers",
+    "create_pending_dice_battle",
     "get_legal_enraged_targets",
     "set_enraged_block_assignment",
     "ai_assign_enraged_blocks",

@@ -350,7 +350,7 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
         pygame.draw.rect(self.screen, CARD_BORDER, deck_rect, 2, border_radius=9)
         deck_badge_rect = pygame.Rect(deck_rect.centerx - 34, deck_rect.centery - 26, 68, 52)
         self.draw_card_badge(self.screen, deck_badge_rect, str(len(player.deck)), self.font, self.get_think_progress(player))
-        self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player)))
+        self.preview_targets.append((deck_rect, lambda player=player: self.build_preview_deck_surface(player), lambda: []))
         if player.player_id == self.engine.ai_player.player_id:
             self.click_targets["enemy_deck"].append((deck_rect.copy(), player.player_id))
 
@@ -373,7 +373,7 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
         )
         self.screen.blit(preview_surface, discard_rect.topleft)
         pygame.draw.rect(self.screen, CARD_BORDER, discard_rect, 2, border_radius=9)
-        self.preview_targets.append((discard_rect, lambda card=top_discard: self.build_preview_hand_card_surface(card)))
+        self.preview_targets.append((discard_rect, lambda card=top_discard: self.build_preview_hand_card_surface(card), lambda card=top_discard: self.get_card_preview_ability_details(card.template)))
     else:
         pygame.draw.rect(self.screen, PANEL_COLOR, discard_rect, border_radius=9)
         pygame.draw.rect(self.screen, CARD_BORDER, discard_rect, 2, border_radius=9)
