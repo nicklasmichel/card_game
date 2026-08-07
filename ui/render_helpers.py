@@ -47,14 +47,14 @@ def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
             line_one = template.spell_timing.value
         else:
             line_one = template.card_type.value
-    line_two = normalize_rules_text(getattr(template, "rules_text", ""), names)
+    line_two = "" if template.card_type == CardType.CREATURE and names else normalize_rules_text(getattr(template, "rules_text", ""), names)
     return line_one, line_two
 
 
 def get_card_ability_lines_from_creature(self, creature) -> tuple[str, str]:
     names = self.get_ability_names(creature.abilities)
     line_one = ", ".join(names)
-    line_two = normalize_rules_text(getattr(creature, "rules_text", ""), names)
+    line_two = ""
     return line_one, line_two
 
 
@@ -62,9 +62,8 @@ def get_display_creature_stats(self, creature) -> tuple[str, str, str, str]:
     display_aw = self.engine.get_creature_attack_value(creature)
     display_vw = self.engine.get_creature_defense_value(creature)
     current_lw = self.engine.get_creature_current_lw(creature)
-    max_lw = self.engine.get_creature_max_lw(creature)
     display_sw = self.engine.get_creature_damage_value(creature)
-    return str(display_aw), str(display_vw), f"{current_lw}/{max_lw}", str(display_sw)
+    return str(display_aw), str(display_vw), str(current_lw), str(display_sw)
 
 
 def get_display_template_stats(self, template) -> tuple[str, str, str, str]:
@@ -74,7 +73,7 @@ def get_display_template_stats(self, template) -> tuple[str, str, str, str]:
     else:
         max_lw = template.effective_lw
         display_sw = template.effective_sw
-    return str(template.aw), str(template.vw), f"{max_lw}/{max_lw}", str(display_sw)
+    return str(template.aw), str(template.vw), str(max_lw), str(display_sw)
 
 
 def get_ability_names(self, abilities) -> List[str]:
@@ -89,6 +88,34 @@ def get_ability_names(self, abilities) -> List[str]:
         Ability.TRAMPLE: "Trampelnd",
     }
     return [display_names.get(ability, ability.value) for ability in order if ability in abilities]
+
+
+def get_ability_description(ability: Ability) -> str:
+    descriptions = {
+        Ability.HASTE: "Kann direkt angreifen, wenn diese Kreatur ins Spiel kommt.",
+        Ability.FLYING: "Kann nur von Kreaturen mit Fliegend geblockt werden.",
+        Ability.TRAMPLE: "Gewinnt diese Kreatur als Angreifer einen geblockten Kampf, geht ueberschuessiger SW-Schaden ueber die verbleibenden LW des Blockers hinaus an den gegnerischen Spieler.",
+        Ability.ENRAGED: "Wenn diese Kreatur angreift, darfst du eine gegnerische Kreatur bestimmen, die sie legal blocken kann. Diese Kreatur muss sie blocken.",
+    }
+    return descriptions.get(ability, ability.value)
+
+
+def get_card_preview_ability_details(self, source) -> List[tuple[str, str]]:
+    abilities = getattr(source, "abilities", frozenset())
+    ordered_names = self.get_ability_names(abilities)
+    if not ordered_names:
+        return []
+    name_by_ability = {
+        Ability.ENRAGED: "Wuetend",
+        Ability.TRAMPLE: "Trampelnd",
+        Ability.HASTE: "Schnell",
+        Ability.FLYING: "Fliegend",
+    }
+    details: List[tuple[str, str]] = []
+    for ability in (Ability.ENRAGED, Ability.TRAMPLE, Ability.HASTE, Ability.FLYING):
+        if ability in abilities:
+            details.append((name_by_ability[ability], get_ability_description(ability)))
+    return details
 
 
 def normalize_rules_text(rules_text: str, ability_names: List[str]) -> str:

@@ -235,7 +235,11 @@ class AssessmentComponent:
         remaining_blockers = [
             creature
             for creature in player.battlefield
-            if creature.current_hp > 0 and creature.is_ready() and creature.unit_id not in attacking_ids and not creature.cannot_block
+            if creature.current_hp > 0
+            and creature.is_ready()
+            and creature.unit_id not in attacking_ids
+            and not creature.cannot_block
+            and creature.vw > 0
         ]
         blocker_assignments = ai.choose_blockers_for_attackers(enemy_attackers, remaining_blockers)
         blockers_by_id = {blocker.unit_id: blocker for blocker in remaining_blockers}
@@ -371,7 +375,10 @@ class AssessmentComponent:
         if probable_unblocked_damage <= 0:
             return None
         for card in hand:
-            if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT and probable_unblocked_damage + card.template.spell_amount >= enemy.life:
+            if (
+                card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+                and probable_unblocked_damage + card.template.combat_sw_bonus >= enemy.life
+            ):
                 return card
         return None
 

@@ -52,10 +52,14 @@ class GameEngine:
         begin_attack_declaration,
         begin_combat_resolution,
         begin_next_pending_direct_attack,
+        can_creature_be_forced_to_block_attacker,
         can_creature_block_attacker,
         cleanup_destroyed_units,
         clear_block_assignments,
         confirm_attackers,
+        get_legal_enraged_targets,
+        set_enraged_block_assignment,
+        ai_assign_enraged_blocks,
         end_dice_battle,
         finish_block_assignment,
         resolve_pending_direct_attack_after_reaction,
@@ -215,7 +219,9 @@ class GameEngine:
         self.selected_hand_ids: List[int] = []
         self.selected_attackers: List[int] = []
         self.selected_blocker_id: Optional[int] = None
+        self.selected_attack_target_id: Optional[int] = None
         self.block_assignments: Dict[int, Optional[int]] = {}
+        self.enraged_forced_attackers: set[int] = set()
         self.pending_dice_battle: Optional[PendingDiceBattle] = None
         self.pending_recycle_payment: Optional[PendingRecyclePayment] = None
         self.pending_forced_discard: Optional[PendingForcedDiscard] = None
@@ -297,7 +303,7 @@ class GameEngine:
         return creature.lw
 
     def get_creature_damage_value(self, creature: BattlefieldCreature) -> int:
-        return creature.sw
+        return creature.sw + getattr(creature, "temporary_combat_sw_bonus", 0)
 
     def get_creature_current_lw(self, creature: BattlefieldCreature) -> int:
         return creature.current_hp
@@ -479,7 +485,9 @@ class GameEngine:
     def reset_combat_state(self) -> None:
         self.selected_attackers = []
         self.selected_blocker_id = None
+        self.selected_attack_target_id = None
         self.block_assignments = {}
+        self.enraged_forced_attackers = set()
         self.pending_dice_battle = None
         self.pending_recycle_payment = None
         self.pending_forced_discard = None

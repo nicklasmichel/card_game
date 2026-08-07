@@ -385,9 +385,20 @@ def describe_pending_spell_requirements(self) -> str:
             )
         return f"Bestaetige {card.template.name}."
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
-        return f"Bestaetige {card.template.name}. Eigene Angreifer erhalten fuer diesen Kampf +{card.template.spell_amount} AW."
+        parts = []
+        if card.template.combat_aw_bonus:
+            parts.append(f"+{card.template.combat_aw_bonus} AW")
+        if card.template.combat_sw_bonus:
+            parts.append(f"+{card.template.combat_sw_bonus} SW")
+        return f"Bestaetige {card.template.name}. Eigene Angreifer erhalten fuer diesen Kampf {' und '.join(parts)}."
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
-        return f"Waehle eine eigene kaempfende Kreatur als Ziel fuer {card.template.name}."
+        parts = []
+        if card.template.combat_aw_bonus:
+            parts.append(f"+{card.template.combat_aw_bonus} AW")
+        if card.template.combat_sw_bonus:
+            parts.append(f"+{card.template.combat_sw_bonus} SW")
+        suffix = f" ({' und '.join(parts)})" if parts else ""
+        return f"Waehle eine eigene kaempfende Kreatur als Ziel fuer {card.template.name}{suffix}."
     if card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         if not pending.selected_targets:
             return f"Waehle eine Kreatur als Ziel fuer {card.template.name}."
@@ -853,8 +864,14 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         if creature is None or not is_valid_turn_attack_bonus_target(self, item.controller, creature, item.context):
             self.log(f"{item.source_card.template.name} verpufft, das Ziel ist ungueltig.")
             return False
-        creature.temporary_combat_aw_bonus += item.amount
-        self.log(f"{creature.name} erhaelt fuer diesen Kampf +{item.amount} AW.")
+        creature.temporary_combat_aw_bonus += item.source_card.template.combat_aw_bonus
+        creature.temporary_combat_sw_bonus += item.source_card.template.combat_sw_bonus
+        parts = []
+        if item.source_card.template.combat_aw_bonus:
+            parts.append(f"+{item.source_card.template.combat_aw_bonus} AW")
+        if item.source_card.template.combat_sw_bonus:
+            parts.append(f"+{item.source_card.template.combat_sw_bonus} SW")
+        self.log(f"{creature.name} erhaelt fuer diesen Kampf {' und '.join(parts)}.")
         return False
     if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
         attackers = get_current_attacker_creatures(self, item.controller, item.context)
@@ -862,8 +879,14 @@ def resolve_stack_item(self, item: StackItem) -> bool:
             self.log(f"{item.source_card.template.name} verpufft, es gibt keine eigenen Angreifer mehr.")
             return False
         for creature in attackers:
-            creature.temporary_combat_aw_bonus += item.amount
-        self.log(f"Eigene Angreifer erhalten fuer diesen Kampf +{item.amount} AW.")
+            creature.temporary_combat_aw_bonus += item.source_card.template.combat_aw_bonus
+            creature.temporary_combat_sw_bonus += item.source_card.template.combat_sw_bonus
+        parts = []
+        if item.source_card.template.combat_aw_bonus:
+            parts.append(f"+{item.source_card.template.combat_aw_bonus} AW")
+        if item.source_card.template.combat_sw_bonus:
+            parts.append(f"+{item.source_card.template.combat_sw_bonus} SW")
+        self.log(f"Eigene Angreifer erhalten fuer diesen Kampf {' und '.join(parts)}.")
         return False
     if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         creature = resolve_target_creature(self, item.targets[0] if item.targets else None)

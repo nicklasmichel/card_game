@@ -45,7 +45,8 @@ AIR_SPELLS = [
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
         target_mode=SpellTargetMode.NONE,
         spell_amount=1,
-        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +1 AW.",
+        combat_sw_bonus=1,
+        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +1 SW.",
     ),
     CardTemplate(
         template_id="air_spell_sturmjagd",
@@ -60,6 +61,7 @@ AIR_SPELLS = [
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
         target_mode=SpellTargetMode.NONE,
         spell_amount=2,
-        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +2 AW.",
+        combat_sw_bonus=2,
+        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +2 SW.",
     ),
 ]

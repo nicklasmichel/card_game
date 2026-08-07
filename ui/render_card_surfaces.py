@@ -3,7 +3,7 @@ from __future__ import annotations
 import pygame
 
 from core.models import CardCost, Element
-from ui.render_helpers import accent_light, blit_text_with_shadow, get_element_symbol_key
+from ui.render_helpers import accent_light, blit_text_with_shadow
 from ui.style import (
     CARD_BADGE_LIGHT,
     CARD_BORDER,
@@ -115,7 +115,7 @@ def build_full_art_card_surface(
     stat_entries: list[tuple[str, str, tuple[int, int, int]]] = []
     if stats is not None:
         aw_text, vw_text, lw_text, sw_text = stats
-        lw_text_color = (255, 142, 142) if lw_text.startswith("0/") else (255, 255, 255)
+        lw_text_color = (255, 142, 142) if lw_text == "0" else (255, 255, 255)
         stat_entries = [
             ("AW", aw_text, (255, 255, 255)),
             ("VW", vw_text, (255, 255, 255)),
@@ -125,7 +125,10 @@ def build_full_art_card_surface(
     header_y = max(s(4), int(self.card_height * 0.02))
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
     show_zero_cost = cost_value.resources == 0
-    cost_text = str(cost_value.resources) if cost_value.resources > 0 or show_zero_cost else ""
+    if cost_value.recycle > 0:
+        cost_text = f"{cost_value.resources}/{cost_value.recycle}"
+    else:
+        cost_text = str(cost_value.resources) if cost_value.resources > 0 or show_zero_cost else ""
     cost_width = number_font.size(cost_text)[0] if cost_text else 0
     cost_x = self.card_width - s(8) - cost_width
     title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
@@ -160,18 +163,6 @@ def build_full_art_card_surface(
             value_surface = value_font.render(value, True, color)
             base.blit(label_surface, label_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(8))))
             base.blit(value_surface, value_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(25))))
-    recycle_icon_gap = 0
-    recycle_icon_size = s(33)
-    recycle_x = s(6)
-    recycle_y = max(header_y + s(18), keyword_y - s(3))
-    for recycle_index in range(cost_value.recycle):
-        icon_rect = pygame.Rect(
-            recycle_x + recycle_index * (recycle_icon_size + recycle_icon_gap),
-            recycle_y,
-            recycle_icon_size,
-            recycle_icon_size,
-        )
-        self.blit_symbol_image(base, get_element_symbol_key(element), icon_rect)
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
     if tapped:

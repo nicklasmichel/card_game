@@ -38,8 +38,10 @@ def _score_fire_creature(card, snapshot) -> float:
     value = template.sw * 2.2 + template.lw * 1.35 + template.aw * 0.65 + template.vw * 0.45
     if template.has_ability(Ability.TRAMPLE):
         value += 1.8 + snapshot.enemy_creatures * 0.35
-    if getattr(template, "must_attack_each_turn", False):
-        value -= 1.0 if snapshot.expected_enemy_damage >= 4 else 0.2
+    if template.has_ability(Ability.ENRAGED):
+        value += 1.2 + snapshot.enemy_creatures * 0.2
+        if template.has_ability(Ability.TRAMPLE):
+            value += 1.0
     if template.resource_cost >= 4:
         value += 1.6
     if snapshot.enemy_flyers > 0 and template.vw >= 3:
@@ -103,10 +105,10 @@ def _choose_attackers(ai, player, enemy, engine):
     chosen = []
     blockers = [creature for creature in enemy.battlefield if creature.current_hp > 0 and creature.is_ready() and not creature.cannot_block]
     for creature in ready:
-        if creature.must_attack_each_turn:
+        if not blockers:
             chosen.append(creature)
             continue
-        if not blockers:
+        if creature.has_ability(Ability.ENRAGED):
             chosen.append(creature)
             continue
         if creature.has_ability(Ability.TRAMPLE) and creature.sw >= min((blocker.current_hp for blocker in blockers), default=99):
@@ -129,9 +131,7 @@ def _build_attack_candidate(ai, player, enemy, engine, reserved_resources: int):
             direct_damage += engine.get_creature_damage_value(creature)
             continue
         if creature.has_ability(Ability.TRAMPLE):
-            smallest_vw = min((engine.get_creature_defense_value(blocker) for blocker in blockers), default=0)
-            expected_margin = max(0.0, engine.get_creature_attack_value(creature) * 3.5 - smallest_vw * 3.5)
-            direct_damage += int(expected_margin // 6)
+            direct_damage += max((max(0, engine.get_creature_damage_value(creature) - blocker.current_hp) for blocker in blockers), default=0)
         enemy_losses += sum(1 for blocker in blockers if blocker.current_hp <= engine.get_creature_damage_value(creature))
     counter = ai.assessment.estimate_enemy_counterattack(ai, player, enemy, attacking_ids={creature.unit_id for creature in attackers})
     return AttackCandidate(

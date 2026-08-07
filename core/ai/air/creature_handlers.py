@@ -51,43 +51,43 @@ class GenericAirCreatureHandler:
 
 SPECIALIZED_AIR_CREATURE_HANDLERS: tuple[AirCreatureHandler, ...] = (
     GenericAirCreatureHandler(
-        template_id="air_creature_sturmschwinge",
-        guideline="Kleiner Flieger mit Recycle 1. Wertvoll fuer den dritten Angreifer, breite Angriffe und zuverlaessigen Druck durch die Luft.",
-    ),
-    GenericAirCreatureHandler(
-        template_id="air_creature_sturmgeist",
-        guideline="Tempo-Schnellangreifer mit Recycle 2. Nur stark, wenn der Sofortangriff den Recyclepreis rechtfertigt.",
-    ),
-    GenericAirCreatureHandler(
-        template_id="air_creature_wolkenschwinge",
-        guideline="Effizienter Flieger auf eins. Besser in Rennsituationen und gegen Gegner mit wenig Flugabwehr.",
-    ),
-    GenericAirCreatureHandler(
-        template_id="air_creature_wolkengeist",
-        guideline="Effizienter Schnell-Angreifer auf eins. Besser, wenn sofort Druck oder der dritte Angreifer entsteht.",
-    ),
-    GenericAirCreatureHandler(
         template_id="air_creature_windschwinge",
-        guideline="Stabiler Mittelkurven-Flieger. Gut fuer wiederholbaren, schwer blockbaren Druck.",
+        guideline="Kleiner Flieger mit hohem Recyclepreis. Gut fuer fruehen Luftdruck, aber nur sinnvoll, wenn der Ressourceneinsatz den Schaden rechtfertigt.",
+    ),
+    GenericAirCreatureHandler(
+        template_id="air_creature_sturmschwinge",
+        guideline="Mittlerer Flieger mit Recycle 2. Stark in Rennsituationen und fuer die dritte Angreifer-Kreatur, aber langfristig teuer.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_windgeist",
-        guideline="Offensiver Mittelkurven-Schnellangreifer. Gut fuer Tempozuege und breite Angriffe.",
+        guideline="Sofortiger Tempo-Angreifer auf eins. Stark, wenn er direkt Druck macht oder den dritten Angreifer ermoeglicht.",
     ),
     GenericAirCreatureHandler(
-        template_id="air_creature_himmelsschwinge",
-        guideline="Widerstandsfaehiger Flieger. Stark, wenn der Gegner wenig fliegende Blocker hat.",
-    ),
-    GenericAirCreatureHandler(
-        template_id="air_creature_himmelsgeist",
-        guideline="Obere Schnell-Kurve. Stark, wenn sofort Druck oder lethal setups moeglich sind.",
+        template_id="air_creature_sturmgeist",
+        guideline="Schneller Zwei-Mana-Angreifer mit hohem AW und ohne Blockwert. Spielen, wenn der Sofortangriff den offenen Gegenschlag wert ist.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_orkanschwinge",
-        guideline="Grosser Flieger mit Recycle 1. Spielen, wenn langfristiger Luftdruck den Recyclepreis rechtfertigt.",
+        guideline="Starker Flieger mit Recycle 3. Nur spielen, wenn schwer blockbarer SW-3-Druck den langfristigen Ressourcenverlust aufwiegt.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_orkangeist",
-        guideline="Grosser Schnell-Angreifer mit Recycle 1. Vor allem fuer decisive Tempo- und Lethal-Zuege.",
+        guideline="Oberer Schnell-Angreifer mit viel AW, aber geringem SW. Gut fuer Tempozuege, dritte Angreifer und sofortigen Druck.",
+    ),
+    GenericAirCreatureHandler(
+        template_id="air_creature_windwesen",
+        guideline="Flexibler Vanilla-Einser. Einer der wenigen Luft-Blocker und deshalb defensiv wertvoller als die reinen Tempo-Kreaturen.",
+    ),
+    GenericAirCreatureHandler(
+        template_id="air_creature_sturmwesen",
+        guideline="Solider Zwei-Mana-Body mit echter Blockfaehigkeit. Gut zum Stabilisieren und als normale Kurvenkreatur.",
+    ),
+    GenericAirCreatureHandler(
+        template_id="air_creature_orkanwesen",
+        guideline="Groesstes Vanilla-Luftwesen. Wertvoll, wenn Blockfaehigkeit gebraucht wird oder Tempo-Kreaturen nicht reichen.",
+    ),
+    GenericAirCreatureHandler(
+        template_id="air_creature_luftelementar",
+        guideline="All-in-Finisher mit Fliegend, Schnell und SW 3. Sehr stark fuer unmittelbaren Druck oder lethal setups, aber der Recyclepreis ist hoch.",
     ),
 )

@@ -28,8 +28,8 @@ class FireStrategyTests(EngineTestCase):
         self.engine.ai_player.life = 9
         self.engine.ai_player.turns_started = 1
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenhetzer"]),
         ]
 
         self.engine.start_turn()
@@ -42,8 +42,8 @@ class FireStrategyTests(EngineTestCase):
         self.engine.ai_player.life = 10
         self.engine.ai_player.turns_started = 1
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenhetzer"]),
         ]
 
         self.engine.start_turn()
@@ -59,10 +59,10 @@ class FireStrategyTests(EngineTestCase):
         self.engine.human_player.summoner_key = "air"
         self.engine.active_player_index = 0
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=0)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -90,7 +90,7 @@ class FireStrategyTests(EngineTestCase):
 
     def test_fire_strategy_detects_stabilize_mode(self) -> None:
         self.engine.ai_player.life = 4
-        threat = self.make_creature("air_creature_himmelsschwinge", owner_id=0, ready=True)
+        threat = self.make_creature("air_creature_orkanschwinge", owner_id=0, ready=True)
         threat.sw = 4
         decision = self.engine.ai._evaluate_fire_strategy(
             self.engine.ai_player,
@@ -118,7 +118,7 @@ class FireStrategyTests(EngineTestCase):
 
     def test_fire_strategy_detects_deploy_threat_mode(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenhetzer"]),
         ]
         decision = self.engine.ai._evaluate_fire_strategy(
             self.engine.ai_player,
@@ -148,7 +148,7 @@ class FireStrategyTests(EngineTestCase):
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_versengen"]),
         ]
-        self.make_creature("air_creature_wolkengeist", owner_id=0, ready=True)
+        self.make_creature("air_creature_windgeist", owner_id=0, ready=True)
         decision = self.engine.ai._evaluate_fire_strategy(
             self.engine.ai_player,
             self.engine,
@@ -162,7 +162,7 @@ class FireStrategyTests(EngineTestCase):
     def test_fire_ai_prefers_smallest_sufficient_burn_spell(self) -> None:
         self.engine.phase = PHASE_REACTION
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
         ]
@@ -193,7 +193,7 @@ class FireStrategyTests(EngineTestCase):
         self.engine.phase = PHASE_REACTION
         self.engine.ai_player.life = 3
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
         self.engine.ai_player.hand = [
@@ -219,3 +219,4 @@ class FireStrategyTests(EngineTestCase):
         self.assertTrue(prepared)
         self.assertEqual(self.engine.pending_ai_action["kind"], "cast_spell")
         self.assertEqual(self.engine.pending_ai_action["card_id"], self.engine.ai_player.hand[1].instance_id)
+

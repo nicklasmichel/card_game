@@ -342,9 +342,6 @@ class TurnPlanner:
                     if best_extension is not None:
                         return best_extension[1]
                 return chosen
-        forced_attackers = [creature for creature in creatures if creature.must_attack_each_turn and creature.is_ready()]
-        if forced_attackers:
-            return forced_attackers
         return []
 
     def choose_resource_card_for_main_phase(self, ai, player: PlayerState, engine, phase: str) -> Optional[CardInstance]:
@@ -1496,8 +1493,6 @@ class TurnPlanner:
             value += 1.0
         if template.return_to_deck_end_of_turn:
             value += 0.7
-        if template.must_attack_each_turn:
-            value -= 0.3
         if template.cannot_block:
             value -= 0.8
         if template.recycle_cost > 0:

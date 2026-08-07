@@ -436,12 +436,23 @@ class EffectEvaluatorComponent:
             blocker_id = engine.block_assignments.get(attacker.unit_id)
             blockers = [engine.get_unit_by_id(blocker_id)] if blocker_id is not None and engine.get_unit_by_id(blocker_id) is not None else []
             current_aw = engine.get_creature_attack_value(attacker)
-            boosted_aw = current_aw + card.template.spell_amount
+            boosted_aw = current_aw + card.template.combat_aw_bonus
+            current_sw = engine.get_creature_damage_value(attacker)
+            boosted_sw = current_sw + card.template.combat_sw_bonus
             if not blockers and attacker.unit_id not in engine.blocked_attackers:
-                direct_gain += 0
+                direct_gain += card.template.combat_sw_bonus
             for blocker in blockers:
-                if current_aw < blocker.current_hp <= boosted_aw:
+                current_attack_sum = current_aw * 3.5
+                boosted_attack_sum = boosted_aw * 3.5
+                defense_sum = engine.get_creature_defense_value(blocker) * 3.5
+                if current_attack_sum <= defense_sum < boosted_attack_sum:
                     kill_gain += ai._air_creature_board_value(blocker) * 0.45 + 1.2
+                if current_sw < blocker.current_hp <= boosted_sw:
+                    kill_gain += ai._air_creature_board_value(blocker) * 0.75 + 1.5
+                if attacker.has_ability(Ability.TRAMPLE):
+                    current_overflow = max(0, current_sw - blocker.current_hp)
+                    boosted_overflow = max(0, boosted_sw - blocker.current_hp)
+                    direct_gain += max(0, boosted_overflow - current_overflow) * 0.6
         base_damage = sum(engine.get_creature_damage_value(attacker) for attacker in attackers if not engine.block_assignments.get(attacker.unit_id))
         boosted_damage = base_damage + direct_gain
         is_lethal = boosted_damage >= enemy.life and base_damage < enemy.life
@@ -450,18 +461,18 @@ class EffectEvaluatorComponent:
             score += 1.2 * strategy.weights.third_attacker
         if is_lethal:
             score += 8.0 * strategy.weights.lethal
-        if card.template.spell_amount >= 2:
+        if card.template.combat_sw_bonus >= 2:
             plus_one = self.evaluate_global_attack_bonus_reaction_plan(
                 ai,
                 player,
                 engine,
-                CardInstance(-999, type("TempTemplate", (), {"spell_amount": 1, "resource_cost": 1})()),
+                CardInstance(-999, type("TempTemplate", (), {"combat_aw_bonus": 0, "combat_sw_bonus": 1, "resource_cost": 1})()),
             )
             if plus_one["is_useful"] and plus_one["is_lethal"] == is_lethal and kill_gain <= 0:
                 score -= 2.4
             elif plus_one["is_lethal"] == is_lethal and plus_one["damage_gain"] >= direct_gain and plus_one["value"] >= score - 1.0:
                 score -= 2.1
-        return {"is_useful": is_lethal or score >= (1.8 if card.template.spell_amount == 1 else 2.8), "value": score, "damage_gain": direct_gain, "is_lethal": is_lethal}
+        return {"is_useful": is_lethal or score >= (1.8 if card.template.combat_sw_bonus == 1 else 2.8), "value": score, "damage_gain": direct_gain, "is_lethal": is_lethal}
 
     def evaluate_jagdwind_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
         comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
@@ -474,7 +485,11 @@ class EffectEvaluatorComponent:
     def evaluate_sturmjagd_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
         comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
         attackers = engine.get_current_attacker_creatures(player, engine.reaction_context)
-        boosted_damage = sum(engine.get_creature_damage_value(creature) for creature in attackers if not engine.block_assignments.get(creature.unit_id))
+        boosted_damage = sum(
+            engine.get_creature_damage_value(creature) + card.template.combat_sw_bonus
+            for creature in attackers
+            if not engine.block_assignments.get(creature.unit_id)
+        )
         return {
             "is_useful": comparison["is_useful"],
             "value": comparison["value"],

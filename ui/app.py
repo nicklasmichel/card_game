@@ -49,6 +49,7 @@ from ui.card_rendering import (
     draw_summoner_footer,
     draw_summoner_life_circle,
     fit_text,
+    get_card_preview_ability_details,
     get_display_creature_stats,
     get_display_template_stats,
     get_ability_names,
@@ -155,6 +156,7 @@ class TcgPrototypeApp:
     fit_text = fit_text
     get_display_creature_stats = get_display_creature_stats
     get_display_template_stats = get_display_template_stats
+    get_card_preview_ability_details = get_card_preview_ability_details
     draw_art_panel = draw_art_panel
     draw_resource_backdrop = draw_resource_backdrop
     build_resource_back_surface = build_resource_back_surface
@@ -282,8 +284,10 @@ class TcgPrototypeApp:
         self.dragged_card_surface: pygame.Surface | None = None
         self.last_rendered_card_surface: pygame.Surface | None = None
         self.last_preview_builder: Callable[[], pygame.Surface] | None = None
+        self.last_preview_info_builder: Callable[[], list[tuple[str, str]]] | None = None
         self.preview_targets: List[Tuple[pygame.Rect, Callable[[], pygame.Surface]]] = []
         self.preview_builder: Callable[[], pygame.Surface] | None = None
+        self.preview_info_builder: Callable[[], list[tuple[str, str]]] | None = None
         self.preview_surface: pygame.Surface | None = None
         self.damage_popups: List[dict] = []
         self.recycle_reveals: List[dict] = []

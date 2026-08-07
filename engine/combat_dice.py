@@ -101,13 +101,14 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
         battle.winner = "blocker"
         target_role = "attacker"
     damage = self.get_creature_damage_value(winner)
+    loser_hp_before_damage = loser.current_hp
     loser.current_hp -= damage
     winner.tapped = True
     loser.tapped = True
     battle.creature_damage = damage
     self.queue_creature_damage_event(target_role, damage, winner.element)
     if battle.winner == "attacker" and attacker.has_ability(Ability.TRAMPLE):
-        battle.trample_damage = max(0, (battle.attack_sum - battle.defense_sum) // 6)
+        battle.trample_damage = max(0, damage - loser_hp_before_damage)
         if battle.trample_damage > 0:
             self.defending_player.life -= battle.trample_damage
             self.queue_player_damage_event(

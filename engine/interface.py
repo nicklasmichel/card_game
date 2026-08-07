@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 from core.models import (
+    Ability,
     ButtonSpec,
     CardType,
     PHASE_DECLARE_ATTACKERS,
@@ -389,12 +390,25 @@ def handle_click(self, area: str, item_id: int) -> None:
             self.toggle_attacker(item_id)
         elif self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
             self.toggle_blocker_assignment(item_id)
+        elif self.phase == PHASE_DECLARE_BLOCKERS and self.active_player.is_human:
+            attacker = self.get_unit_by_id(item_id)
+            if attacker is None or self.get_unit_owner(item_id) != self.active_player:
+                return
+            if item_id not in self.block_assignments or not attacker.has_ability(Ability.ENRAGED):
+                return
+            if self.selected_attack_target_id == item_id:
+                self.selected_attack_target_id = None
+            else:
+                self.selected_attack_target_id = item_id
         return
     if area == "enemy_creatures":
         if self.phase == PHASE_SPELL_TARGETING:
             self.select_spell_target_ref(SpellTargetRef("creature", creature_id=item_id))
             return
         if self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
+            self.toggle_selected_attack_target(item_id)
+            return
+        if self.phase == PHASE_DECLARE_BLOCKERS and self.active_player.is_human:
             self.toggle_selected_attack_target(item_id)
             return
     if area == "enemy_summoner" and self.phase == PHASE_SPELL_TARGETING:
@@ -502,10 +516,16 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_DECLARE_ATTACKERS:
         return "Waehle deine Angreifer."
     if self.phase == PHASE_DECLARE_BLOCKERS:
+        if self.active_player.is_human and self.selected_attack_target_id is not None:
+            attacker = self.get_unit_by_id(self.selected_attack_target_id)
+            if attacker is not None:
+                return f"Wuetend: Waehle einen legalen Blocker fuer {attacker.name} oder klicke die Kreatur erneut zum Abbrechen."
         if self.selected_blocker_id is not None:
             blocker = self.get_unit_by_id(self.selected_blocker_id)
             if blocker is not None:
                 return f"{blocker.name} ist als Blocker ausgewaehlt. Waehle einen Angreifer."
+        if self.active_player.is_human:
+            return "Optional: Waehle fuer Wuetend-Angreifer erzwungene Blocker. Danach weiter."
         return "Waehle fuer jeden Angreifer hoechstens einen Blocker."
     if self.phase == PHASE_REACTION:
         trigger = self.get_reaction_window_title()

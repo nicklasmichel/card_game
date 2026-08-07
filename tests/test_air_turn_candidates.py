@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from core.ai.turn_planner import AIR_MAX_TOTAL_TURN_CANDIDATES
 from core.ai.candidates import TurnPlanCandidate
@@ -15,8 +15,8 @@ class AirTurnCandidateTests(EngineTestCase):
 
     def test_resource_variants_cover_zero_one_and_two_resource_lines(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
         ]
 
@@ -34,9 +34,9 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertTrue(any(len(main_1) + len(main_2) == 2 for main_1, main_2 in variants))
 
     def test_turn_candidates_include_combat_and_second_main_when_attack_is_possible(self) -> None:
-        attacker = self.make_creature("air_creature_wolkengeist", owner_id=1, ready=True)
+        attacker = self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
         ]
 
@@ -55,9 +55,9 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertTrue(any(candidate.main_2 is not None for candidate in candidates))
 
     def test_turn_candidates_capture_main_two_resource_and_follow_up_line(self) -> None:
-        self.make_creature("air_creature_wolkengeist", owner_id=1, ready=True)
+        self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
         ]
@@ -82,17 +82,17 @@ class AirTurnCandidateTests(EngineTestCase):
         )
 
     def test_candidate_limit_is_enforced(self) -> None:
-        self.make_creature("air_creature_wolkengeist", owner_id=1, ready=True)
+        self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_aufwind"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_windruf"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
 
@@ -110,9 +110,9 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertLessEqual(self.engine.ai._last_air_candidate_stats["after_filter"], AIR_MAX_TOTAL_TURN_CANDIDATES)
 
     def test_best_candidate_payload_transfers_main_one_attack_and_main_two_steps(self) -> None:
-        self.make_creature("air_creature_wolkengeist", owner_id=1, ready=True)
+        self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_sturmschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
         ]
@@ -135,7 +135,7 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertIn("end_turn", action_types)
 
     def test_counterattack_estimate_is_present_on_candidates(self) -> None:
-        self.make_creature("air_creature_wolkengeist", owner_id=1, ready=True)
+        self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
         enemy_attacker = self.make_creature("earth_creature_erdgolem", owner_id=0, ready=True)
         enemy_attacker.tapped = False
         enemy_attacker.summoning_sick = False
@@ -156,4 +156,5 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertTrue(candidates)
         self.assertTrue(all(isinstance(candidate, TurnPlanCandidate) for candidate in candidates))
         self.assertTrue(any(candidate.attack.expected_counterattack_damage >= 0 for candidate in candidates))
+
 

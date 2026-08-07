@@ -12,6 +12,7 @@ def draw_hand_card(self, card, x: int, y: int, selected: bool, note: str = "") -
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda card=card, note=note: self.build_preview_hand_card_surface(card, note)
+    self.last_preview_info_builder = lambda card=card: self.get_card_preview_ability_details(card.template)
     self.screen.blit(surface, rect.topleft)
     return rect
 
@@ -21,6 +22,7 @@ def draw_hidden_hand_card(self, card, x: int, y: int) -> pygame.Rect:
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda card=card: self.build_preview_hidden_hand_surface(card)
+    self.last_preview_info_builder = lambda: []
     self.screen.blit(surface, rect.topleft)
     return rect
 
@@ -47,6 +49,7 @@ def draw_resource_card(self, resource, x: int, y: int) -> pygame.Rect:
     rect = pygame.Rect(x, y, width, height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda resource=resource: self.build_preview_resource_surface(resource)
+    self.last_preview_info_builder = lambda: []
     self.screen.blit(surface, rect.topleft)
     return rect
 
@@ -80,6 +83,7 @@ def draw_summoner_card(
     self.screen.blit(rendered_surface, rect.topleft)
     self.last_rendered_card_surface = rendered_surface.copy()
     self.last_preview_builder = lambda summoner_key=summoner_key, life=life, think_progress=think_progress: self.build_preview_summoner_surface(summoner_key, life, think_progress)
+    self.last_preview_info_builder = lambda: []
     return rect
 
 
@@ -176,5 +180,6 @@ def draw_creature_card(
     rect = pygame.Rect(x, y, width, height)
     self.last_rendered_card_surface = surface
     self.last_preview_builder = lambda creature=creature, is_human=is_human, extra_line=extra_line, attacking=attacking: self.build_preview_creature_surface(creature, is_human, extra_line, attacking)
+    self.last_preview_info_builder = lambda creature=creature: self.get_card_preview_ability_details(creature)
     self.screen.blit(surface, rect.topleft)
     return rect

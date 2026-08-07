@@ -191,6 +191,29 @@ class CommonAIMixin:
             used_blockers.add(blocker.unit_id)
         return assignments
 
+    def choose_enraged_block_target(
+        self,
+        attacker: BattlefieldCreature,
+        legal_targets: List[BattlefieldCreature],
+        engine,
+    ) -> Optional[BattlefieldCreature]:
+        if not legal_targets:
+            return None
+
+        def score(blocker: BattlefieldCreature) -> tuple[float, float, float, float, float]:
+            attack_sum = expected_w6_sum(engine.get_creature_attack_value(attacker))
+            defense_sum = expected_w6_sum(engine.get_creature_defense_value(blocker))
+            likely_win = attack_sum - defense_sum
+            lethal_value = 1.0 if attacker.sw >= blocker.current_hp else 0.0
+            overflow_value = max(0, attacker.sw - blocker.current_hp) if attacker.has_ability(Ability.TRAMPLE) else 0
+            threat_value = blocker.sw * 1.6 + blocker.current_hp * 0.4 + blocker.aw * 0.2
+            return lethal_value, overflow_value, likely_win, threat_value, -blocker.current_hp
+
+        best = max(legal_targets, key=score)
+        if score(best)[0] <= 0.0 and score(best)[2] < -2.5 and score(best)[3] < 2.5:
+            return None
+        return best
+
     def choose_die_strategy(self) -> type:
         return self.rng.choice(
             [

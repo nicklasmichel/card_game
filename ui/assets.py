@@ -219,17 +219,25 @@ def build_preview_summoner_surface(self, summoner_key: str, life: int, think_pro
 
 
 def handle_preview_start(self, position: tuple[int, int]) -> None:
-    for rect, builder in reversed(self.preview_targets):
+    for target in reversed(self.preview_targets):
+        if len(target) == 3:
+            rect, builder, info_builder = target
+        else:
+            rect, builder = target
+            info_builder = lambda: []
         if rect.collidepoint(position):
             self.preview_builder = builder
+            self.preview_info_builder = info_builder
             self.preview_surface = None
             return
     self.preview_builder = None
+    self.preview_info_builder = None
     self.preview_surface = None
 
 
 def handle_preview_stop(self) -> None:
     self.preview_builder = None
+    self.preview_info_builder = None
     self.preview_surface = None
 
 
@@ -241,18 +249,50 @@ def draw_card_preview_overlay(self) -> None:
     overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
     overlay.fill((10, 12, 16, 170))
     self.screen.blit(overlay, (0, 0))
+    ability_details = self.preview_info_builder() if self.preview_info_builder is not None else []
     width = self.preview_surface.get_width() * 2
     height = self.preview_surface.get_height() * 2
     playfield_width = self.window_width - self.side_panel_width - 30
     max_width = playfield_width - 80
     max_height = self.window_height - 80
-    scale = min(max_width / width, max_height / height, 1.0)
+    info_panel_width = min(420, max(300, int(playfield_width * 0.24))) if ability_details else 0
+    content_gap = 24 if ability_details else 0
+    total_target_width = width + info_panel_width + content_gap
+    scale = min((max_width / max(1, total_target_width)), max_height / height, 1.0)
     preview_size = (max(1, int(width * scale)), max(1, int(height * scale)))
     scaled = pygame.transform.smoothscale(self.preview_surface, preview_size)
-    playfield_center_x = 10 + playfield_width // 2
-    rect = scaled.get_rect(center=(playfield_center_x, self.window_height // 2))
+    scaled_info_width = int(info_panel_width * scale) if ability_details else 0
+    total_scaled_width = preview_size[0] + scaled_info_width + (int(content_gap * scale) if ability_details else 0)
+    content_left = 10 + (playfield_width - total_scaled_width) // 2
+    rect = scaled.get_rect(midleft=(content_left, self.window_height // 2))
     self.screen.blit(scaled, rect.topleft)
     pygame.draw.rect(self.screen, CARD_BORDER, rect, 3, border_radius=10)
+    if ability_details:
+        title_font = pygame.font.SysFont("arial", max(18, int(self.font.get_height() * scale) + 2), bold=True)
+        body_font = pygame.font.SysFont("arial", max(14, int(self.small_font.get_height() * scale) + 4))
+        heading_font = pygame.font.SysFont("arial", max(15, int(self.small_font.get_height() * scale) + 5), bold=True)
+        gap = max(12, int(14 * scale))
+        panel_rect = pygame.Rect(
+            rect.right + max(12, int(content_gap * scale) - 8),
+            rect.y,
+            scaled_info_width,
+            rect.height,
+        )
+        pygame.draw.rect(self.screen, (52, 58, 68), panel_rect, border_radius=10)
+        pygame.draw.rect(self.screen, CARD_BORDER, panel_rect, 2, border_radius=10)
+        title_surface = title_font.render("Faehigkeiten", True, (240, 240, 240))
+        self.screen.blit(title_surface, (panel_rect.x + gap, panel_rect.y + gap))
+        current_y = panel_rect.y + gap + title_surface.get_height() + gap
+        max_text_width = panel_rect.width - gap * 2
+        for ability_name, description in ability_details:
+            name_surface = heading_font.render(ability_name, True, (244, 239, 228))
+            self.screen.blit(name_surface, (panel_rect.x + gap, current_y))
+            current_y += name_surface.get_height() + max(6, int(6 * scale))
+            for line in self.wrap_text(body_font, description, max_text_width):
+                line_surface = body_font.render(line, True, (240, 240, 240))
+                self.screen.blit(line_surface, (panel_rect.x + gap, current_y))
+                current_y += line_surface.get_height() + max(2, int(2 * scale))
+            current_y += gap
 
 
 def build_recycle_reveal_surfaces(self, template_ids: list[str]) -> list[pygame.Surface]:

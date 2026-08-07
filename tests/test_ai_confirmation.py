@@ -17,11 +17,11 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
         ]
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -43,15 +43,15 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_aufwind"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
         ]
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -72,7 +72,7 @@ class AiConfirmationTests(EngineTestCase):
         attacker.tapped = False
         attacker.summoning_sick = False
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -87,10 +87,10 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
 
         self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -111,33 +111,33 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand_cards_played_this_turn = 2
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
 
         self.engine.prepare_ai_turn_action()
         self.engine.execute_prepared_ai_action()
-        self.assertNotIn("Gegner zieht 1 Karte durch den BeschwÃ¶rer.", self.engine.log_messages)
+        self.assertNotIn("Gegner zieht 1 Karte durch den BeschwÃƒÂ¶rer.", self.engine.log_messages)
         self.engine.prepare_ai_turn_action()
         self.engine.execute_prepared_ai_action()
 
-        self.assertIn("Gegner zieht 1 Karte durch den BeschwÃ¶rer.", self.engine.log_messages)
+        self.assertIn("Gegner zieht 1 Karte durch den BeschwÃƒÂ¶rer.", self.engine.log_messages)
 
     def test_ai_summoning_phase_waits_for_confirmation(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -162,7 +162,7 @@ class AiConfirmationTests(EngineTestCase):
             self.make_creature("air_creature_windschwinge", owner_id=1, ready=False),
         ]
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -239,15 +239,15 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_aufwind"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
         ]
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -271,10 +271,10 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=1)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=1)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=1)
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -294,9 +294,9 @@ class AiConfirmationTests(EngineTestCase):
     def test_ai_prefers_safe_third_flier_for_summoner_passive_draw(self) -> None:
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.summoner_key = "air"
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=1)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=1)
-        safe_flier = self.make_creature("air_creature_himmelsschwinge", owner_id=1)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)
+        safe_flier = self.make_creature("air_creature_orkanschwinge", owner_id=1)
         self.make_creature("earth_creature_felsensoldat", owner_id=0)
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -312,10 +312,10 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.life = 5
-        keep_back_blocker = self.make_creature("air_creature_orkanschwinge", owner_id=1)
+        keep_back_blocker = self.make_creature("air_creature_orkanwesen", owner_id=1)
         expendable_attacker = self.make_creature("air_creature_sturmgeist", owner_id=1)
         self.make_creature("air_creature_orkangeist", owner_id=0)
-        self.make_creature("air_creature_himmelsgeist", owner_id=0)
+        self.make_creature("air_creature_orkangeist", owner_id=0)
         self.engine.human_player.life = 20
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -346,9 +346,9 @@ class AiConfirmationTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_wutanfall"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
-        attacker = self.make_creature("fire_creature_glutbestie", owner_id=1)
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=1)
         self.engine.block_assignments = {attacker.unit_id: []}
         self.engine.begin_reaction_window(
             context=ReactionContext(
@@ -389,10 +389,10 @@ class AiConfirmationTests(EngineTestCase):
         verwehung = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_verwehung"])
         self.engine.ai_player.hand = [verwehung]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
-        self.make_creature("air_creature_wolkenschwinge", owner_id=1)
+        self.make_creature("air_creature_windschwinge", owner_id=1)
 
         prepared = self.engine.prepare_ai_turn_action()
 
@@ -407,10 +407,10 @@ class AiConfirmationTests(EngineTestCase):
         verwehung = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_verwehung"])
         self.engine.ai_player.hand = [verwehung]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
         creature = self.make_creature("air_creature_orkangeist", owner_id=1)
@@ -444,10 +444,10 @@ class AiConfirmationTests(EngineTestCase):
         verwehung = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_verwehung"])
         self.engine.ai_player.hand = [verwehung]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
         creature = self.make_creature("air_creature_orkangeist", owner_id=1)
@@ -468,10 +468,10 @@ class AiConfirmationTests(EngineTestCase):
         verwehung = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_verwehung"])
         self.engine.ai_player.hand = [verwehung]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
-        self.make_creature("air_creature_wolkengeist", owner_id=1)
+        self.make_creature("air_creature_windgeist", owner_id=1)
 
         prepared = self.engine.prepare_ai_turn_action()
 
@@ -479,6 +479,7 @@ class AiConfirmationTests(EngineTestCase):
             self.assertNotEqual(self.engine.pending_ai_action.get("card_id"), verwehung.instance_id)
         else:
             self.assertFalse(prepared)
+
 
 
 

@@ -134,11 +134,17 @@ def available_attackers(self, player: PlayerState) -> List[BattlefieldCreature]:
 
 
 def available_blockers(self, player: PlayerState) -> List[BattlefieldCreature]:
-    return [creature for creature in player.battlefield if creature.is_ready() and not getattr(creature, "cannot_block", False)]
+    return [
+        creature
+        for creature in player.battlefield
+        if creature.is_ready()
+        and not getattr(creature, "cannot_block", False)
+        and self.get_creature_defense_value(creature) > 0
+    ]
 
 
 def get_mandatory_attackers(self, player: PlayerState) -> List[BattlefieldCreature]:
-    return [creature for creature in available_attackers(self, player) if getattr(creature, "must_attack_each_turn", False)]
+    return []
 
 
 def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
@@ -312,3 +318,4 @@ def clear_combat_temporary_effects(self) -> None:
     for player in self.players:
         for creature in player.battlefield:
             creature.temporary_combat_aw_bonus = 0
+            creature.temporary_combat_sw_bonus = 0

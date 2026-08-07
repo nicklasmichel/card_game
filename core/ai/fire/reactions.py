@@ -5,22 +5,25 @@ from core.ai.fire.effects import choose_best_damage_target
 from core.models import ReactionTrigger, SpellEffect, SpellTargetRef
 
 
-def _score_attack_bonus(engine, creature, amount: int) -> float:
+def _score_attack_bonus(engine, creature, aw_bonus: int, sw_bonus: int) -> float:
     blocker_id = engine.block_assignments.get(creature.unit_id)
     blocker = engine.get_unit_by_id(blocker_id) if blocker_id is not None else None
     blockers = [blocker] if blocker is not None else []
     current_aw = engine.get_creature_attack_value(creature)
+    current_sw = engine.get_creature_damage_value(creature)
     score = 0.0
     if not blockers and creature.unit_id not in engine.blocked_attackers:
-        score += 0.0
+        score += sw_bonus * 1.6
     for blocker in blockers:
         current_sum = current_aw * 3.5
-        boosted_sum = (current_aw + amount) * 3.5
+        boosted_sum = (current_aw + aw_bonus) * 3.5
         defense_sum = engine.get_creature_defense_value(blocker) * 3.5
         if current_sum <= defense_sum < boosted_sum:
             score += 4.0 + blocker.sw
+        if current_sw < blocker.current_hp <= current_sw + sw_bonus:
+            score += 4.5 + blocker.sw
     if creature.has_ability(Ability.TRAMPLE):
-        score += amount * 0.7
+        score += sw_bonus * 0.7
     return score
 
 
@@ -46,7 +49,7 @@ def choose_fire_reaction_spell(ai, hand, engine):
         elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             targets = engine.get_valid_turn_attack_bonus_targets(engine.ai_player, engine.reaction_context)
             if targets:
-                score = max(_score_attack_bonus(engine, target, card.template.spell_amount) for target in targets)
+                score = max(_score_attack_bonus(engine, target, card.template.combat_aw_bonus, card.template.combat_sw_bonus) for target in targets)
                 score -= card.template.recycle_cost * 1.4
         if score > best_score:
             best_score = score
@@ -65,7 +68,8 @@ def choose_fire_spell_target_ref(ai, player, engine, card, pending):
         chosen = max(
             targets,
             key=lambda creature: (
-                engine.get_creature_attack_value(creature) + (3 if creature.has_ability(Ability.TRAMPLE) else 0),
+                engine.get_creature_attack_value(creature) + card.template.combat_aw_bonus,
+                engine.get_creature_damage_value(creature) + card.template.combat_sw_bonus + (creature.sw if creature.has_ability(Ability.TRAMPLE) else 0),
                 creature.current_hp,
             ),
         )

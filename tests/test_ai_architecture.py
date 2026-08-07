@@ -139,16 +139,16 @@ class AiArchitectureTests(EngineTestCase):
 
     def test_air_creature_registry_exposes_final_air_creature_handlers(self) -> None:
         for template_id in (
-            "air_creature_sturmgeist",
-            "air_creature_sturmschwinge",
-            "air_creature_wolkengeist",
-            "air_creature_wolkenschwinge",
-            "air_creature_windgeist",
             "air_creature_windschwinge",
-            "air_creature_himmelsgeist",
-            "air_creature_himmelsschwinge",
-            "air_creature_orkangeist",
+            "air_creature_sturmschwinge",
             "air_creature_orkanschwinge",
+            "air_creature_windgeist",
+            "air_creature_sturmgeist",
+            "air_creature_orkangeist",
+            "air_creature_windwesen",
+            "air_creature_sturmwesen",
+            "air_creature_orkanwesen",
+            "air_creature_luftelementar",
         ):
             with self.subTest(template_id=template_id):
                 self.assertIsNotNone(get_air_creature_handler(template_id))
@@ -156,7 +156,7 @@ class AiArchitectureTests(EngineTestCase):
     def test_build_ai_context_exposes_visible_state_only(self) -> None:
         self.engine.phase = "summoning"
         self.engine.creatures_died_this_turn = 3
-        wolkenschwinge_resource = self.make_resource("air_creature_wolkenschwinge")
+        wolkenschwinge_resource = self.make_resource("air_creature_windschwinge")
         wolkenschwinge_resource.tapped = True
         self.engine.ai_player.resources = [wolkenschwinge_resource]
 

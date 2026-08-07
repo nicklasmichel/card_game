@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from core.ai.strategies.air import (
     AIR_MODE_BUILD_SWARM,
@@ -52,8 +52,8 @@ class AirStrategyTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_himmelswende"]),
         ]
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
 
@@ -68,7 +68,7 @@ class AirStrategyTests(EngineTestCase):
         ]
         self.engine.ai_player.discard_pile = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_himmelsschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"]),
         ]
 
         decision = self.engine.ai._evaluate_air_strategy(self.engine.ai_player, self.engine)
@@ -78,7 +78,7 @@ class AirStrategyTests(EngineTestCase):
 
     def test_strategy_selects_build_swarm_for_small_board_and_creature_hand(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
         ]
 
@@ -89,9 +89,9 @@ class AirStrategyTests(EngineTestCase):
 
     def test_strategy_defaults_to_pressure(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
-        attacker_one = self.make_creature("air_creature_wolkengeist", owner_id=1)
+        attacker_one = self.make_creature("air_creature_windgeist", owner_id=1)
         attacker_two = self.make_creature("air_creature_windschwinge", owner_id=1)
         attacker_one.tapped = False
         attacker_one.summoning_sick = False
@@ -110,7 +110,7 @@ class AirStrategyTests(EngineTestCase):
 
         self.setUp()
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
         ]
         build_swarm = self.engine.ai._evaluate_air_strategy(self.engine.ai_player, self.engine)
@@ -120,10 +120,10 @@ class AirStrategyTests(EngineTestCase):
 
     def test_new_air_turn_plan_stores_strategy_mode_and_goal(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
 
         self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -136,10 +136,10 @@ class AirStrategyTests(EngineTestCase):
 
     def test_strategy_mode_change_invalidates_existing_plan(self) -> None:
         self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
         ]
         self.engine.ai_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
         ]
 
         self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -154,4 +154,5 @@ class AirStrategyTests(EngineTestCase):
         self.assertEqual(self.engine.ai._last_turn_plan.invalid_reason_codes, ("strategy_mode_changed",))
         self.assertIsNotNone(self.engine.ai._get_active_turn_plan())
         self.assertNotEqual(self.engine.ai._get_active_turn_plan().plan_id, original_plan.plan_id)
+
 

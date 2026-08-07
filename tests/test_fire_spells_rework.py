@@ -15,10 +15,10 @@ class FireSpellReworkTests(EngineTestCase):
 
     def give_resources(self, owner_id: int, count: int, *, tapped: bool = False) -> None:
         pool = [
-            "fire_creature_glutbestie",
+            "fire_creature_gluthetzer",
             "water_creature_wassertropfen",
             "earth_creature_steinkobold",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ]
         resources = [self.make_resource(pool[index % len(pool)]) for index in range(count)]
         for resource in resources:
@@ -47,26 +47,34 @@ class FireSpellReworkTests(EngineTestCase):
 
     def test_fire_spell_cards_match_final_table(self) -> None:
         expected = {
-            "fire_spell_wutanfall": ("Wutanfall", 0, 1, SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, 3),
-            "fire_spell_raserei": ("Raserei", 0, 2, SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, 6),
+            "fire_spell_wutanfall": ("Wutanfall", 0, 1, SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, 1, 2, 2),
+            "fire_spell_raserei": ("Raserei", 0, 2, SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN, 1, 4, 4),
             "fire_spell_versengen": ("Versengen", 1, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 1),
             "fire_spell_verbrennen": ("Verbrennen", 2, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 2),
             "fire_spell_verkohlen": ("Verkohlen", 3, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 3),
             "fire_spell_verzehren": ("Verzehren", 4, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 4),
         }
-        for template_id, (name, resources, recycle, effect, amount) in expected.items():
+        for template_id, values in expected.items():
             template = self.engine.templates[template_id]
+            if template_id in {"fire_spell_wutanfall", "fire_spell_raserei"}:
+                name, resources, recycle, effect, amount, aw_bonus, sw_bonus = values
+            else:
+                name, resources, recycle, effect, amount = values
+                aw_bonus = 0
+                sw_bonus = 0
             self.assertEqual(template.name, name)
             self.assertEqual(template.cost.resources, resources)
             self.assertEqual(template.cost.recycle, recycle)
             self.assertEqual(template.spell_effect, effect)
             self.assertEqual(template.spell_amount, amount)
             self.assertEqual(template.spell_timing, SpellTiming.COMBAT)
+            self.assertEqual(getattr(template, "combat_aw_bonus", 0), aw_bonus)
+            self.assertEqual(getattr(template, "combat_sw_bonus", 0), sw_bonus)
 
     def test_wutanfall_targets_only_own_current_attacker(self) -> None:
         spell = self.give_card("fire_spell_wutanfall")
         self.give_resources(0, 1, tapped=True)
-        attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         own_non_attacker = self.make_creature("fire_creature_glutbrecher", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
         self.open_attack_bonus_window(attacker)
@@ -80,10 +88,10 @@ class FireSpellReworkTests(EngineTestCase):
         self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=attacker.unit_id))
         self.assertEqual(len(self.engine.pending_spell_cast.selected_targets), 1)
 
-    def test_wutanfall_adds_aw_but_not_direct_damage(self) -> None:
+    def test_wutanfall_adds_aw_and_sw_for_direct_damage(self) -> None:
         spell = self.give_card("fire_spell_wutanfall")
         self.give_resources(0, 1, tapped=True)
-        attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         self.open_attack_bonus_window(attacker)
 
         self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
@@ -92,25 +100,28 @@ class FireSpellReworkTests(EngineTestCase):
         self.assertTrue(self.engine.confirm_pending_spell_cast())
         self.engine.resolve_spell_stack_to(0, None)
 
-        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 3)
+        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 2)
+        self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw + 2)
         self.engine.ai_player.life = 20
         self.engine._apply_pending_direct_attack(
             type("Pending", (), {
                 "attacker_id": attacker.unit_id,
                 "attacker_owner": 0,
                 "defending_player_id": 1,
-                "base_damage": attacker.sw,
+                "base_damage": self.engine.get_creature_damage_value(attacker),
             })()
         )
-        self.assertEqual(self.engine.ai_player.life, 20 - attacker.sw)
+        self.assertEqual(self.engine.ai_player.life, 20 - (attacker.sw + 2))
 
     def test_bonus_ends_after_turn(self) -> None:
-        attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         attacker.temporary_combat_aw_bonus = 6
+        attacker.temporary_combat_sw_bonus = 4
 
         self.engine.clear_combat_temporary_effects()
 
         self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw)
+        self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw)
 
     def test_damage_spells_still_target_creatures(self) -> None:
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
@@ -142,3 +153,4 @@ class FireSpellReworkTests(EngineTestCase):
         ):
             self.assertEqual(decklist.get(template_id), 2)
         self.assertEqual(sum(decklist.values()), 40)
+

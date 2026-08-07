@@ -94,13 +94,13 @@ def draw_combat_links(self) -> None:
 
     attacker_ids = self.engine.selected_attackers or list(self.engine.block_assignments.keys())
     for attacker_id in attacker_ids:
-        blocker_ids = self.engine.block_assignments.get(attacker_id, [])
+        blocker_id = self.engine.block_assignments.get(attacker_id)
         attacker_rect = enemy_positions.get(attacker_id) or player_positions.get(attacker_id)
         if attacker_rect is None:
             continue
 
         attacker_selected = attacker_id == self.engine.selected_attack_target_id
-        if not blocker_ids:
+        if blocker_id is None:
             summoner_color = HIGHLIGHT if attacker_selected else (206, 186, 96)
             self.draw_polyline(
                 start=(
@@ -120,19 +120,18 @@ def draw_combat_links(self) -> None:
                 width=3,
             )
             continue
-        for blocker_id in blocker_ids:
-            blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
-            if blocker_rect is None:
-                continue
-            blocker_selected = blocker_id == self.engine.selected_blocker_id
-            blocker_color = HIGHLIGHT if attacker_selected else (102, 188, 112)
-            self.draw_polyline(
-                start=(attacker_rect.centerx, attacker_rect.bottom if attacker_rect.centery < blocker_rect.centery else attacker_rect.top),
-                end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > attacker_rect.centery else blocker_rect.bottom),
-                color=blocker_color,
-                via_y=(attacker_rect.bottom + blocker_rect.top) // 2 if attacker_rect.centery < blocker_rect.centery else (attacker_rect.top + blocker_rect.bottom) // 2,
-                width=3 if blocker_selected else 2,
-            )
+        blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
+        if blocker_rect is None:
+            continue
+        blocker_selected = blocker_id == self.engine.selected_blocker_id
+        blocker_color = HIGHLIGHT if attacker_selected else (102, 188, 112)
+        self.draw_polyline(
+            start=(attacker_rect.centerx, attacker_rect.bottom if attacker_rect.centery < blocker_rect.centery else attacker_rect.top),
+            end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > attacker_rect.centery else blocker_rect.bottom),
+            color=blocker_color,
+            via_y=(attacker_rect.bottom + blocker_rect.top) // 2 if attacker_rect.centery < blocker_rect.centery else (attacker_rect.top + blocker_rect.bottom) // 2,
+            width=3 if blocker_selected else 2,
+        )
 
 
 def get_creature_screen_positions(

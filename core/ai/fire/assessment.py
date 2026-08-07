@@ -72,8 +72,8 @@ def _estimate_attack_damage(player: PlayerState, enemy: PlayerState) -> int:
             damage += creature.sw
             continue
         if creature.has_ability(Ability.TRAMPLE):
-            expected_margin = max(0.0, creature.aw * 3.5 - min((blocker.vw * 3.5 for blocker in blockers), default=0.0))
-            damage += int(expected_margin // 6)
+            best_overflow = max((max(0, creature.sw - blocker.current_hp) for blocker in blockers), default=0)
+            damage += best_overflow
     return damage
 
 
@@ -134,7 +134,7 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
         enemy_creatures=len(enemy.battlefield),
         enemy_flyers=enemy_flyers,
         ready_attackers=len(own_ready),
-        enraged_creatures=sum(1 for creature in player.battlefield if creature.must_attack_each_turn),
+        enraged_creatures=sum(1 for creature in player.battlefield if creature.has_ability(Ability.ENRAGED)),
         trample_creatures=sum(1 for creature in player.battlefield if creature.has_ability(Ability.TRAMPLE)),
         playable_threats=len(playable_threats),
         expected_enemy_damage=expected_enemy_damage,

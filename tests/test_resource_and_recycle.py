@@ -10,13 +10,13 @@ class ResourceAndRecycleTests(EngineTestCase):
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobestie"])
         self.engine.human_player.hand = [card]
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         ]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("water_creature_flusskrieger"),
             self.make_resource("earth_creature_felsensoldat"),
         ]
@@ -43,10 +43,10 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(self.engine.pending_visual_events[-1]["type"], "recycle_reveal")
 
     def test_recycle_play_requires_enough_total_resources(self) -> None:
-        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobrecher"])
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_hoellenbestie"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
         ]
         self.engine.phase = PHASE_MAIN_1
@@ -57,7 +57,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
 
     def test_human_can_play_two_resources_in_resource_phase(self) -> None:
-        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
         self.engine.human_player.hand = [first, second, third]
@@ -79,13 +79,13 @@ class ResourceAndRecycleTests(EngineTestCase):
 
     def _legacy_test_fourth_hand_card_play_no_longer_triggers_summoner_draw(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
-        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
+        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_infernobestie"),
@@ -104,13 +104,13 @@ class ResourceAndRecycleTests(EngineTestCase):
 
     def _legacy_test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.phase = PHASE_MAIN_1
-        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
-        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
+        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_infernobestie"),
@@ -123,20 +123,20 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.play_hand_card_in_summoning_zone(third.instance_id)
         self.engine.play_hand_card_in_summoning_zone(fourth.instance_id)
 
-        play_index = self.engine.log_messages.index("Spieler spielt Wolkenschwinge (1/1) fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r 1.")
-        passive_index = self.engine.log_messages.index("Spieler zieht 1 Karte durch den BeschwÃ¶rer.")
+        play_index = self.engine.log_messages.index("Spieler spielt Windschwinge (1/1) fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r 1.")
+        passive_index = self.engine.log_messages.index("Spieler zieht 1 Karte durch den BeschwÃƒÂ¶rer.")
 
         self.assertLess(play_index, passive_index)
 
     def _legacy_test_resources_count_toward_summoner_passive(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.phase = PHASE_MAIN_1
-        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+        first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
         third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
-        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
+        fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_infernobestie"),
@@ -155,15 +155,15 @@ class ResourceAndRecycleTests(EngineTestCase):
 
     def _legacy_test_summoner_passive_only_triggers_once_on_fourth_and_fifth_play(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
         ]
         self.engine.phase = PHASE_MAIN_1
         self.engine.human_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
         ]
         self.engine.human_player.resources = [
@@ -186,7 +186,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.hand_cards_played_this_turn = 4
         self.engine.human_player.summoner_passive_draw_used_this_turn = True
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.active_player_index = 0
         self.engine.starting_player_id = 1
@@ -207,7 +207,7 @@ class ResourceAndRecycleTests(EngineTestCase):
 
     def test_active_summoner_draw_is_no_longer_available(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.phase = PHASE_MAIN_1
 
@@ -218,10 +218,10 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
         self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=0)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id]
 
@@ -233,10 +233,10 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_three_attackers_trigger_summoner_draw_before_blockers(self) -> None:
         self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=0)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -250,12 +250,12 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
         self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
         ]
         attackers = [
-            self.make_creature("air_creature_wolkenschwinge", owner_id=0),
-            self.make_creature("air_creature_wolkengeist", owner_id=0),
+            self.make_creature("air_creature_windschwinge", owner_id=0),
+            self.make_creature("air_creature_windgeist", owner_id=0),
             self.make_creature("air_creature_windgeist", owner_id=0),
             self.make_creature("air_creature_windschwinge", owner_id=0),
         ]
@@ -271,7 +271,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.summoner_key = "air"
         self.engine.human_player.summoner_passive_draw_used_this_turn = True
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.active_player_index = 0
         self.engine.starting_player_id = 1
@@ -285,11 +285,11 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_opponent_attack_does_not_trigger_human_summoner_passive(self) -> None:
         self.engine.human_player.summoner_key = "air"
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.active_player_index = 1
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=1)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=1)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=1)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -300,45 +300,52 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
 
-    def test_orkanschwinge_is_payable_with_five_resources(self) -> None:
+    def test_orkanschwinge_is_payable_with_six_resources(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
+            self.make_resource("water_creature_flusskrieger"),
         ]
 
         self.assertTrue(self.engine.can_play_card(self.engine.human_player, card))
-        self.assertTrue(self.engine.human_player.can_pay(CardCost(resources=4, recycle=1)))
+        self.assertTrue(self.engine.human_player.can_pay(CardCost(resources=3, recycle=3)))
 
-    def test_orkanschwinge_leaves_four_resources_after_recycle(self) -> None:
+    def test_orkanschwinge_leaves_three_resources_after_recycle(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
+            self.make_resource("water_creature_flusskrieger"),
         ]
         self.engine.phase = PHASE_MAIN_1
 
-        recycle_ids = [self.engine.human_player.resources[0].resource_id]
-        self.engine.resolve_creature_play(card, recycle_resource_ids=recycle_ids)
+        recycle_ids = [
+            self.engine.human_player.resources[0].resource_id,
+            self.engine.human_player.resources[1].resource_id,
+            self.engine.human_player.resources[2].resource_id,
+        ]
+        played = self.engine.resolve_creature_play(card, recycle_resource_ids=recycle_ids)
 
-        self.assertEqual(len(self.engine.human_player.resources), 4)
+        self.assertTrue(played)
+        self.assertEqual(len(self.engine.human_player.resources), 3)
 
     def test_tapped_resources_can_be_used_for_recycle(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
             self.make_resource("water_creature_flusskrieger"),
         ]
@@ -346,20 +353,24 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources[0].tapped = True
         self.engine.human_player.resources[1].tapped = True
 
-        recycle_ids = [self.engine.human_player.resources[0].resource_id]
+        recycle_ids = [
+            self.engine.human_player.resources[0].resource_id,
+            self.engine.human_player.resources[1].resource_id,
+            self.engine.human_player.resources[2].resource_id,
+        ]
         played = self.engine.resolve_creature_play(card, recycle_resource_ids=recycle_ids)
 
         self.assertTrue(played)
-        self.assertEqual(len(self.engine.human_player.resources), 5)
+        self.assertEqual(len(self.engine.human_player.resources), 3)
 
     def test_recycle_costs_are_not_added_to_normal_play_costs(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"])
         self.engine.human_player.hand = [card]
         self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
+            self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
             self.make_resource("earth_creature_steinkobold"),
-            self.make_resource("air_creature_wolkenschwinge"),
+            self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
         ]
 
@@ -372,7 +383,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.ai_player.turns_started = 1
         self.engine.turn_number = 2
         self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         ]
 
         self.engine.start_turn()
@@ -396,10 +407,10 @@ class AiResourceStrategyTests(EngineTestCase):
 
     def set_ai_resources(self, count: int) -> None:
         pool = [
-            "fire_creature_glutbestie",
+            "fire_creature_gluthetzer",
             "water_creature_wassertropfen",
             "earth_creature_steinkobold",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "fire_creature_glutbrecher",
         ]
         self.engine.ai_player.resources = [self.make_resource(pool[index % len(pool)]) for index in range(count)]
@@ -428,7 +439,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(3)
         self.set_ai_hand([
             "air_creature_windgeist",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "air_spell_verwirbelung",
         ])
 
@@ -438,7 +449,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(2)
         self.set_ai_hand([
             "air_creature_windgeist",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "air_spell_verwirbelung",
             "air_spell_jagdwind",
         ])
@@ -449,8 +460,8 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(0)
         self.set_ai_hand([
             "air_creature_orkanschwinge",
-            "air_creature_wolkenschwinge",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
+            "air_creature_windschwinge",
             "air_ritual_aufwind",
             "air_ritual_sturmruf",
         ])
@@ -460,7 +471,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_ai_avoids_second_resource_with_small_hand(self) -> None:
         self.set_ai_resources(0)
         self.set_ai_hand([
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "air_creature_orkanschwinge",
         ])
 
@@ -469,8 +480,8 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_ai_avoids_unnecessary_resources_above_air_curve(self) -> None:
         self.set_ai_resources(5)
         self.set_ai_hand([
-            "air_creature_wolkenschwinge",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
+            "air_creature_windschwinge",
             "air_ritual_aufwind",
         ])
 
@@ -482,10 +493,10 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_creature_orkanschwinge",
             "air_spell_verwirbelung",
             "air_spell_verwirbelung",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
 
-        self.assertEqual(len(self.choose_resource_ids()), 1)
+        self.assertEqual(len(self.choose_resource_ids()), 0)
 
     def test_ai_prefers_fewer_sacrificed_cards_for_similar_play_value(self) -> None:
         self.set_ai_resources(3)
@@ -500,7 +511,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_currently_needed_creature_is_not_used_as_resource(self) -> None:
         self.set_ai_resources(1)
         self.set_ai_hand([
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "air_ritual_sturmruf",
         ])
 
@@ -509,21 +520,21 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_only_creature_in_hand_is_protected(self) -> None:
         self.set_ai_resources(0)
         self.set_ai_hand([
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
             "air_ritual_himmelswende",
             "air_spell_sturmjagd",
         ])
 
         selected = self.select_resource_ids(1)
 
-        self.assertNotIn("air_creature_wolkenschwinge", selected)
+        self.assertNotIn("air_creature_windschwinge", selected)
 
     def test_redundant_copy_is_preferred_as_resource(self) -> None:
         self.set_ai_resources(2)
         self.set_ai_hand([
             "air_creature_orkanschwinge",
             "air_creature_orkanschwinge",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
 
         self.assertEqual(self.select_resource_ids(1), ["air_creature_orkanschwinge"])
@@ -533,7 +544,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_hand([
             "air_ritual_himmelswende",
             "air_ritual_windruf",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
 
         self.assertEqual(self.select_resource_ids(1), ["air_ritual_himmelswende"])
@@ -543,7 +554,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_hand([
             "air_ritual_sturmruf",
             "air_ritual_windruf",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
 
         self.assertEqual(self.select_resource_ids(1), ["air_ritual_sturmruf"])
@@ -568,7 +579,7 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_creature_orkanschwinge",
             "air_spell_verwirbelung",
             "air_spell_verwirbelung",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
         self.make_creature("air_creature_windschwinge", owner_id=1)
         self.make_creature("air_creature_sturmschwinge", owner_id=1)
@@ -579,13 +590,13 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(3)
         self.set_ai_hand([
             "air_ritual_aufwind",
-            "air_creature_wolkengeist",
             "air_creature_windgeist",
-            "air_creature_himmelsschwinge",
+            "air_creature_windgeist",
+            "air_creature_orkanschwinge",
             "air_ritual_himmelswende",
         ])
         self.make_creature("air_creature_windschwinge", owner_id=0)
-        self.make_creature("air_creature_wolkenschwinge", owner_id=1)
+        self.make_creature("air_creature_windschwinge", owner_id=1)
 
         selected = self.select_resource_ids(1)
 
@@ -605,21 +616,21 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_resources(2)
         self.set_ai_hand([
             "air_ritual_aufwind",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 
         self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_creature_wolkenschwinge")
+        self.assertEqual(chosen.template.template_id, "air_creature_windschwinge")
 
     def test_ai_chooses_aufwind_when_it_enables_an_extra_creature(self) -> None:
         self.set_ai_resources(4)
         self.set_ai_hand([
             "air_ritual_aufwind",
-            "air_creature_wolkengeist",
             "air_creature_windgeist",
-            "air_creature_himmelsschwinge",
+            "air_creature_windgeist",
+            "air_creature_orkanschwinge",
         ])
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
@@ -627,10 +638,10 @@ class AiResourceStrategyTests(EngineTestCase):
         self.assertIsNotNone(chosen)
         self.assertEqual(chosen.template.template_id, "air_ritual_aufwind")
 
-    def test_ai_plays_second_main_one_resource_before_combat_for_recycle_haste(self) -> None:
+    def test_ai_plays_one_resource_before_combat_for_haste_creature(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
-        self.engine.ai_player.resources_played_this_turn = 1
+        self.engine.ai_player.resources_played_this_turn = 0
         self.set_ai_resources(1)
         self.set_ai_hand([
             "air_creature_sturmgeist",
@@ -655,7 +666,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_resource_first_plan_tracks_step_progress(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
-        self.engine.ai_player.resources_played_this_turn = 1
+        self.engine.ai_player.resources_played_this_turn = 0
         self.set_ai_resources(1)
         self.set_ai_hand([
             "air_creature_sturmgeist",
@@ -731,8 +742,8 @@ class AiResourceStrategyTests(EngineTestCase):
         self.engine.ai_player.resources_played_this_turn = 1
         self.set_ai_hand([
             "air_ritual_windruf",
-            "air_creature_himmelsgeist",
-            "air_creature_himmelsschwinge",
+            "air_creature_orkangeist",
+            "air_creature_orkanschwinge",
             "air_creature_windgeist",
         ])
 
@@ -772,7 +783,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.set_ai_hand([
             "air_spell_sturmjagd",
             "air_ritual_himmelswende",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
         ])
         self.make_creature("air_creature_windschwinge", owner_id=1)
 
@@ -785,8 +796,8 @@ class AiResourceStrategyTests(EngineTestCase):
     def test_two_resource_selection_re_evaluates_after_first_pick(self) -> None:
         self.set_ai_resources(0)
         self.set_ai_hand([
-            "air_creature_wolkenschwinge",
-            "air_creature_wolkenschwinge",
+            "air_creature_windschwinge",
+            "air_creature_windschwinge",
             "air_ritual_himmelswende",
             "air_ritual_sturmruf",
         ])
@@ -810,10 +821,10 @@ class AiResourceStrategyTests(EngineTestCase):
 
     def _test_two_attackers_do_not_trigger_summoner_draw(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=0)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id]
 
@@ -824,10 +835,10 @@ class AiResourceStrategyTests(EngineTestCase):
 
     def _test_three_attackers_trigger_summoner_draw_before_blockers(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=0)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=0)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=0)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -841,14 +852,14 @@ class AiResourceStrategyTests(EngineTestCase):
 
     def _test_four_attackers_trigger_summoner_draw_only_once(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
         ]
         attackers = [
-            self.make_creature("air_creature_wolkenschwinge", owner_id=0),
-            self.make_creature("air_creature_wolkengeist", owner_id=0),
+            self.make_creature("air_creature_windschwinge", owner_id=0),
             self.make_creature("air_creature_windgeist", owner_id=0),
-            self.make_creature("air_creature_himmelsschwinge", owner_id=0),
+            self.make_creature("air_creature_windgeist", owner_id=0),
+            self.make_creature("air_creature_orkanschwinge", owner_id=0),
         ]
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [creature.unit_id for creature in attackers]
@@ -861,7 +872,7 @@ class AiResourceStrategyTests(EngineTestCase):
     def _test_summoner_passive_resets_next_own_turn(self) -> None:
         self.engine.human_player.summoner_passive_draw_used_this_turn = True
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.active_player_index = 0
         self.engine.starting_player_id = 1
@@ -874,11 +885,11 @@ class AiResourceStrategyTests(EngineTestCase):
 
     def _test_opponent_attack_does_not_trigger_human_summoner_passive(self) -> None:
         self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"])
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
         self.engine.active_player_index = 1
-        attacker_one = self.make_creature("air_creature_wolkenschwinge", owner_id=1)
-        attacker_two = self.make_creature("air_creature_wolkengeist", owner_id=1)
+        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
+        attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)
         attacker_three = self.make_creature("air_creature_windgeist", owner_id=1)
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker_one.unit_id, attacker_two.unit_id, attacker_three.unit_id]
@@ -887,6 +898,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 0)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
 
 
 
