@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from core.ai.turn_planner import AIR_MAX_TOTAL_TURN_CANDIDATES
 from core.ai.candidates import TurnPlanCandidate
@@ -136,7 +136,7 @@ class AirTurnCandidateTests(EngineTestCase):
 
     def test_counterattack_estimate_is_present_on_candidates(self) -> None:
         self.make_creature("air_creature_windgeist", owner_id=1, ready=True)
-        enemy_attacker = self.make_creature("earth_creature_erdgolem", owner_id=0, ready=True)
+        enemy_attacker = self.make_creature("earth_creature_felsgolem", owner_id=0, ready=True)
         enemy_attacker.tapped = False
         enemy_attacker.summoning_sick = False
         self.engine.ai_player.hand = [
@@ -156,5 +156,6 @@ class AirTurnCandidateTests(EngineTestCase):
         self.assertTrue(candidates)
         self.assertTrue(all(isinstance(candidate, TurnPlanCandidate) for candidate in candidates))
         self.assertTrue(any(candidate.attack.expected_counterattack_damage >= 0 for candidate in candidates))
+
 
 

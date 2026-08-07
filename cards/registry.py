@@ -27,6 +27,7 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_creature_flammenbrecher", 2),
         ("fire_creature_gluthetzer", 2),
         ("fire_creature_flammenhetzer", 2),
+        ("fire_creature_infernowesen", 2),
         ("fire_creature_infernobestie", 2),
         ("fire_creature_hoellenbestie", 2),
         ("fire_ritual_holzvorrat", 2),
@@ -40,7 +41,6 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_spell_versengen", 2),
         ("fire_spell_verbrennen", 2),
         ("fire_spell_verkohlen", 2),
-        ("fire_spell_verzehren", 2),
     ],
     "air": [
         ("air_creature_windschwinge", 2),
@@ -65,14 +65,14 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("air_spell_sturmjagd", 2),
     ],
     "earth": [
-        ("earth_creature_steinkobold", 3),
-        ("earth_creature_felsensoldat", 3),
-        ("earth_creature_erdgolem", 3),
-        ("earth_creature_schildwache", 2),
-        ("earth_creature_bastionshueter", 2),
-        ("earth_creature_granitkrieger", 2),
-        ("earth_creature_bergtroll", 2),
-        ("earth_creature_uralter_koloss", 1),
+        ("earth_creature_steinwesen", 2),
+        ("earth_creature_felswesen", 2),
+        ("earth_creature_steinwaechter", 2),
+        ("earth_creature_granitwaechter", 2),
+        ("earth_creature_felsgolem", 2),
+        ("earth_creature_granitgolem", 2),
+        ("earth_creature_gebirgstitan", 2),
+        ("earth_creature_gebirgskoloss", 2),
     ],
 }
 

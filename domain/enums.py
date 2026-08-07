@@ -13,6 +13,8 @@ class Ability(Enum):
     TRAMPLE = "Trampelnd"
     HASTE = "Schnell"
     FLYING = "Fliegend"
+    VIGILANT = "Wachsam"
+    MAGIC_RESISTANT = "Magieresistent"
 
 
 class CardType(Enum):

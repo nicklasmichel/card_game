@@ -22,5 +22,4 @@ FIRE_CARD_FAMILIES: tuple[FireCardFamily, ...] = (
     FireCardFamily("fire_spell_versengen", "burn", 1),
     FireCardFamily("fire_spell_verbrennen", "burn", 2),
     FireCardFamily("fire_spell_verkohlen", "burn", 3),
-    FireCardFamily("fire_spell_verzehren", "burn", 4),
 )

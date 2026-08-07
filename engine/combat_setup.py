@@ -436,7 +436,8 @@ def _apply_pending_direct_attack(self, pending) -> None:
     if attacker is None or self.get_unit_owner(attacker.unit_id) != self.active_player:
         return
     damage = self.get_creature_damage_value(attacker)
-    attacker.tapped = True
+    if not attacker.has_ability(Ability.VIGILANT):
+        attacker.tapped = True
     self.defending_player.life -= damage
     self.queue_player_damage_event(
         target_player_id=self.defending_player.player_id,

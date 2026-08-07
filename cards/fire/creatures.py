@@ -78,6 +78,16 @@ FIRE_CREATURES = [
         rules_text=ENRAGED_RULES_TEXT,
     ),
     CardTemplate(
+        template_id="fire_creature_infernowesen",
+        name="Infernowesen",
+        cost=CardCost(resources=4, recycle=1),
+        aw=4,
+        vw=4,
+        lw=4,
+        sw=2,
+        element=Element.FIRE,
+    ),
+    CardTemplate(
         template_id="fire_creature_infernobestie",
         name="Infernobestie",
         cost=CardCost(resources=5, recycle=1),

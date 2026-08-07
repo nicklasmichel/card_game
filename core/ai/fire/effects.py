@@ -101,7 +101,11 @@ def score_fire_damage_target(player: PlayerState, enemy: PlayerState, amount: in
 
 def choose_best_damage_target(engine, player: PlayerState, amount: int) -> SpellTargetRef | None:
     enemy = engine.players[1 - player.player_id]
-    creatures = enemy.battlefield + player.battlefield
+    creatures = [
+        creature
+        for creature in enemy.battlefield + player.battlefield
+        if engine.can_target_creature_with_explicit_spell(creature)
+    ]
     if not creatures:
         return None
     best_creature = creatures[0]

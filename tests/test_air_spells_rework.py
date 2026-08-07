@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -24,7 +24,7 @@ class AirSpellReworkTests(EngineTestCase):
         pool = [
             "fire_creature_gluthetzer",
             "water_creature_wassertropfen",
-            "earth_creature_steinkobold",
+            "earth_creature_steinwesen",
             "air_creature_windschwinge",
         ]
         resources = [self.make_resource(pool[index % len(pool)]) for index in range(count)]
@@ -91,7 +91,7 @@ class AirSpellReworkTests(EngineTestCase):
     def test_verwehung_is_playable_in_main_phases_and_not_in_combat_windows(self) -> None:
         spell = self.give_card("air_spell_verwehung")
         self.give_resources(0, 1)
-        target = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        target = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.engine.phase = PHASE_MAIN_1
         self.assertTrue(self.engine.can_play_card(self.engine.human_player, spell))
         self.engine.phase = PHASE_MAIN_2
@@ -125,7 +125,7 @@ class AirSpellReworkTests(EngineTestCase):
     def test_verwehung_returns_any_creature_without_death(self) -> None:
         self.give_resources(0, 1)
         spell = self.give_card("air_spell_verwehung")
-        target = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        target = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.open_main_window(PHASE_MAIN_1, active_player_id=1)
         self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
         self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=target.unit_id))
@@ -134,7 +134,7 @@ class AirSpellReworkTests(EngineTestCase):
 
         self.assertIsNone(self.engine.get_unit_by_id(target.unit_id))
         self.assertEqual(self.engine.creatures_died_this_turn, 0)
-        self.assertTrue(any(card.template.template_id == "earth_creature_felsensoldat" for card in self.engine.ai_player.hand))
+        self.assertTrue(any(card.template.template_id == "earth_creature_felswesen" for card in self.engine.ai_player.hand))
 
     def test_verwirbelung_requires_two_distinct_creatures(self) -> None:
         spell = self.give_card("air_spell_verwirbelung")
@@ -143,7 +143,7 @@ class AirSpellReworkTests(EngineTestCase):
         self.engine.phase = PHASE_MAIN_1
         self.assertFalse(self.engine.can_play_card(self.engine.human_player, spell))
 
-        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        enemy = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.assertTrue(self.engine.can_play_card(self.engine.human_player, spell))
         self.assertTrue(self.engine.begin_spell_cast(spell.instance_id))
         self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=only_target.unit_id))
@@ -283,4 +283,5 @@ class AirSpellReworkTests(EngineTestCase):
 
         self.assertIsNotNone(chosen)
         self.assertEqual(chosen.template.template_id, "air_spell_sturmjagd")
+
 

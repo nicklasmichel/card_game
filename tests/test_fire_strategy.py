@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from core.ai.fire.effects import evaluate_fire_board_wipe
 from core.ai.fire.planning import build_fire_turn_plan_payload
@@ -166,7 +166,7 @@ class FireStrategyTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
         ]
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_verbrennen"]),
@@ -302,7 +302,7 @@ class FireStrategyTests(EngineTestCase):
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=1, ready=True)
         attacker.sw = 3
         attacker.current_hp = 3
-        blocker = self.make_creature("earth_creature_steinkobold", owner_id=0, ready=True)
+        blocker = self.make_creature("earth_creature_steinwesen", owner_id=0, ready=True)
         blocker.current_hp = 2
         self.engine.ai_player.life = 8
         self.engine.human_player.life = 5
@@ -330,7 +330,7 @@ class FireStrategyTests(EngineTestCase):
         attacker.abilities = tuple(set(attacker.abilities) | {Ability.TRAMPLE})
         attacker.sw = 3
         attacker.current_hp = 3
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0, ready=True)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=0, ready=True)
         blocker.current_hp = 4
         self.engine.ai_player.life = 8
         self.engine.human_player.life = 3
@@ -353,7 +353,7 @@ class FireStrategyTests(EngineTestCase):
     def test_fire_ai_penalizes_ritual_that_opens_counter_lethal(self) -> None:
         self.engine.ai_player.life = 5
         self.engine.human_player.life = 8
-        self.make_creature("earth_creature_steinkobold", owner_id=1, ready=True).current_hp = 2
+        self.make_creature("earth_creature_steinwesen", owner_id=1, ready=True).current_hp = 2
         enemy_attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0, ready=True)
         enemy_attacker.sw = 3
         enemy_attacker.current_hp = 3
@@ -362,4 +362,5 @@ class FireStrategyTests(EngineTestCase):
 
         self.assertFalse(result["is_lethal"])
         self.assertLess(result["score"], 0.0)
+
 

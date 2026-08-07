@@ -298,7 +298,11 @@ class EffectEvaluatorComponent:
         if available_resources < card.template.resource_cost or total_resources < card.template.recycle_cost:
             return {"is_useful": False, "value": -4.0, "target_ids": [], "recast_target": False}
         enemy = engine.players[1 - player.player_id]
-        all_targets = list(player.battlefield) + list(enemy.battlefield)
+        all_targets = [
+            creature
+            for creature in [*player.battlefield, *enemy.battlefield]
+            if engine.can_target_creature_with_explicit_spell(creature)
+        ]
         if len(all_targets) < card.template.spell_amount:
             return {"is_useful": False, "value": -4.0, "target_ids": [], "recast_target": False}
         scored = sorted(

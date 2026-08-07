@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from core.ai.plans import TurnPlan
 from core.models import CardCost, CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_FORCED_DISCARD, PHASE_REACTION, PHASE_RECYCLE_PAYMENT, PHASE_MAIN_1, PlayerState, ReactionTrigger
@@ -15,10 +15,10 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("water_creature_flusskrieger"),
-            self.make_resource("earth_creature_felsensoldat"),
+            self.make_resource("earth_creature_felswesen"),
         ]
         self.engine.phase = PHASE_MAIN_1
 
@@ -59,7 +59,7 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_human_can_play_two_resources_in_resource_phase(self) -> None:
         first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
-        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinwesen"])
         self.engine.human_player.hand = [first, second, third]
         self.engine.phase = PHASE_MAIN_1
 
@@ -84,7 +84,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
         first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
-        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinwesen"])
         fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
@@ -109,7 +109,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.phase = PHASE_MAIN_1
         first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
-        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinwesen"])
         fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
@@ -123,8 +123,8 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.play_hand_card_in_summoning_zone(third.instance_id)
         self.engine.play_hand_card_in_summoning_zone(fourth.instance_id)
 
-        play_index = self.engine.log_messages.index("Spieler spielt Windschwinge (1/1) fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r 1.")
-        passive_index = self.engine.log_messages.index("Spieler zieht 1 Karte durch den BeschwÃƒÂ¶rer.")
+        play_index = self.engine.log_messages.index("Spieler spielt Windschwinge (1/1) fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r 1.")
+        passive_index = self.engine.log_messages.index("Spieler zieht 1 Karte durch den BeschwÃƒÆ’Ã‚Â¶rer.")
 
         self.assertLess(play_index, passive_index)
 
@@ -135,7 +135,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.phase = PHASE_MAIN_1
         first = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         second = CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"])
-        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"])
+        third = CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinwesen"])
         fourth = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
         self.engine.human_player.hand = [first, second, third, fourth]
         self.engine.human_player.resources = [
@@ -162,14 +162,14 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinwesen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
         ]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_infernobestie"),
             self.make_resource("water_creature_flusskrieger"),
-            self.make_resource("earth_creature_felsensoldat"),
+            self.make_resource("earth_creature_felswesen"),
         ]
 
         self.engine.play_hand_card_as_resource(self.engine.human_player.hand[0].instance_id)
@@ -308,7 +308,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
             self.make_resource("water_creature_flusskrieger"),
@@ -323,7 +323,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
             self.make_resource("water_creature_flusskrieger"),
@@ -346,7 +346,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
             self.make_resource("water_creature_flusskrieger"),
@@ -371,7 +371,7 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_glutbrecher"),
         ]
@@ -411,7 +411,7 @@ class AiResourceStrategyTests(EngineTestCase):
         pool = [
             "fire_creature_gluthetzer",
             "water_creature_wassertropfen",
-            "earth_creature_steinkobold",
+            "earth_creature_steinwesen",
             "air_creature_windschwinge",
             "fire_creature_glutbrecher",
         ]
@@ -900,6 +900,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 0)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
+
 
 
 

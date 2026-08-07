@@ -66,7 +66,7 @@ class CardTemplate:
         if self.card_type == CardType.CREATURE:
             if self.aw <= 0 or self.vw < 0:
                 raise ValueError(f"{self.template_id} muss positiven AW und nichtnegativen VW besitzen.")
-            if self.element in {Element.AIR, Element.FIRE} and (self.lw is None or self.sw is None):
+            if self.element in {Element.AIR, Element.FIRE, Element.EARTH} and (self.lw is None or self.sw is None):
                 raise ValueError(f"{self.template_id} muss explizite LW- und SW-Werte besitzen.")
             if self.effective_lw <= 0 or self.effective_sw <= 0:
                 raise ValueError(f"{self.template_id} muss positive LW- und SW-Werte besitzen.")

@@ -534,6 +534,9 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
         if creature is None:
             self.log("Diese Kreatur ist nicht mehr im Spiel.")
             return
+        if not can_target_creature_with_explicit_spell(self, creature):
+            self.log("Diese Kreatur kann nicht als Ziel eines Zaubers gewaehlt werden.")
+            return
         remaining_targets = [existing for existing in pending.selected_targets if existing.creature_id != target.creature_id]
         pending.selected_targets = (remaining_targets + [target])[: card.template.spell_amount]
         self.log(self.describe_pending_spell_requirements())
@@ -541,6 +544,10 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
     if card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         if target.target_type != "creature":
             self.log("Dieser Zauber benoetigt eine Kreatur als Ziel.")
+            return
+        creature = self.get_unit_by_id(target.creature_id or -1)
+        if creature is None or not can_target_creature_with_explicit_spell(self, creature):
+            self.log("Diese Kreatur kann nicht als Ziel eines Zaubers gewaehlt werden.")
             return
         pending.selected_targets = [target]
         pending.selected_keyword_ability = None
@@ -576,6 +583,9 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
         if creature is None:
             self.log("Diese Kreatur ist nicht mehr im Spiel.")
             return
+        if not can_target_creature_with_explicit_spell(self, creature):
+            self.log("Diese Kreatur kann nicht als Ziel eines Zaubers gewaehlt werden.")
+            return
         owner = self.get_unit_owner(creature.unit_id)
         if owner is None:
             self.log("Diese Kreatur ist nicht mehr im Spiel.")
@@ -600,8 +610,17 @@ def select_spell_target_ref(self, target: SpellTargetRef) -> None:
         self.log("Dieser Zauber benoetigt eine Kreatur als Ziel.")
         return
     if card.template.target_mode == SpellTargetMode.CREATURE and target.target_type == "creature":
+        creature = self.get_unit_by_id(target.creature_id or -1)
+        if creature is None or not can_target_creature_with_explicit_spell(self, creature):
+            self.log("Diese Kreatur kann nicht als Ziel eines Zaubers gewaehlt werden.")
+            return
         pending.selected_targets = [target]
     elif card.template.target_mode == SpellTargetMode.CREATURE_OR_PLAYER:
+        if target.target_type == "creature":
+            creature = self.get_unit_by_id(target.creature_id or -1)
+            if creature is None or not can_target_creature_with_explicit_spell(self, creature):
+                self.log("Diese Kreatur kann nicht als Ziel eines Zaubers gewaehlt werden.")
+                return
         pending.selected_targets = [target]
     self.log(self.describe_pending_spell_requirements())
 
@@ -1242,8 +1261,17 @@ def get_valid_discard_creature_target_refs(self, player) -> list[SpellTargetRef]
     ]
 
 
+def can_target_creature_with_explicit_spell(self, creature) -> bool:
+    return creature is not None and not creature.has_ability(Ability.MAGIC_RESISTANT)
+
+
 def count_valid_return_to_hand_targets(self) -> int:
-    return sum(len(player.battlefield) for player in self.players)
+    return sum(
+        1
+        for player in self.players
+        for creature in player.battlefield
+        if can_target_creature_with_explicit_spell(self, creature)
+    )
 
 
 def get_current_attacker_creatures(self, controller, context: ReactionContext | None = None) -> list:
@@ -1268,7 +1296,9 @@ def get_valid_turn_attack_bonus_targets(self, controller, context: ReactionConte
     return [
         creature
         for creature in controller.battlefield
-        if creature.unit_id in self.block_assignments and not self.is_creature_destroyed(creature)
+        if creature.unit_id in self.block_assignments
+        and not self.is_creature_destroyed(creature)
+        and can_target_creature_with_explicit_spell(self, creature)
     ]
 
 
@@ -1289,6 +1319,7 @@ def get_valid_damage_spell_targets(self, controller, context: ReactionContext | 
         for player in self.players
         for creature in player.battlefield
         if not self.is_creature_destroyed(creature)
+        and can_target_creature_with_explicit_spell(self, creature)
     ]
 
 
@@ -1349,7 +1380,7 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
 
 
 def is_valid_verwehung_target(self, controller, creature) -> bool:
-    return self.get_unit_owner(creature.unit_id) is not None
+    return self.get_unit_owner(creature.unit_id) is not None and can_target_creature_with_explicit_spell(self, creature)
 
 
 def has_valid_verwehung_target(self, controller) -> bool:

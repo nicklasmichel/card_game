@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from types import SimpleNamespace
 
@@ -107,18 +107,21 @@ class CardEffectsTests(EngineTestCase):
         self.assertIsNone(template.lw)
         self.assertIsNone(template.sw)
 
-    def test_water_and_earth_creatures_use_temporary_lw_sw_fallbacks(self) -> None:
+    def test_water_creatures_use_temporary_lw_sw_fallbacks(self) -> None:
         water = self.engine.templates["water_creature_wellenformer"]
-        earth = self.engine.templates["earth_creature_felsensoldat"]
 
         self.assertIsNone(water.lw)
         self.assertIsNone(water.sw)
         self.assertEqual(water.effective_lw, water.vw)
         self.assertEqual(water.effective_sw, water.aw)
-        self.assertIsNone(earth.lw)
-        self.assertIsNone(earth.sw)
-        self.assertEqual(earth.effective_lw, earth.vw)
-        self.assertEqual(earth.effective_sw, earth.aw)
+
+    def test_earth_creatures_have_explicit_lw_and_sw(self) -> None:
+        earth = self.engine.templates["earth_creature_felswesen"]
+
+        self.assertEqual(earth.lw, 3)
+        self.assertEqual(earth.sw, 1)
+        self.assertEqual(earth.effective_lw, 3)
+        self.assertEqual(earth.effective_sw, 1)
 
     def test_creature_enters_with_current_hp_from_lw_not_vw(self) -> None:
         creature = self.make_creature("air_creature_sturmgeist", owner_id=0)
@@ -232,7 +235,7 @@ class CardEffectsTests(EngineTestCase):
             if template_id.startswith("fire_creature_")
             for _ in range(copies)
         ]
-        self.assertEqual(len(fire_creature_ids), 16)
+        self.assertEqual(len(fire_creature_ids), 18)
         for template_id in (
             "fire_creature_glutwesen",
             "fire_creature_flammenwesen",
@@ -240,6 +243,7 @@ class CardEffectsTests(EngineTestCase):
             "fire_creature_gluthetzer",
             "fire_creature_flammenhetzer",
             "fire_creature_flammenbrecher",
+            "fire_creature_infernowesen",
             "fire_creature_infernobestie",
             "fire_creature_hoellenbestie",
         ):
@@ -270,6 +274,7 @@ class CardEffectsTests(EngineTestCase):
     def test_glutwesen_and_flammenwesen_are_vanilla(self) -> None:
         self.assertEqual(set(self.engine.templates["fire_creature_glutwesen"].abilities), set())
         self.assertEqual(set(self.engine.templates["fire_creature_flammenwesen"].abilities), set())
+        self.assertEqual(set(self.engine.templates["fire_creature_infernowesen"].abilities), set())
 
     def test_trample_only_creatures_have_only_trample(self) -> None:
         self.assertEqual(set(self.engine.templates["fire_creature_glutbrecher"].abilities), {Ability.TRAMPLE})
@@ -290,10 +295,10 @@ class CardEffectsTests(EngineTestCase):
 
     def test_rules_text_does_not_repeat_leading_ability_name(self) -> None:
         text = normalize_rules_text(
-            "Schnell. Mische diese Kreatur am Ende deines Zuges zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck in dein Deck.",
+            "Schnell. Mische diese Kreatur am Ende deines Zuges zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck in dein Deck.",
             ["Schnell"],
         )
-        self.assertEqual(text, "Mische diese Kreatur am Ende deines Zuges zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck in dein Deck.")
+        self.assertEqual(text, "Mische diese Kreatur am Ende deines Zuges zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck in dein Deck.")
 
     def test_air_haste_creatures_are_not_selected_as_mandatory_attackers(self) -> None:
         windgeist = self.make_creature("air_creature_windgeist", owner_id=0)
@@ -303,6 +308,7 @@ class CardEffectsTests(EngineTestCase):
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
         self.assertNotIn(windgeist.unit_id, self.engine.selected_attackers)
+
 
 
 

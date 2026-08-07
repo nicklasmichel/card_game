@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from cards import DECK_DEFINITIONS
 from core.config import STARTING_LIFE
@@ -18,7 +18,7 @@ class FireSpellReworkTests(EngineTestCase):
         pool = [
             "fire_creature_gluthetzer",
             "water_creature_wassertropfen",
-            "earth_creature_steinkobold",
+            "earth_creature_steinwesen",
             "air_creature_windschwinge",
         ]
         resources = [self.make_resource(pool[index % len(pool)]) for index in range(count)]
@@ -53,7 +53,6 @@ class FireSpellReworkTests(EngineTestCase):
             "fire_spell_versengen": ("Versengen", 1, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 1),
             "fire_spell_verbrennen": ("Verbrennen", 2, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 2),
             "fire_spell_verkohlen": ("Verkohlen", 3, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 3),
-            "fire_spell_verzehren": ("Verzehren", 4, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 4),
         }
         for template_id, values in expected.items():
             template = self.engine.templates[template_id]
@@ -77,7 +76,7 @@ class FireSpellReworkTests(EngineTestCase):
         self.give_resources(0, 1, tapped=True)
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         own_non_attacker = self.make_creature("fire_creature_glutbrecher", owner_id=0)
-        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        enemy = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.open_attack_bonus_window(attacker)
 
         self.assertTrue(self.engine.begin_spell_from_hand(spell.instance_id))
@@ -125,7 +124,7 @@ class FireSpellReworkTests(EngineTestCase):
         self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw)
 
     def test_damage_spells_still_target_creatures(self) -> None:
-        enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        enemy = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.engine.resolve_stack_item(
             __import__("core.models", fromlist=["StackItem"]).StackItem(
                 source_card=self.give_card("fire_spell_verbrennen"),
@@ -150,8 +149,8 @@ class FireSpellReworkTests(EngineTestCase):
             "fire_spell_versengen",
             "fire_spell_verbrennen",
             "fire_spell_verkohlen",
-            "fire_spell_verzehren",
         ):
             self.assertEqual(decklist.get(template_id), 2)
         self.assertEqual(sum(decklist.values()), 40)
+
 

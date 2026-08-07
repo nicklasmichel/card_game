@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import List
 
@@ -82,10 +82,16 @@ def get_ability_names(self, abilities) -> List[str]:
         Ability.TRAMPLE,
         Ability.HASTE,
         Ability.FLYING,
+        Ability.VIGILANT,
+        Ability.MAGIC_RESISTANT,
     ]
     display_names = {
-        Ability.ENRAGED: "Wütend",
+        Ability.ENRAGED: "Wuetend",
         Ability.TRAMPLE: "Trampelnd",
+        Ability.HASTE: "Schnell",
+        Ability.FLYING: "Fliegend",
+        Ability.VIGILANT: "Wachsam",
+        Ability.MAGIC_RESISTANT: "Magieresistent",
     }
     return [display_names.get(ability, ability.value) for ability in order if ability in abilities]
 
@@ -96,6 +102,8 @@ def get_ability_description(ability: Ability) -> str:
         Ability.FLYING: "Kann nur von Kreaturen mit Fliegend geblockt werden.",
         Ability.TRAMPLE: "Gewinnt diese Kreatur als Angreifer einen geblockten Kampf, geht ueberschuessiger SW-Schaden ueber die verbleibenden LW des Blockers hinaus an den gegnerischen Spieler.",
         Ability.ENRAGED: "Wenn diese Kreatur angreift, darfst du eine gegnerische Kreatur bestimmen, die sie legal blocken kann. Diese Kreatur muss sie blocken.",
+        Ability.VIGILANT: "Diese Kreatur wird beim Angreifen nicht getappt.",
+        Ability.MAGIC_RESISTANT: "Diese Kreatur kann nicht das Ziel von Ritualen, Spontanzaubern oder Kampfzaubern sein.",
     }
     return descriptions.get(ability, ability.value)
 
@@ -110,13 +118,14 @@ def get_card_preview_ability_details(self, source) -> List[tuple[str, str]]:
         Ability.TRAMPLE: "Trampelnd",
         Ability.HASTE: "Schnell",
         Ability.FLYING: "Fliegend",
+        Ability.VIGILANT: "Wachsam",
+        Ability.MAGIC_RESISTANT: "Magieresistent",
     }
     details: List[tuple[str, str]] = []
-    for ability in (Ability.ENRAGED, Ability.TRAMPLE, Ability.HASTE, Ability.FLYING):
+    for ability in (Ability.ENRAGED, Ability.TRAMPLE, Ability.HASTE, Ability.FLYING, Ability.VIGILANT, Ability.MAGIC_RESISTANT):
         if ability in abilities:
             details.append((name_by_ability[ability], get_ability_description(ability)))
     return details
-
 
 def normalize_rules_text(rules_text: str, ability_names: List[str]) -> str:
     normalized = rules_text.strip()
@@ -221,3 +230,4 @@ def blit_wrapped_text(self, font: pygame.font.Font, text: str, color, rect: pyga
         self.blit_text(font, line, color, rect.x, y)
         y += line_height
     return y
+

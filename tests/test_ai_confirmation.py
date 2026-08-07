@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -50,7 +50,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
         ]
 
@@ -125,11 +125,11 @@ class AiConfirmationTests(EngineTestCase):
 
         self.engine.prepare_ai_turn_action()
         self.engine.execute_prepared_ai_action()
-        self.assertNotIn("Gegner zieht 1 Karte durch den BeschwÃƒÂ¶rer.", self.engine.log_messages)
+        self.assertNotIn("Gegner zieht 1 Karte durch den BeschwÃƒÆ’Ã‚Â¶rer.", self.engine.log_messages)
         self.engine.prepare_ai_turn_action()
         self.engine.execute_prepared_ai_action()
 
-        self.assertIn("Gegner zieht 1 Karte durch den BeschwÃƒÂ¶rer.", self.engine.log_messages)
+        self.assertIn("Gegner zieht 1 Karte durch den BeschwÃƒÆ’Ã‚Â¶rer.", self.engine.log_messages)
 
     def test_ai_summoning_phase_waits_for_confirmation(self) -> None:
         self.engine.phase = PHASE_MAIN_1
@@ -246,7 +246,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
         ]
 
@@ -297,7 +297,7 @@ class AiConfirmationTests(EngineTestCase):
         attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
         attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)
         safe_flier = self.make_creature("air_creature_orkanschwinge", owner_id=1)
-        self.make_creature("earth_creature_felsensoldat", owner_id=0)
+        self.make_creature("earth_creature_felswesen", owner_id=0)
 
         prepared = self.engine.prepare_ai_turn_action()
 
@@ -409,7 +409,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
@@ -446,7 +446,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
-            self.make_resource("earth_creature_steinkobold"),
+            self.make_resource("earth_creature_steinwesen"),
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
@@ -479,6 +479,7 @@ class AiConfirmationTests(EngineTestCase):
             self.assertNotEqual(self.engine.pending_ai_action.get("card_id"), verwehung.instance_id)
         else:
             self.assertFalse(prepared)
+
 
 
 

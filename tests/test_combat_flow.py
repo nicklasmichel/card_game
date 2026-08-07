@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from unittest.mock import patch
 
@@ -28,7 +28,7 @@ class CombatFlowTests(EngineTestCase):
 
     def prepare_blocked_combat(self) -> tuple:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.engine.active_player_index = 0
         self.engine.block_assignments = {attacker.unit_id: blocker.unit_id}
         return attacker, blocker
@@ -65,7 +65,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_tie_rerolls_full_pools_until_resolved(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
 
         with patch.object(self.engine.rng, "randint", side_effect=[3, 3, 3, 3, 3, 3, 6, 6, 6, 1, 1, 1]):
             self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
@@ -89,7 +89,7 @@ class CombatFlowTests(EngineTestCase):
     def test_human_block_assignment_is_one_to_one_only(self) -> None:
         attacker_one = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         attacker_two = self.make_creature("fire_creature_glutbrecher", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=0)
 
         self.engine.phase = PHASE_DECLARE_BLOCKERS
         self.engine.active_player_index = 1
@@ -108,7 +108,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_flying_still_restricts_blockers(self) -> None:
         attacker = self.make_creature("air_creature_windschwinge", owner_id=0)
-        ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
+        ground_blocker = self.make_creature("earth_creature_felswesen", owner_id=0)
         flying_template = CardTemplate(
             template_id="test_air_flying_blocker",
             name="Testflieger",
@@ -120,7 +120,7 @@ class CombatFlowTests(EngineTestCase):
             element=Element.AIR,
             abilities=frozenset({Ability.FLYING}),
         )
-        flying_blocker = self.snapshot(self.make_creature("earth_creature_steinkobold", owner_id=0))
+        flying_blocker = self.snapshot(self.make_creature("earth_creature_steinwesen", owner_id=0))
         flying_live = self.engine.players[0].battlefield[-1]
         flying_live.template_id = flying_template.template_id
         flying_live.name = flying_template.name
@@ -147,7 +147,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_trample_overflows_when_attacker_damage_exceeds_blocker_current_hp(self) -> None:
         attacker = self.make_creature("fire_creature_infernobestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         blocker.current_hp = 1
 
         with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 6, 6, 3, 1, 1]):
@@ -160,7 +160,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_trample_overflow_is_zero_when_blocker_has_equal_or_higher_current_hp(self) -> None:
         attacker = self.make_creature("fire_creature_infernobestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         blocker.current_hp = 3
 
         with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 6, 6, 3, 1, 1]):
@@ -171,7 +171,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_trample_only_triggers_on_attacker_win(self) -> None:
         attacker = self.make_creature("fire_creature_infernobestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         blocker.current_hp = 1
 
         with patch.object(self.engine.rng, "randint", side_effect=[1, 1, 1, 1, 1, 6, 6, 6]):
@@ -184,7 +184,7 @@ class CombatFlowTests(EngineTestCase):
     def test_begin_combat_resolution_keeps_battlefield_attacker_order(self) -> None:
         left = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         right = self.make_creature("fire_creature_glutbrecher", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.engine.block_assignments = {
             right.unit_id: None,
             left.unit_id: blocker.unit_id,
@@ -198,7 +198,7 @@ class CombatFlowTests(EngineTestCase):
 
     def test_enraged_attacker_can_force_legal_blocker(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
         self.engine.active_player_index = 0
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [attacker.unit_id]
@@ -327,4 +327,5 @@ class CombatFlowTests(EngineTestCase):
         self.assertNotEqual(self.engine.phase, PHASE_REACTION)
         self.assertIn("Kampfende wird automatisch uebersprungen.", self.engine.log_messages)
         self.assertFalse(any(message.startswith("Kampfende:") for message in self.engine.log_messages))
+
 

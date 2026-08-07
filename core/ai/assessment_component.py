@@ -30,7 +30,7 @@ class AssessmentComponent:
         if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
             return len(player.deck) >= template.spell_draw_count and len(hand) <= max(2, template.spell_draw_count - 1)
         if effect == SpellEffect.RETURN_CREATURES_TO_HAND:
-            return len(player.battlefield) + len(engine.players[1 - player.player_id].battlefield) >= template.spell_amount
+            return engine.count_valid_return_to_hand_targets() >= template.spell_amount
         if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
             return any(creature.is_ready() for creature in player.battlefield)
         return template.resource_cost <= available_resources and template.recycle_cost <= total_resources
@@ -186,6 +186,8 @@ class AssessmentComponent:
                 score += attacker.sw * damage_weight
                 if attacker.has_ability(Ability.FLYING) and not any(blocker.has_ability(Ability.FLYING) for blocker in blockers):
                     score += 0.8 if strategy_weights is None else 0.55 + 0.25 * strategy_weights.flying_damage
+                if attacker.has_ability(Ability.VIGILANT):
+                    score += 0.45 if strategy_weights is None else 0.25 + 0.25 * strategy_weights.blocker_value
                 continue
             blocker_aw_total = sum(blocker.aw for blocker in assigned_blockers)
             kills_here = 0
@@ -237,7 +239,7 @@ class AssessmentComponent:
             for creature in player.battlefield
             if creature.current_hp > 0
             and creature.is_ready()
-            and creature.unit_id not in attacking_ids
+            and (creature.unit_id not in attacking_ids or creature.has_ability(Ability.VIGILANT))
             and not creature.cannot_block
             and creature.vw > 0
         ]
