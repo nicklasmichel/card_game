@@ -13,7 +13,6 @@ from core.models import (
     PHASE_MAIN_1,
     PHASE_MAIN_2,
     PHASE_MULLIGAN,
-    PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_SPELL_TARGETING,
@@ -97,8 +96,6 @@ def confirm_forced_discard(self) -> None:
     self.phase = pending.return_phase
     if self.resolving_stack:
         self.resume_stack_resolution()
-        return
-    return
 
 
 def get_selected_hand_card(self) -> Optional[CardInstance]:
@@ -152,7 +149,6 @@ def handle_action(self, action: str) -> None:
 
     human_response_phases = {
         PHASE_DECLARE_BLOCKERS,
-        PHASE_ORDER_BLOCKERS,
         PHASE_DICE_BATTLE,
         PHASE_FORCED_DISCARD,
         PHASE_REACTION,
@@ -188,7 +184,7 @@ def handle_action(self, action: str) -> None:
     elif action == "confirm_forced_discard":
         self.confirm_forced_discard()
     elif action == "to_combat":
-        self.enter_combat_or_second_main()
+        self.request_combat_transition()
     elif action == "confirm_attackers":
         self.confirm_attackers()
     elif action == "clear_blocks":
@@ -196,20 +192,11 @@ def handle_action(self, action: str) -> None:
     elif action == "confirm_blocks":
         self.finish_block_assignment()
     elif action == "skip_blocks":
-        self.log("Keine Blocker zugewiesen. Schaden wird durchgelassen.")
+        self.log("Keine Blocker zugewiesen. Schaden geht durch.")
         self.finish_block_assignment()
-    elif action == "reset_order" and self.pending_order is not None:
-        self.pending_order.chosen_order.clear()
-        self.log("Blockreihenfolge zurueckgesetzt.")
-    elif action == "confirm_order":
-        self.confirm_block_order()
-    elif action == "use_adaptation":
-        self.resolve_pending_comparison(use_human_adaptation=True)
-    elif action == "resolve_comparison":
-        self.resolve_pending_comparison(use_human_adaptation=False)
     elif action == "pass_reaction":
         self.pass_reaction()
     elif action == "end_dice_battle":
         self.end_dice_battle()
     elif action == "end_turn":
-        self.end_turn()
+        self.request_end_turn()

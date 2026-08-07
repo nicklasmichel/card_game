@@ -6,18 +6,19 @@ from core.models import ReactionTrigger, SpellEffect, SpellTargetRef
 
 
 def _score_attack_bonus(engine, creature, amount: int) -> float:
-    blockers = [
-        engine.get_unit_by_id(blocker_id)
-        for blocker_id in engine.block_assignments.get(creature.unit_id, [])
-        if engine.get_unit_by_id(blocker_id) is not None
-    ]
+    blocker_id = engine.block_assignments.get(creature.unit_id)
+    blocker = engine.get_unit_by_id(blocker_id) if blocker_id is not None else None
+    blockers = [blocker] if blocker is not None else []
     current_aw = engine.get_creature_attack_value(creature)
     score = 0.0
     if not blockers and creature.unit_id not in engine.blocked_attackers:
-        score += amount * 1.4
+        score += 0.0
     for blocker in blockers:
-        if current_aw < blocker.current_hp <= current_aw + amount:
-            score += 4.0 + blocker.aw
+        current_sum = current_aw * 3.5
+        boosted_sum = (current_aw + amount) * 3.5
+        defense_sum = engine.get_creature_defense_value(blocker) * 3.5
+        if current_sum <= defense_sum < boosted_sum:
+            score += 4.0 + blocker.sw
     if creature.has_ability(Ability.TRAMPLE):
         score += amount * 0.7
     return score
@@ -31,22 +32,17 @@ def choose_fire_reaction_spell(ai, hand, engine):
     ]
     if not legal:
         return None
-    enemy = engine.players[1 - engine.ai_player.player_id]
     best = None
     best_score = 0.0
     for card in legal:
         score = 0.0
-        if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER:
+        if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
             target = choose_best_damage_target(engine, engine.ai_player, card.template.spell_amount)
-            if target.target_type == "creature":
-                creature = engine.get_unit_by_id(target.creature_id or -1)
-                if creature is not None:
-                    score = 6.0 if creature.current_hp <= card.template.spell_amount else 1.0
-                    if creature.has_ability(Ability.FLYING):
-                        score += 1.5
-            else:
-                if enemy.life <= card.template.spell_amount:
-                    score = 20.0
+            creature = None if target is None else engine.get_unit_by_id(target.creature_id or -1)
+            if creature is not None:
+                score = 6.0 if creature.current_hp <= card.template.spell_amount else 1.0
+                if creature.has_ability(Ability.FLYING):
+                    score += 1.5
         elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
             targets = engine.get_valid_turn_attack_bonus_targets(engine.ai_player, engine.reaction_context)
             if targets:
@@ -60,7 +56,7 @@ def choose_fire_reaction_spell(ai, hand, engine):
 
 def choose_fire_spell_target_ref(ai, player, engine, card, pending):
     effect = card.template.spell_effect
-    if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER:
+    if effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
         return choose_best_damage_target(engine, player, card.template.spell_amount)
     if effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
         targets = engine.get_valid_turn_attack_bonus_targets(player, engine.reaction_context)

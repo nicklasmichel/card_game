@@ -9,7 +9,7 @@ from core.ai.strategies.fire import (
     FIRE_MODE_STABILIZE,
     FireStrategy,
 )
-from core.models import CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, PHASE_MAIN_2, PlayerState
+from core.models import CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PlayerState, ReactionContext, ReactionTrigger
 from tests.helpers import EngineTestCase
 
 
@@ -74,7 +74,7 @@ class FireStrategyTests(EngineTestCase):
 
     def test_fire_strategy_detects_lethal_mode(self) -> None:
         self.make_creature("fire_creature_flammenbrecher", owner_id=1, ready=True)
-        self.engine.human_player.life = 6
+        self.engine.human_player.life = 2
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_verbrennen"]),
         ]
@@ -91,7 +91,7 @@ class FireStrategyTests(EngineTestCase):
     def test_fire_strategy_detects_stabilize_mode(self) -> None:
         self.engine.ai_player.life = 4
         threat = self.make_creature("air_creature_himmelsschwinge", owner_id=0, ready=True)
-        threat.aw = 5
+        threat.sw = 4
         decision = self.engine.ai._evaluate_fire_strategy(
             self.engine.ai_player,
             self.engine,
@@ -160,8 +160,7 @@ class FireStrategyTests(EngineTestCase):
         self.assertEqual(decision.mode, FIRE_MODE_CONTROL)
 
     def test_fire_ai_prefers_smallest_sufficient_burn_spell(self) -> None:
-        self.engine.phase = PHASE_MAIN_2
-        self.engine.ai_player.resources_played_this_turn = 2
+        self.engine.phase = PHASE_REACTION
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_glutbestie"),
             self.make_resource("water_creature_wassertropfen"),
@@ -171,7 +170,18 @@ class FireStrategyTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_verbrennen"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_verkohlen"]),
         ]
-        self.make_creature("air_creature_windgeist", owner_id=0, ready=True)
+        target = self.make_creature("air_creature_windgeist", owner_id=0, ready=True)
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.COMBAT_START,
+                active_player=self.engine.human_player,
+                source_player=self.engine.human_player,
+                attacker_creature=target,
+            ),
+            first_responder_id=self.engine.ai_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_MAIN_2,
+        )
 
         prepared = self.engine.prepare_ai_turn_action()
 
@@ -180,9 +190,8 @@ class FireStrategyTests(EngineTestCase):
         self.assertEqual(self.engine.pending_ai_action["card_id"], self.engine.ai_player.hand[0].instance_id)
 
     def test_fire_ai_prioritizes_removal_over_ramp_when_under_pressure(self) -> None:
-        self.engine.phase = PHASE_MAIN_2
+        self.engine.phase = PHASE_REACTION
         self.engine.ai_player.life = 3
-        self.engine.ai_player.resources_played_this_turn = 2
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_glutbestie"),
             self.make_resource("water_creature_wassertropfen"),
@@ -192,7 +201,18 @@ class FireStrategyTests(EngineTestCase):
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_spell_verbrennen"]),
         ]
         flyer = self.make_creature("air_creature_windgeist", owner_id=0, ready=True)
-        flyer.aw = 4
+        flyer.sw = 4
+        self.engine.begin_reaction_window(
+            context=ReactionContext(
+                trigger=ReactionTrigger.COMBAT_START,
+                active_player=self.engine.human_player,
+                source_player=self.engine.human_player,
+                attacker_creature=flyer,
+            ),
+            first_responder_id=self.engine.ai_player.player_id,
+            base_stack_size=0,
+            resume_phase=PHASE_MAIN_2,
+        )
 
         prepared = self.engine.prepare_ai_turn_action()
 

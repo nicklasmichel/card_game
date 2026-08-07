@@ -3,7 +3,7 @@ from __future__ import annotations
 import pygame
 
 from core.models import PHASE_REACTION, PHASE_SPELL_TARGETING, SpellEffect
-from ui.style import BUTTON_COLOR, CARD_BORDER, ENEMY_CARD_COLOR, HIGHLIGHT, MUTED_TEXT, OVERLAY_COLOR, PANEL_COLOR, SECTION_COLOR, TEXT_COLOR
+from ui.style import CARD_BORDER, HIGHLIGHT, MUTED_TEXT, OVERLAY_COLOR, PANEL_COLOR, SECTION_COLOR, TEXT_COLOR
 
 
 def draw_mulligan_overlay(self) -> None:
@@ -21,34 +21,6 @@ def draw_mulligan_overlay(self) -> None:
         mulligan_step = self.card_width + 32
         rect = self.draw_hand_card(card, panel.x + 30 + index * mulligan_step, panel.y + 140, card.instance_id in self.engine.selected_hand_ids)
         self.click_targets["mulligan_hand"].append((rect, card.instance_id))
-
-
-def draw_block_order_overlay(self) -> None:
-    overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
-    overlay.fill(OVERLAY_COLOR)
-    self.screen.blit(overlay, (0, 0))
-    panel = pygame.Rect(max(40, (self.window_width - 780) // 2), max(40, (self.window_height - 420) // 2), 780, 420)
-    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
-    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
-    attacker = self.engine.get_unit_by_id(self.engine.pending_order.attacker_id)
-    name = attacker.name if attacker is not None else "Angreifer"
-    self.blit_text(self.title_font, f"Blockreihenfolge fuer {name}", TEXT_COLOR, panel.x + 26, panel.y + 28)
-    self.blit_text(self.font, "Klicke die Blocker in der gewuenschten Reihenfolge an.", MUTED_TEXT, panel.x + 26, panel.y + 62)
-    for index, blocker_id in enumerate(self.engine.pending_order.blocker_ids):
-        blocker = self.engine.get_unit_by_id(blocker_id)
-        if blocker is None:
-            continue
-        rect = pygame.Rect(panel.x + 30, panel.y + 100 + index * 62, 720, 48)
-        pygame.draw.rect(self.screen, ENEMY_CARD_COLOR, rect, border_radius=6)
-        pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        if blocker_id in self.engine.pending_order.chosen_order:
-            pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=6)
-            prefix = f"{self.engine.pending_order.chosen_order.index(blocker_id) + 1}."
-        else:
-            prefix = f"{index + 1}."
-        self.blit_text(self.font, prefix, TEXT_COLOR, rect.x + 10, rect.y + 14)
-        self.blit_text(self.font, f"{blocker.name} - {blocker.aw_vw} - noch {blocker.current_hp} LP", TEXT_COLOR, rect.x + 56, rect.y + 14)
-        self.click_targets["order_blockers"].append((rect, blocker_id))
 
 
 def draw_dice_battle_overlay(self) -> None:
@@ -80,18 +52,8 @@ def draw_dice_battle_overlay(self) -> None:
     blocker_owner = self.engine.get_player_by_id(battle.blocker_owner)
     attacker_is_human = battle.attacker_owner == self.engine.human_player.player_id
     blocker_is_human = battle.blocker_owner == self.engine.human_player.player_id
-    attacker_dice = battle.attacker_dice
-    blocker_dice = battle.blocker_dice
-    pending_spell = self.engine.pending_spell_cast
-    pending_card = self.engine.get_card_from_pending_spell(pending_spell) if pending_spell is not None else None
-    selecting_combat_die = (
-        self.engine.phase == PHASE_SPELL_TARGETING
-        and pending_card is not None
-        and pending_card.template.spell_effect in {
-            SpellEffect.REROLL_OWN_UNUSED_COMBAT_DIE,
-            SpellEffect.ADD_TWENTY_TO_OWN_UNUSED_COMBAT_DIE,
-        }
-    )
+    attacker_rolls = battle.attacker_rolls
+    blocker_rolls = battle.blocker_rolls
 
     attacker_surface = self.build_preview_creature_surface(attacker, attacker_is_human, attacking=True)
     blocker_surface = self.build_preview_creature_surface(blocker, blocker_is_human)
@@ -107,18 +69,9 @@ def draw_dice_battle_overlay(self) -> None:
     pygame.draw.rect(self.screen, CARD_BORDER, blocker_rect, 3, border_radius=10)
     self.draw_combat_damage_popups()
 
-    if getattr(attacker_owner, "attackers_die_bonus_this_turn", 0) > 0:
-        self.blit_text(
-            self.font,
-            f"Sturmruf aktiv: Angreifende Kreaturen erhalten +{attacker_owner.attackers_die_bonus_this_turn} auf ihre Wuerfelergebnisse.",
-            HIGHLIGHT,
-            panel.x + 56,
-            panel.y + 52,
-        )
-
     dice_panel_y = attacker_rect.bottom + 18
     content_start_y = dice_panel_y + 58
-    side_panel_height = max(len(attacker_dice), len(blocker_dice)) * 58 + 98
+    side_panel_height = max(len(attacker_rolls), len(blocker_rolls), 1) * 58 + 178
     panel_width = max(attacker_rect.width, blocker_rect.width)
     attacker_panel_rect = pygame.Rect(attacker_rect.x, dice_panel_y, panel_width, side_panel_height)
     blocker_panel_rect = pygame.Rect(blocker_rect.x, dice_panel_y, panel_width, side_panel_height)
@@ -129,61 +82,57 @@ def draw_dice_battle_overlay(self) -> None:
     self.blit_text(self.title_font, f"{attacker_owner.name} greift an", TEXT_COLOR, attacker_panel_rect.x + 12, attacker_panel_rect.y + 10)
     self.blit_text(self.title_font, f"{blocker_owner.name} blockt", TEXT_COLOR, blocker_panel_rect.x + 12, blocker_panel_rect.y + 10)
 
-    def row_text_for_side(die, round_number: int, owner_is_human: bool, current_die) -> str:
-        if die.comparison_label:
-            return die.comparison_label
-        if current_die is not None and die is current_die:
-            return f"{die.display()} | Runde {round_number}: Offen"
-        return die.display() if owner_is_human else "Verdeckt"
-
-    current_attacker_die = battle.pending_comparison.attacker_die if battle.pending_comparison is not None else None
-    current_blocker_die = battle.pending_comparison.blocker_die if battle.pending_comparison is not None else None
-
-    for index, die in enumerate(attacker_dice):
+    for index, roll in enumerate(attacker_rolls):
         rect = pygame.Rect(
             attacker_panel_rect.x + 10,
             content_start_y + index * 58,
             attacker_panel_rect.width - 20,
             46,
         )
-        pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
+        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, row_text_for_side(die, index + 1, attacker_is_human, current_attacker_die), TEXT_COLOR, rect.x + 10, rect.y + 11)
-        if attacker_is_human and not die.used and (battle.pending_comparison is None or selecting_combat_die):
-            available_index = len([existing for existing in attacker_dice[:index] if not existing.used])
-            self.click_targets["human_dice"].append((rect, available_index))
-            if selecting_combat_die:
-                pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=6)
+        self.blit_text(self.font, f"W6 {index + 1}: {roll}", TEXT_COLOR, rect.x + 10, rect.y + 11)
 
-    for index, die in enumerate(blocker_dice):
+    for index, roll in enumerate(blocker_rolls):
         rect = pygame.Rect(
             blocker_panel_rect.x + 10,
             content_start_y + index * 58,
             blocker_panel_rect.width - 20,
             46,
         )
-        pygame.draw.rect(self.screen, BUTTON_COLOR, rect, border_radius=6)
+        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, rect, 2, border_radius=6)
-        self.blit_text(self.font, row_text_for_side(die, index + 1, blocker_is_human, current_blocker_die), TEXT_COLOR, rect.x + 10, rect.y + 11)
-        if blocker_is_human and not die.used and (battle.pending_comparison is None or selecting_combat_die):
-            available_index = len([existing for existing in blocker_dice[:index] if not existing.used])
-            self.click_targets["human_dice"].append((rect, available_index))
-            if selecting_combat_die:
-                pygame.draw.rect(self.screen, HIGHLIGHT, rect, 3, border_radius=6)
+        self.blit_text(self.font, f"W6 {index + 1}: {roll}", TEXT_COLOR, rect.x + 10, rect.y + 11)
 
-    if battle.pending_comparison is not None:
-        attacker_die = battle.pending_comparison.attacker_die
-        blocker_die = battle.pending_comparison.blocker_die
-        info_y = content_start_y + max(len(attacker_dice), len(blocker_dice)) * 58 + 12
-        self.blit_text(
-            self.font,
-            f"Aufgedeckt: {attacker.name} {attacker_die.display()} | {blocker.name} {blocker_die.display()}",
-            TEXT_COLOR,
-            attacker_panel_rect.x + 10,
-            info_y,
-        )
-        if battle.pending_comparison.human_can_adapt:
-            self.blit_text(self.small_font, "Anpassung kann jetzt eingesetzt werden.", MUTED_TEXT, attacker_panel_rect.x + 10, info_y + 28)
+    summary_y = content_start_y + max(len(attacker_rolls), len(blocker_rolls), 1) * 58 + 16
+    self.blit_text(
+        self.font,
+        f"AW {self.engine.get_creature_attack_value(attacker)} -> {len(attacker_rolls)}W6 | Summe {battle.attack_sum}",
+        TEXT_COLOR,
+        attacker_panel_rect.x + 10,
+        summary_y,
+    )
+    self.blit_text(
+        self.font,
+        f"VW {self.engine.get_creature_defense_value(blocker)} -> {len(blocker_rolls)}W6 | Summe {battle.defense_sum}",
+        TEXT_COLOR,
+        blocker_panel_rect.x + 10,
+        summary_y,
+    )
+
+    if battle.history and "Gleichstand" in battle.history[-1].outcome_text and battle.winner is None:
+        self.blit_text(self.font, battle.history[-1].outcome_text, HIGHLIGHT, panel.x + 56, summary_y + 42)
+
+    result_y = summary_y + 74
+    winner_name = attacker.name if battle.winner == "attacker" else blocker.name
+    winner_sw = battle.creature_damage
+    loser_hp = battle.blocker_snapshot.current_hp if battle.winner == "attacker" else battle.attacker_snapshot.current_hp
+    loser_max_lw = battle.blocker_snapshot.lw if battle.winner == "attacker" else battle.attacker_snapshot.lw
+    result_text = f"Gewinner: {winner_name} | SW {winner_sw} | Verbleibendes LW des Verlierers: {max(0, loser_hp)}/{loser_max_lw}"
+    self.blit_text(self.font, result_text, TEXT_COLOR, panel.x + 56, result_y)
+    if battle.trample_damage > 0:
+        self.blit_text(self.font, f"Trampelschaden: {battle.trample_damage}", HIGHLIGHT, panel.x + 56, result_y + 34)
+    self.blit_text(self.small_font, f"Rerolls: {battle.reroll_count}", MUTED_TEXT, panel.x + 56, result_y + 66)
 
 
 def draw_game_over_overlay(self) -> None:
@@ -265,7 +214,13 @@ def draw_discard_target_overlay(self) -> None:
         self.blit_text(self.font, discard_card.template.name, TEXT_COLOR, row_rect.x + 14, row_rect.y + 9)
         self.blit_text(
             self.small_font,
-            f"Kosten {discard_card.template.cost.resources}/R{discard_card.template.cost.recycle} | {discard_card.template.aw}/{discard_card.template.vw} | {abilities} | Besitzer: {controller.name}",
+            (
+                f"Kosten {discard_card.template.cost.resources}/R{discard_card.template.cost.recycle} | "
+                f"AW {discard_card.template.aw} | VW {discard_card.template.vw} | "
+                f"LW {self.engine.get_template_max_lw(discard_card.template)} | "
+                f"SW {self.engine.get_template_damage_value(discard_card.template)} | "
+                f"{abilities} | Besitzer: {controller.name}"
+            ),
             MUTED_TEXT,
             row_rect.x + 14,
             row_rect.y + 34,

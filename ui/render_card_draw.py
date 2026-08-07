@@ -75,7 +75,7 @@ def draw_summoner_card(
         scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         surface.blit(scaled, (0, 0))
         pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
-    self.draw_summoner_footer(surface, life)
+    self.draw_summoner_footer(surface, summoner_key, life)
     rendered_surface = pygame.transform.rotate(surface, -90) if tapped else surface
     self.screen.blit(rendered_surface, rect.topleft)
     self.last_rendered_card_surface = rendered_surface.copy()
@@ -87,7 +87,7 @@ def draw_summoner_life_circle(self, life: int, x: int, y: int, think_progress: f
     return
 
 
-def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
+def draw_summoner_footer(self, surface: pygame.Surface, summoner_key: str, life: int) -> None:
     scale = getattr(self, "layout_scale", 1.0)
     s = lambda value: max(1, int(round(value * scale)))
     body_size = max(self.small_font.get_height(), 12)
@@ -96,7 +96,11 @@ def draw_summoner_footer(self, surface: pygame.Surface, life: int) -> None:
     card_number_font = pygame.font.SysFont("arial", number_size, bold=True)
     life_font = pygame.font.SysFont("arial", number_size * 2, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
-    rules_text = "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte."
+    rules_texts = {
+        "air": "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte.",
+        "fire": "Wenn du deinen Zug mit weniger als 10 Leben beginnst, ziehe 1 zusaetzliche Karte.",
+    }
+    rules_text = rules_texts.get(summoner_key, "")
     rules_start_y = int(self.card_height * 0.5)
     rules_rect = pygame.Rect(s(10), rules_start_y, self.card_width - s(20), self.card_height - rules_start_y - s(12))
     rule_lines = self.wrap_text(rules_font, rules_text, rules_rect.width)
@@ -142,7 +146,7 @@ def draw_creature_card(
 ) -> pygame.Rect:
     visually_tapped = self.is_creature_visually_tapped(creature)
     accent = PLAYER_CARD_COLOR if is_human else ENEMY_CARD_COLOR
-    stats_text, defense_text = self.get_display_creature_stats(creature)
+    stats = self.get_display_creature_stats(creature)
     line_one = ""
     line_two = ""
     if extra_line:
@@ -156,8 +160,7 @@ def draw_creature_card(
         template_id=getattr(creature, "template_id", None),
         title=creature.name,
         cost=creature.cost,
-        stats=stats_text,
-        defense_text=defense_text,
+        stats=stats,
         element=creature.element,
         type_line=f"Kreatur - {creature.element.value}",
         line_one=line_one,

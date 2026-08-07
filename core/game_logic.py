@@ -15,10 +15,8 @@ from core.models import (
     CardCost,
     CardInstance,
     CardType,
-    DieResult,
     DiceRoundRecord,
     Element,
-    PendingComparison,
     PendingDirectAttack,
     PendingForcedDiscard,
     PHASE_DECLARE_ATTACKERS,
@@ -28,11 +26,9 @@ from core.models import (
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
     PHASE_MULLIGAN,
-    PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_RECYCLE_PAYMENT,
     PHASE_SPELL_TARGETING,
-    PendingBlockOrder,
     PendingDiceBattle,
     PendingRecyclePayment,
     PendingSpellCast,
@@ -49,38 +45,21 @@ class GameEngine:
     from engine.combat import (
         advance_combat_resolution,
         advance_after_attackers_declared,
-        advance_after_blockers_declared,
+        _apply_pending_direct_attack,
         ai_assign_blocks,
-        auto_assign_required_blockers,
+        begin_post_combat_window,
         begin_pre_first_combat_window,
-        apply_ai_adaptation_if_needed,
-        apply_comparison_result,
-        apply_trample_if_needed,
         begin_attack_declaration,
         begin_combat_resolution,
         begin_next_pending_direct_attack,
         can_creature_block_attacker,
-        choose_human_die,
-        choose_next_block_order_item,
         cleanup_destroyed_units,
-        continue_pending_comparison_after_reaction,
         clear_block_assignments,
         confirm_attackers,
-        confirm_block_order,
         end_dice_battle,
-        finish_post_comparison_priority_window,
-        finalize_or_continue_dice_battle,
         finish_block_assignment,
-        resume_dice_battle_after_roll_window,
-        get_attackers_die_bonus,
-        get_human_combat_creature,
-        human_can_use_adaptation,
-        prepare_provoke_assignments,
         resolve_pending_direct_attack_after_reaction,
-        resolve_pending_comparison,
-        resume_post_comparison_resolution,
         start_dice_battle,
-        toggle_provoke_target,
         toggle_attacker,
         toggle_blocker_assignment,
         toggle_selected_attack_target,
@@ -94,6 +73,7 @@ class GameEngine:
         current_prompt,
         execute_prepared_ai_action,
         end_turn,
+        request_end_turn,
         get_button_specs,
         handle_click,
         has_pending_ai_action,
@@ -108,6 +88,8 @@ class GameEngine:
         available_attackers,
         available_blockers,
         begin_first_turn,
+        begin_main_phase_priority_window,
+        can_take_second_main_actions,
         begin_forced_discard,
         clear_end_of_turn_temporary_effects,
         choose_cards_to_discard_for_ai,
@@ -128,6 +110,7 @@ class GameEngine:
         is_own_main_phase,
         lose_game_from_empty_deck,
         resolve_stalled_dice_battle_if_needed,
+        request_combat_transition,
         start_turn,
         toggle_forced_discard_selection,
         toggle_hand_card,
@@ -174,14 +157,11 @@ class GameEngine:
         get_current_attacker_creatures,
         get_valid_turn_attack_bonus_targets,
         get_valid_discard_creature_target_refs,
-        get_context_die_for_player,
-        get_open_die_target_refs,
         get_player_by_id,
         get_player_combat_dice,
         get_reaction_window_profile,
         get_reaction_window_description,
         get_reaction_window_title,
-        has_valid_open_die_target,
         has_valid_verwehung_target,
         has_valid_attacker_combat_bonus_targets,
         has_valid_turn_attack_bonus_targets,
@@ -192,22 +172,17 @@ class GameEngine:
         is_spell_card,
         pass_reaction,
         pending_spell_ready,
-        reaction_window_allows_die_targets,
         reaction_window_is_combat_window,
         reaction_window_shows_stack_preview,
         remove_creature_from_combat,
-        clear_open_die_targets,
         resolve_spell_stack_to,
         resolve_stack_item,
         resolve_target_discard_card,
         resolve_target_discard_card_for_controller,
-        resolve_target_open_die,
         resolve_target_creature,
         resume_stack_resolution,
         select_pending_spell_keyword,
-        select_spell_combat_die,
         select_spell_target_ref,
-        set_open_die_targets,
         toggle_pending_spell_recycle_resource,
     )
     from engine.turns import (
@@ -240,12 +215,7 @@ class GameEngine:
         self.selected_hand_ids: List[int] = []
         self.selected_attackers: List[int] = []
         self.selected_blocker_id: Optional[int] = None
-        self.selected_provoke_attacker_id: Optional[int] = None
-        self.selected_attack_target_id: Optional[int] = None
-        self.block_assignments: Dict[int, List[int]] = {}
-        self.blocker_to_attackers: Dict[int, List[int]] = {}
-        self.provoke_assignments: Dict[int, int] = {}
-        self.pending_order: Optional[PendingBlockOrder] = None
+        self.block_assignments: Dict[int, Optional[int]] = {}
         self.pending_dice_battle: Optional[PendingDiceBattle] = None
         self.pending_recycle_payment: Optional[PendingRecyclePayment] = None
         self.pending_forced_discard: Optional[PendingForcedDiscard] = None
@@ -260,13 +230,10 @@ class GameEngine:
         self.pending_stack_resolution_base_size = 0
         self.pending_stack_resolution_continuation = None
         self.resolving_stack = False
-        self.pending_post_comparison = None
         self.pending_direct_attack: Optional[PendingDirectAttack] = None
         self.pending_direct_attacks: List[PendingDirectAttack] = []
         self.combat_queue: List[int] = []
         self.current_attack_index = 0
-        self.current_blocker_order: List[int] = []
-        self.current_blocker_index = 0
         self.blocked_attackers: set[int] = set()
         self.combat_id_counter = 0
         self.ai_turn_initialized = False
@@ -274,8 +241,6 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
-        self.next_open_die_id = 1
-        self.open_die_targets: Dict[int, dict] = {}
 
         self.start_new_game()
 
@@ -322,12 +287,26 @@ class GameEngine:
         _, vw_bonus = self.get_creature_stat_bonuses(creature)
         return creature.vw + vw_bonus
 
+    def get_template_max_lw(self, template) -> int:
+        return template.effective_lw
+
+    def get_template_damage_value(self, template) -> int:
+        return template.effective_sw
+
+    def get_creature_max_lw(self, creature: BattlefieldCreature) -> int:
+        return creature.lw
+
+    def get_creature_damage_value(self, creature: BattlefieldCreature) -> int:
+        return creature.sw
+
+    def get_creature_current_lw(self, creature: BattlefieldCreature) -> int:
+        return creature.current_hp
+
     def get_creature_current_hp(self, creature: BattlefieldCreature) -> int:
-        _, vw_bonus = self.get_creature_stat_bonuses(creature)
-        return creature.current_hp + vw_bonus
+        return self.get_creature_current_lw(creature)
 
     def is_creature_destroyed(self, creature: BattlefieldCreature) -> bool:
-        return self.get_creature_current_hp(creature) <= 0
+        return self.get_creature_current_lw(creature) <= 0
 
     @property
     def defending_player(self) -> PlayerState:
@@ -424,8 +403,6 @@ class GameEngine:
             player.resources_played_this_turn = 0
             player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
-            player.attackers_die_bonus_this_turn = 0
-            player.direct_attack_damage_multiplier_this_turn.clear()
             player.summoner_tapped = False
             player.turns_started = 0
             player.mulligan_used = False
@@ -465,8 +442,6 @@ class GameEngine:
             player.resources_played_this_turn = 0
             player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
-            player.attackers_die_bonus_this_turn = 0
-            player.direct_attack_damage_multiplier_this_turn.clear()
             player.summoner_tapped = False
             player.turns_started = 0
             player.mulligan_used = False
@@ -504,12 +479,7 @@ class GameEngine:
     def reset_combat_state(self) -> None:
         self.selected_attackers = []
         self.selected_blocker_id = None
-        self.selected_provoke_attacker_id = None
-        self.selected_attack_target_id = None
         self.block_assignments = {}
-        self.blocker_to_attackers = {}
-        self.provoke_assignments = {}
-        self.pending_order = None
         self.pending_dice_battle = None
         self.pending_recycle_payment = None
         self.pending_forced_discard = None
@@ -524,13 +494,10 @@ class GameEngine:
         self.pending_stack_resolution_base_size = 0
         self.pending_stack_resolution_continuation = None
         self.resolving_stack = False
-        self.pending_post_comparison = None
         self.pending_direct_attack = None
         self.pending_direct_attacks = []
         self.combat_queue = []
         self.current_attack_index = 0
-        self.current_blocker_order = []
-        self.current_blocker_index = 0
         self.blocked_attackers = set()
         self.pending_ai_action = None
 

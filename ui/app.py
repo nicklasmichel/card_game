@@ -18,7 +18,6 @@ from core.models import (
     PHASE_MAIN_2,
     PHASE_RECYCLE_PAYMENT,
     PHASE_MULLIGAN,
-    PHASE_ORDER_BLOCKERS,
 )
 from ui.card_rendering import (
     blit_centered_text,
@@ -51,6 +50,7 @@ from ui.card_rendering import (
     draw_summoner_life_circle,
     fit_text,
     get_display_creature_stats,
+    get_display_template_stats,
     get_ability_names,
     get_card_ability_lines,
     get_card_ability_lines_from_creature,
@@ -101,7 +101,6 @@ from ui.layout import (
     handle_log_scroll,
 )
 from ui.overlays import (
-    draw_block_order_overlay,
     draw_discard_target_overlay,
     draw_dice_battle_overlay,
     draw_game_over_overlay,
@@ -155,6 +154,7 @@ class TcgPrototypeApp:
     blit_centered_text_to_surface = blit_centered_text_to_surface
     fit_text = fit_text
     get_display_creature_stats = get_display_creature_stats
+    get_display_template_stats = get_display_template_stats
     draw_art_panel = draw_art_panel
     draw_resource_backdrop = draw_resource_backdrop
     build_resource_back_surface = build_resource_back_surface
@@ -192,7 +192,6 @@ class TcgPrototypeApp:
     format_target_ref = format_target_ref
     handle_log_scroll = handle_log_scroll
     draw_mulligan_overlay = draw_mulligan_overlay
-    draw_block_order_overlay = draw_block_order_overlay
     draw_discard_target_overlay = draw_discard_target_overlay
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
@@ -300,8 +299,6 @@ class TcgPrototypeApp:
             "player_creatures": [],
             "enemy_creatures": [],
             "combat_lane": [],
-            "human_dice": [],
-            "order_blockers": [],
             "mulligan_hand": [],
             "player_resources": [],
             "discard_cards": [],

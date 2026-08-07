@@ -15,6 +15,8 @@ from engine.turns import (
     available_attackers,
     available_blockers,
     begin_first_turn,
+    begin_main_phase_priority_window,
+    can_take_second_main_actions,
     clear_end_of_turn_temporary_effects,
     draw_card_for_player,
     enter_combat_or_second_main,
@@ -29,6 +31,7 @@ from engine.turns import (
     has_playable_creature_in_hand,
     is_own_main_phase,
     resolve_stalled_dice_battle_if_needed,
+    request_combat_transition,
     start_turn,
 )
 
@@ -39,6 +42,8 @@ __all__ = [
     "available_attackers",
     "available_blockers",
     "begin_first_turn",
+    "begin_main_phase_priority_window",
+    "can_take_second_main_actions",
     "clear_end_of_turn_temporary_effects",
     "begin_forced_discard",
     "choose_cards_to_discard_for_ai",
@@ -59,6 +64,7 @@ __all__ = [
     "is_own_main_phase",
     "lose_game_from_empty_deck",
     "resolve_stalled_dice_battle_if_needed",
+    "request_combat_transition",
     "start_turn",
     "toggle_forced_discard_selection",
     "toggle_hand_card",

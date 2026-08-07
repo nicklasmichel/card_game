@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import Ability, CardCost, CardTemplate, Element
+from core.models import CardCost, CardTemplate, Element
 
 
 WATER_CREATURES = [
@@ -35,7 +35,6 @@ WATER_CREATURES = [
         aw=1,
         vw=2,
         element=Element.WATER,
-        abilities=frozenset({Ability.REGENERATION}),
     ),
     CardTemplate(
         template_id="water_creature_gezeitenheiler",
@@ -44,7 +43,6 @@ WATER_CREATURES = [
         aw=3,
         vw=4,
         element=Element.WATER,
-        abilities=frozenset({Ability.REGENERATION}),
     ),
     CardTemplate(
         template_id="water_creature_wellenformer",
@@ -53,7 +51,6 @@ WATER_CREATURES = [
         aw=3,
         vw=2,
         element=Element.WATER,
-        abilities=frozenset({Ability.ADAPTATION}),
     ),
     CardTemplate(
         template_id="water_creature_tiefenjaeger",
@@ -62,7 +59,6 @@ WATER_CREATURES = [
         aw=5,
         vw=4,
         element=Element.WATER,
-        abilities=frozenset({Ability.ADAPTATION}),
     ),
     CardTemplate(
         template_id="water_creature_uralter_leviathan",
@@ -71,6 +67,5 @@ WATER_CREATURES = [
         aw=4,
         vw=6,
         element=Element.WATER,
-        abilities=frozenset({Ability.REGENERATION, Ability.ADAPTATION}),
     ),
 ]

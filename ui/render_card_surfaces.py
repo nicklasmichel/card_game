@@ -41,8 +41,7 @@ def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygam
         template_id=card.template.template_id,
         title=card.template.name,
         cost=display_cost,
-        stats=f"{card.template.aw}/{card.template.vw}" if is_creature else "",
-        defense_text=f"{card.template.vw}/{card.template.vw}" if is_creature else None,
+        stats=self.get_display_template_stats(card.template) if is_creature else None,
         element=card.template.element,
         type_line=self.get_creature_type_line(card.template),
         line_one=line_one,
@@ -59,8 +58,7 @@ def build_card_surface(
     template_id: str | None,
     title: str,
     cost: CardCost | int,
-    stats: str,
-    defense_text: str | None,
+    stats: tuple[str, str, str, str] | None,
     element: Element,
     type_line: str,
     line_one: str,
@@ -79,7 +77,6 @@ def build_card_surface(
         title,
         cost,
         stats,
-        defense_text,
         element,
         line_one,
         line_two,
@@ -94,8 +91,7 @@ def build_full_art_card_surface(
     template_id: str,
     title: str,
     cost: int,
-    stats: str,
-    defense_text: str | None,
+    stats: tuple[str, str, str, str] | None,
     element: Element,
     line_one: str,
     line_two: str,
@@ -116,14 +112,16 @@ def build_full_art_card_surface(
     scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     base.blit(scaled, (0, 0))
 
-    aw_text = ""
-    vw_text = ""
-    shield_text = ""
-    shield_text_color = (255, 255, 255)
-    if stats:
-        aw_text, vw_text = stats.split("/", maxsplit=1)
-        shield_text = defense_text or vw_text
-        shield_text_color = (255, 142, 142) if shield_text.startswith("0/") else (255, 255, 255)
+    stat_entries: list[tuple[str, str, tuple[int, int, int]]] = []
+    if stats is not None:
+        aw_text, vw_text, lw_text, sw_text = stats
+        lw_text_color = (255, 142, 142) if lw_text.startswith("0/") else (255, 255, 255)
+        stat_entries = [
+            ("AW", aw_text, (255, 255, 255)),
+            ("VW", vw_text, (255, 255, 255)),
+            ("LW", lw_text, lw_text_color),
+            ("SW", sw_text, (255, 255, 255)),
+        ]
     header_y = max(s(4), int(self.card_height * 0.02))
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
     show_zero_cost = cost_value.resources == 0
@@ -150,14 +148,18 @@ def build_full_art_card_surface(
         rule_y += rule_line_height
 
     footer_y = self.card_height - s(14)
-    aw_x = s(10)
-    shield_icon_size = s(22)
-    if stats:
-        shield_width = number_font.size(shield_text)[0]
-        shield_text_x = self.card_width - s(6) - shield_width
-        shield_icon_x = shield_text_x - s(4) - shield_icon_size
-        blit_text_with_shadow(base, number_font, aw_text, (255, 255, 255), aw_x, self.card_height - s(25))
-        blit_text_with_shadow(base, number_font, shield_text, shield_text_color, shield_text_x, self.card_height - s(25))
+    if stat_entries:
+        stat_rect = pygame.Rect(s(8), self.card_height - s(50), self.card_width - s(16), s(40))
+        stat_width = stat_rect.width // 4
+        label_font = body_italic_font
+        value_font = body_font
+        for index, (label, value, color) in enumerate(stat_entries):
+            left = stat_rect.x + index * stat_width
+            section_rect = pygame.Rect(left, stat_rect.y, stat_width, stat_rect.height)
+            label_surface = label_font.render(label, True, CARD_BADGE_LIGHT)
+            value_surface = value_font.render(value, True, color)
+            base.blit(label_surface, label_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(8))))
+            base.blit(value_surface, value_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(25))))
     recycle_icon_gap = 0
     recycle_icon_size = s(33)
     recycle_x = s(6)
@@ -170,11 +172,6 @@ def build_full_art_card_surface(
             recycle_icon_size,
         )
         self.blit_symbol_image(base, get_element_symbol_key(element), icon_rect)
-    if stats:
-        aw_width = number_font.size(aw_text)[0]
-        self.blit_symbol_image(base, "sword_symbol", pygame.Rect(aw_x + aw_width - s(3), footer_y - s(12), s(22), s(22)))
-        self.blit_symbol_image(base, "shield_symbol", pygame.Rect(shield_icon_x, footer_y - s(12), shield_icon_size, shield_icon_size))
-
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
     if tapped:

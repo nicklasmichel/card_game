@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .enums import Ability, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode
+from .enums import Ability, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode, SpellTiming
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,8 @@ class CardTemplate:
     aw: int
     vw: int
     element: Element
+    lw: int | None = None
+    sw: int | None = None
     abilities: frozenset[Ability] = frozenset()
     card_type: CardType = CardType.CREATURE
     rules_text: str = ""
@@ -43,6 +45,8 @@ class CardTemplate:
     must_attack_each_turn: bool = False
     all_attackers_die_bonus: int = 0
     spell_effect: SpellEffect | None = None
+    spell_timing: SpellTiming | None = None
+    legal_reaction_windows: tuple[ReactionTrigger, ...] = ()
     reaction_trigger: ReactionTrigger | None = None
     target_mode: SpellTargetMode = SpellTargetMode.NONE
     spell_amount: int = 0
@@ -56,6 +60,18 @@ class CardTemplate:
     return_other_own_haste_on_combat_death: bool = False
     own_flying_attack_aura: int = 0
 
+    def __post_init__(self) -> None:
+        if self.card_type == CardType.CREATURE:
+            if self.aw <= 0 or self.vw <= 0:
+                raise ValueError(f"{self.template_id} muss positive AW- und VW-Werte besitzen.")
+            if self.element in {Element.AIR, Element.FIRE} and (self.lw is None or self.sw is None):
+                raise ValueError(f"{self.template_id} muss explizite LW- und SW-Werte besitzen.")
+            if self.effective_lw <= 0 or self.effective_sw <= 0:
+                raise ValueError(f"{self.template_id} muss positive LW- und SW-Werte besitzen.")
+            return
+        if self.lw is not None or self.sw is not None:
+            raise ValueError(f"{self.template_id} ist keine Kreatur und darf keine LW-/SW-Werte besitzen.")
+
     def has_ability(self, ability) -> bool:
         return ability in self.abilities
 
@@ -66,6 +82,16 @@ class CardTemplate:
     @property
     def recycle_cost(self) -> int:
         return self.cost.recycle
+
+    @property
+    def effective_lw(self) -> int:
+        # Temporary migration fallback for not-yet-migrated creature cards.
+        return self.vw if self.lw is None else self.lw
+
+    @property
+    def effective_sw(self) -> int:
+        # Temporary migration fallback for not-yet-migrated creature cards.
+        return self.aw if self.sw is None else self.sw
 
 
 @dataclass

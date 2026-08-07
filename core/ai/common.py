@@ -3,40 +3,55 @@ from __future__ import annotations
 from random import Random
 from typing import List, Optional
 
-from core.models import Ability, BattlefieldCreature, CardCost, CardInstance, CardType, DieResult, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, ReactionTrigger, SpellEffect, SpellTargetRef
+from core.models import (
+    Ability,
+    BattlefieldCreature,
+    CardInstance,
+    CardType,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
+    PlayerState,
+    SpellEffect,
+)
+
+
+def expected_w6_sum(dice_count: int) -> float:
+    return max(0, dice_count) * 3.5
+
 
 class RandomDieStrategy:
     name = "Zufaellig"
 
     @staticmethod
-    def choose(dice: List[DieResult], rng: Random) -> DieResult:
+    def choose(dice: List[object], rng: Random):
         return rng.choice(dice)
 
 
 class HighestFirstDieStrategy:
-    name = "Höchster Würfel zuerst"
+    name = "Hoechster Wuerfel zuerst"
 
     @staticmethod
-    def choose(dice: List[DieResult], rng: Random) -> DieResult:
-        return max(dice, key=lambda die: (die.total, die.base_roll))
+    def choose(dice: List[object], rng: Random):
+        return max(dice, key=lambda die: getattr(die, "total", 0))
 
 
 class LowestFirstDieStrategy:
-    name = "Niedrigster Würfel zuerst"
+    name = "Niedrigster Wuerfel zuerst"
 
     @staticmethod
-    def choose(dice: List[DieResult], rng: Random) -> DieResult:
-        return min(dice, key=lambda die: (die.total, die.base_roll))
+    def choose(dice: List[object], rng: Random):
+        return min(dice, key=lambda die: getattr(die, "total", 0))
 
 
 class SacrificeLowThenHighDieStrategy:
-    name = "Niedrigen Würfel opfern, dann hoch spielen"
+    name = "Niedrigen Wuerfel opfern, dann hoch spielen"
 
     @staticmethod
-    def choose(dice: List[DieResult], rng: Random) -> DieResult:
+    def choose(dice: List[object], rng: Random):
         if len(dice) >= 3:
-            return min(dice, key=lambda die: (die.total, die.base_roll))
-        return max(dice, key=lambda die: (die.total, die.base_roll))
+            return min(dice, key=lambda die: getattr(die, "total", 0))
+        return max(dice, key=lambda die: getattr(die, "total", 0))
+
 
 class CommonAIMixin:
     def has_valid_spell_targets(self, player: PlayerState, engine, card: CardInstance) -> bool:
@@ -60,8 +75,6 @@ class CommonAIMixin:
             return len(player.battlefield) + len(enemy.battlefield) >= max(1, card.template.spell_amount)
         if effect == SpellEffect.RETURN_OWN_AND_ENEMY_CREATURE_TO_HAND:
             return bool(player.battlefield or enemy.battlefield)
-        if effect == SpellEffect.REROLL_OPEN_DIE:
-            return engine.has_valid_open_die_target()
         return True
 
     def mulligan_indices(self, hand: List[CardInstance]) -> List[int]:
@@ -142,69 +155,41 @@ class CommonAIMixin:
         if not blockers:
             return None
 
-        def score(blocker: BattlefieldCreature) -> tuple[int, int, int]:
-            survival_margin = blocker.current_hp - attacker.aw
-            survives = 1 if survival_margin > 0 else 0
-            return survives, -abs(survival_margin), blocker.aw
+        def score(blocker: BattlefieldCreature) -> tuple[float, int, int, int]:
+            expected_margin = expected_w6_sum(blocker.vw) - expected_w6_sum(attacker.aw)
+            survival_margin = blocker.current_hp - attacker.sw
+            trade_margin = blocker.sw - attacker.current_hp
+            return expected_margin, survival_margin, trade_margin, blocker.current_hp
 
         return max(blockers, key=score)
-
-    def choose_provoke_target(
-        self,
-        attacker: BattlefieldCreature,
-        blockers: List[BattlefieldCreature],
-    ) -> Optional[BattlefieldCreature]:
-        return self.choose_blocker(attacker, blockers)
 
     def choose_blockers_for_attackers(
         self,
         attackers: List[BattlefieldCreature],
         blockers: List[BattlefieldCreature],
-        existing_assignments: Optional[dict[int, list[int]]] = None,
-    ) -> dict[int, list[int]]:
-        assignments: dict[int, list[int]] = {
-            attacker.unit_id: list((existing_assignments or {}).get(attacker.unit_id, []))
+        existing_assignments: Optional[dict[int, int | None]] = None,
+    ) -> dict[int, int | None]:
+        assignments: dict[int, int | None] = {
+            attacker.unit_id: (existing_assignments or {}).get(attacker.unit_id)
             for attacker in attackers
         }
-        remaining_capacity = {
-            blocker.unit_id: blocker.block_capacity() - sum(
-                1 for attacker_ids in assignments.values() if blocker.unit_id in attacker_ids
-            )
-            for blocker in blockers
-        }
-        blockers_by_id = {blocker.unit_id: blocker for blocker in blockers}
+        used_blockers = {blocker_id for blocker_id in assignments.values() if blocker_id is not None}
 
-        for attacker in sorted(attackers, key=lambda unit: (-unit.aw, unit.current_hp)):
-            while True:
-                available = [
-                    blocker
-                    for blocker in blockers
-                    if remaining_capacity.get(blocker.unit_id, 0) > 0
-                    and blocker.unit_id not in assignments[attacker.unit_id]
-                    and (not attacker.has_ability(Ability.FLYING) or blocker.has_ability(Ability.FLYING))
-                ]
-                blocker = self.choose_blocker(attacker, available)
-                if blocker is None:
-                    break
-                assignments[attacker.unit_id].append(blocker.unit_id)
-                remaining_capacity[blocker.unit_id] -= 1
-                if not blockers_by_id[blocker.unit_id].has_ability(Ability.DEFENDER):
-                    break
-                if attacker.aw <= blocker.current_hp:
-                    break
-                if self.rng.random() < 0.45:
-                    break
+        for attacker in sorted(attackers, key=lambda unit: (-unit.sw, -unit.aw, unit.current_hp)):
+            if assignments[attacker.unit_id] is not None:
+                continue
+            available = [
+                blocker
+                for blocker in blockers
+                if blocker.unit_id not in used_blockers
+                and (not attacker.has_ability(Ability.FLYING) or blocker.has_ability(Ability.FLYING))
+            ]
+            blocker = self.choose_blocker(attacker, available)
+            if blocker is None:
+                continue
+            assignments[attacker.unit_id] = blocker.unit_id
+            used_blockers.add(blocker.unit_id)
         return assignments
-
-    def choose_block_order(self, blockers: List[BattlefieldCreature]) -> List[BattlefieldCreature]:
-        return sorted(
-            blockers,
-            key=lambda blocker: (
-                -(blocker.vw - blocker.current_hp),
-                blocker.current_hp,
-                -blocker.aw,
-            ),
-        )
 
     def choose_die_strategy(self) -> type:
         return self.rng.choice(
@@ -215,17 +200,3 @@ class CommonAIMixin:
                 SacrificeLowThenHighDieStrategy,
             ]
         )
-
-    def should_use_adaptation(
-        self,
-        creature: BattlefieldCreature,
-        own_die: DieResult,
-        enemy_die: DieResult,
-        would_take_damage: bool,
-        would_be_destroyed: bool,
-        tie: bool,
-    ) -> bool:
-        if not creature.has_ability(Ability.ADAPTATION):
-            return False
-        if would_take_damage and own_die.total < enemy_die.total:
-            return True

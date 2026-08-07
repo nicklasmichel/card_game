@@ -14,7 +14,6 @@ from core.models import (
     PHASE_FORCED_DISCARD,
     PHASE_MAIN_1,
     PHASE_MAIN_2,
-    PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_SPELL_TARGETING,
     SpellEffect,
@@ -38,7 +37,7 @@ def get_overview_phase_label(phase: str) -> str:
         return "Hauptphase 2"
     if phase == "Recycle auswaehlen":
         return "Hauptphase"
-    if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_ORDER_BLOCKERS, PHASE_DICE_BATTLE}:
+    if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Kampf"
     return phase
 
@@ -97,14 +96,6 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
     for line in lines:
         self.blit_text(self.small_font, line, TEXT_COLOR, rect.x + 12, y)
         y += 16
-    if self.engine.phase == PHASE_DECLARE_ATTACKERS:
-        attacker = (
-            self.engine.get_unit_by_id(self.engine.selected_provoke_attacker_id)
-            if self.engine.selected_provoke_attacker_id is not None
-            else None
-        )
-        attacker_name = attacker.name if attacker is not None else "-"
-        self.blit_text(self.small_font, f"Provozieren: {attacker_name}", MUTED_TEXT, rect.x + 12, y + 4)
     if self.engine.phase == PHASE_DECLARE_BLOCKERS:
         target = self.engine.get_unit_by_id(self.engine.selected_attack_target_id) if self.engine.selected_attack_target_id is not None else None
         target_name = target.name if target is not None else "-"
@@ -165,8 +156,6 @@ def get_spell_target_summary(self, card) -> str:
         return "Eigene Kreatur und gegnerische Kreatur"
     if effect == SpellEffect.RETURN_OWN_FIGHTING_CREATURE_TO_HAND:
         return "Eigene kaempfende Kreatur"
-    if effect == SpellEffect.REROLL_OPEN_DIE:
-        return "Offener Kampfwuerfel"
     if effect == SpellEffect.DISCARD_HAND_AND_DRAW:
         return "Keine Ziele"
     target_mode = getattr(card.template, "target_mode", None)
@@ -204,9 +193,6 @@ def format_target_ref(self, target) -> str:
         if card is None:
             return "Karte nicht mehr im Ablagestapel"
         return f"{card.template.name} ({self.engine.human_player.name if card in self.engine.human_player.discard_pile else self.engine.ai_player.name})"
-    if target.target_type == "die":
-        role = "Angreifer" if target.die_role == "attacker" else "Blocker"
-        return f"{role}-Wuerfel {0 if target.die_index is None else target.die_index + 1}"
     return target.target_type
 
 
@@ -375,8 +361,7 @@ def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
             template_id=top_discard.template.template_id,
             title=top_discard.template.name,
             cost=top_discard.template.cost,
-            stats=f"{top_discard.template.aw}/{top_discard.template.vw}" if top_discard.template.card_type == CardType.CREATURE else "",
-            defense_text=f"{top_discard.template.vw}/{top_discard.template.vw}" if top_discard.template.card_type == CardType.CREATURE else None,
+            stats=self.get_display_template_stats(top_discard.template) if top_discard.template.card_type == CardType.CREATURE else None,
             element=top_discard.template.element,
             type_line=self.get_creature_type_line(top_discard.template),
             line_one=self.get_card_ability_lines(top_discard.template)[0],

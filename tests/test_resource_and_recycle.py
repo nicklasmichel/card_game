@@ -6,11 +6,6 @@ from tests.helpers import EngineTestCase
 
 
 class ResourceAndRecycleTests(EngineTestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        if self._testMethodName in {"test_spell_can_be_played_via_summoning_zone_drop"}:
-            self.skipTest("Obsolete after air spell rework.")
-
     def test_mixed_cost_can_recycle_one_of_the_tapped_resources(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobestie"])
         self.engine.human_player.hand = [card]
@@ -304,26 +299,6 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.assertEqual(len(self.engine.human_player.hand), 0)
         self.assertFalse(self.engine.human_player.summoner_passive_draw_used_this_turn)
 
-    def test_spell_can_be_played_via_summoning_zone_drop(self) -> None:
-        spell = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_windruf"])
-        spare = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"])
-        self.engine.human_player.hand = [spell, spare]
-        self.engine.human_player.resources = [
-            self.make_resource("fire_creature_glutbestie"),
-            self.make_resource("water_creature_wassertropfen"),
-        ]
-        self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["water_creature_wassertropfen"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbestie"]),
-        ]
-        self.engine.phase = PHASE_MAIN_1
-
-        self.engine.play_hand_card_in_summoning_zone(spell.instance_id)
-        self.engine.pass_reaction()
-        self.engine.pass_reaction()
-
-        self.assertEqual(self.engine.phase, PHASE_FORCED_DISCARD)
 
     def test_orkanschwinge_is_payable_with_five_resources(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_orkanschwinge"])
@@ -410,22 +385,6 @@ class ResourceAndRecycleTests(EngineTestCase):
 class AiResourceStrategyTests(EngineTestCase):
     def setUp(self) -> None:
         super().setUp()
-        if self._testMethodName in {
-            "test_windruf_is_not_automatic_at_two_resources",
-            "test_windruf_is_chosen_to_improve_multiple_dead_cards",
-            "test_windruf_is_low_value_with_already_strong_hand",
-            "test_windruf_decision_does_not_depend_on_hidden_topdeck_order",
-            "test_windruf_discard_prefers_redundant_or_dead_card",
-            "test_rueckenwind_is_not_chosen_without_attackers",
-            "test_rueckenwind_is_chosen_for_clear_unblocked_flying_attack",
-            "test_rueckenwind_is_not_chosen_when_same_attack_is_already_good_enough",
-            "test_rueckenwind_target_is_not_just_highest_attack",
-            "test_rueckenwind_is_not_chosen_before_a_future_haste_creature_enters_play",
-            "test_sturmruf_is_low_value_without_attackers",
-            "test_himmelswende_is_low_value_without_targets",
-            "test_orkanwende_values_deaths_and_recycle",
-        }:
-            self.skipTest("Detailed air resource heuristics move to later AI commit.")
         self.engine.players = [
             PlayerState(0, "Spieler", True),
             PlayerState(1, "Gegner", False),
@@ -765,174 +724,48 @@ class AiResourceStrategyTests(EngineTestCase):
         spell_step = next(step for step in plan.steps if step.card_instance_id == spell_id)
         self.assertEqual(spell_step.target_ids, (discarded.instance_id,))
 
-    def test_windruf_is_not_automatic_at_two_resources(self) -> None:
-        self.set_ai_resources(2)
+
+    def test_ai_plays_dead_windruf_as_second_resource_on_opening_turn(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.set_ai_resources(1)
+        self.engine.ai_player.resources_played_this_turn = 1
         self.set_ai_hand([
             "air_ritual_windruf",
-            "air_creature_wolkenschwinge",
-            "air_creature_wolkengeist",
-        ])
-
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-
-        self.assertIsNotNone(chosen)
-        self.assertNotEqual(chosen.template.template_id, "air_ritual_windruf")
-
-    def test_windruf_is_chosen_to_improve_multiple_dead_cards(self) -> None:
-        self.set_ai_resources(2)
-        self.set_ai_hand([
-            "air_ritual_windruf",
-            "air_ritual_himmelswende",
-            "air_ritual_orkanwende",
-            "air_creature_orkanschwinge",
-        ])
-        self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_verwirbelung"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-        ]
-
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-
-        self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_ritual_windruf")
-
-    def test_windruf_is_low_value_with_already_strong_hand(self) -> None:
-        self.set_ai_resources(3)
-        self.set_ai_hand([
-            "air_ritual_windruf",
-            "air_creature_wolkengeist",
-            "air_creature_wolkenschwinge",
-            "air_spell_verwirbelung",
-        ])
-
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-
-        self.assertIsNotNone(chosen)
-        self.assertNotEqual(chosen.template.template_id, "air_ritual_windruf")
-
-    def test_windruf_decision_does_not_depend_on_hidden_topdeck_order(self) -> None:
-        self.set_ai_resources(2)
-        self.set_ai_hand([
-            "air_ritual_windruf",
-            "air_ritual_himmelswende",
-            "air_ritual_orkanwende",
-            "air_creature_orkanschwinge",
-        ])
-        deck_templates = [
-            "air_creature_wolkenschwinge",
-            "air_creature_wolkengeist",
-            "air_spell_verwirbelung",
+            "air_creature_himmelsgeist",
+            "air_creature_himmelsschwinge",
             "air_creature_windgeist",
-        ]
-        self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates[template_id])
-            for template_id in deck_templates
-        ]
-        first_choice = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-
-        self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates[template_id])
-            for template_id in reversed(deck_templates)
-        ]
-        second_choice = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-
-        self.assertIsNotNone(first_choice)
-        self.assertIsNotNone(second_choice)
-        self.assertEqual(first_choice.template.template_id, second_choice.template.template_id)
-
-    def test_windruf_discard_prefers_redundant_or_dead_card(self) -> None:
-        self.set_ai_resources(1)
-        self.engine.ai_player.hand = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_ritual_himmelswende"]),
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
-        ]
-
-        discarded = self.engine.choose_cards_to_discard_for_ai(self.engine.ai_player, 1)
-
-        self.assertEqual(len(discarded), 1)
-        self.assertIn(discarded[0].template.template_id, {"air_ritual_himmelswende", "air_creature_wolkenschwinge"})
-
-    def test_rueckenwind_is_not_chosen_without_attackers(self) -> None:
-        self.set_ai_resources(1)
-        self.set_ai_hand([
-            "air_ritual_rueckenwind",
-            "air_ritual_windruf",
         ])
 
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
+        chosen_resource = self.engine.ai.choose_resource_card_for_main_phase(
+            self.engine.ai_player,
+            self.engine,
+            PHASE_MAIN_1,
+        )
 
-        self.assertIsNone(chosen)
+        self.assertIsNotNone(chosen_resource)
+        self.assertEqual(chosen_resource.template.template_id, "air_ritual_windruf")
 
-    def test_rueckenwind_is_chosen_for_clear_unblocked_flying_attack(self) -> None:
-        self.set_ai_resources(1)
-        self.set_ai_hand([
-            "air_ritual_rueckenwind",
-        ])
-        flyer = self.make_creature("air_creature_windschwinge", owner_id=1)
 
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-        target = self.engine.ai.choose_spell_target_ref(self.engine.ai_player, self.engine, chosen, type("Pending", (), {"selected_targets": [], "selected_sacrifice_creature_id": None})())
 
-        self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_ritual_rueckenwind")
-        self.assertIsNotNone(target)
-        self.assertEqual(target.creature_id, flyer.unit_id)
 
-    def test_rueckenwind_is_not_chosen_when_same_attack_is_already_good_enough(self) -> None:
-        self.set_ai_resources(1)
-        self.set_ai_hand([
-            "air_ritual_rueckenwind",
-            "air_ritual_windruf",
-        ])
-        self.make_creature("air_creature_himmelsschwinge", owner_id=1)
-        self.engine.human_player.life = 1
 
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 
-        self.assertIsNone(chosen)
 
-    def test_rueckenwind_target_is_not_just_highest_attack(self) -> None:
-        self.set_ai_resources(1)
-        self.set_ai_hand([
-            "air_ritual_rueckenwind",
-        ])
-        high_aw_ground = self.make_creature("air_creature_himmelsgeist", owner_id=1)
-        flyer = self.make_creature("air_creature_windschwinge", owner_id=1)
-        self.make_creature("earth_creature_felsensoldat", owner_id=0)
 
-        chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
-        target = self.engine.ai.choose_spell_target_ref(self.engine.ai_player, self.engine, chosen, type("Pending", (), {"selected_targets": [], "selected_sacrifice_creature_id": None})())
 
-        self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_ritual_rueckenwind")
-        self.assertNotEqual(high_aw_ground.unit_id, target.creature_id)
-        self.assertEqual(flyer.unit_id, target.creature_id)
 
-    def test_rueckenwind_is_not_chosen_before_a_future_haste_creature_enters_play(self) -> None:
+    def test_rueckenwind_is_not_chosen_when_it_only_pays_for_one_normal_creature(self) -> None:
         self.set_ai_resources(2)
         self.set_ai_hand([
             "air_ritual_rueckenwind",
-            "air_creature_sturmgeist",
+            "air_creature_windgeist",
         ])
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 
         self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_creature_sturmgeist")
+        self.assertEqual(chosen.template.template_id, "air_creature_windgeist")
 
-    def test_sturmruf_is_low_value_without_attackers(self) -> None:
-        self.set_ai_resources(2)
-        self.set_ai_hand([
-            "air_ritual_sturmruf",
-            "air_ritual_windruf",
-            "air_creature_orkanschwinge",
-        ])
-
-        self.assertEqual(self.select_resource_ids(1), ["air_ritual_sturmruf"])
 
     def test_sturmjagd_is_protected_with_likely_unblocked_flyer(self) -> None:
         self.set_ai_resources(2)
@@ -947,28 +780,7 @@ class AiResourceStrategyTests(EngineTestCase):
 
         self.assertNotIn("air_spell_sturmjagd", selected)
 
-    def test_himmelswende_is_low_value_without_targets(self) -> None:
-        self.set_ai_resources(3)
-        self.set_ai_hand([
-            "air_ritual_himmelswende",
-            "air_creature_wolkenschwinge",
-            "air_ritual_windruf",
-        ])
 
-        self.assertEqual(self.select_resource_ids(1), ["air_ritual_himmelswende"])
-
-    def test_orkanwende_values_deaths_and_recycle(self) -> None:
-        self.set_ai_resources(2)
-        self.set_ai_hand([
-            "air_ritual_orkanwende",
-            "air_ritual_himmelswende",
-            "air_creature_wolkenschwinge",
-        ])
-        self.engine.creatures_died_this_turn = 2
-
-        selected = self.select_resource_ids(1)
-
-        self.assertNotIn("air_ritual_orkanwende", selected)
 
     def test_two_resource_selection_re_evaluates_after_first_pick(self) -> None:
         self.set_ai_resources(0)

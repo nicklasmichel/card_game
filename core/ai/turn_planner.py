@@ -19,7 +19,7 @@ from core.ai.plans import (
     TurnPlan,
 )
 from core.ai.strategies.base import StrategyWeights
-from core.models import Ability, BattlefieldCreature, CardInstance, CardType, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, SpellEffect
+from core.models import Ability, BattlefieldCreature, CardInstance, CardType, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PHASE_SPELL_TARGETING, PlayerState, SpellEffect, SpellTiming
 
 AIR_MAX_RESOURCE_VARIANTS = 6
 AIR_MAX_ATTACK_VARIANTS = 6
@@ -627,9 +627,10 @@ class TurnPlanner:
         blockers_by_id = {blocker.unit_id: blocker for blocker in blockers}
         direct_damage = 0
         for attacker in enemy_attackers:
-            assigned = [blockers_by_id[blocker_id] for blocker_id in assignments.get(attacker.unit_id, []) if blocker_id in blockers_by_id]
-            if not assigned:
-                direct_damage += attacker.aw
+            blocker_id = assignments.get(attacker.unit_id)
+            assigned = blockers_by_id.get(blocker_id) if blocker_id is not None else None
+            if assigned is None:
+                direct_damage += attacker.sw
         return direct_damage
 
     def evaluate_air_turn_candidate(
@@ -850,6 +851,23 @@ class TurnPlanner:
                 remaining_end_hand_ids=end_hand_ids,
                 recycle_loss=recycle_loss,
             )
+            dead_resource_bonus = self.air_dead_resource_card_bonus(
+                ai,
+                player,
+                engine,
+                [hand_by_id[card_id] for card_id in main1_resource_ids if card_id in hand_by_id],
+                hand=hand,
+            )
+            if dead_resource_bonus > 0.0:
+                breakdown = EvaluationBreakdown(
+                    total_score=breakdown.total_score + dead_resource_bonus,
+                    player_damage_value=breakdown.player_damage_value,
+                    board_value=breakdown.board_value,
+                    hand_value=breakdown.hand_value,
+                    counterattack_penalty=breakdown.counterattack_penalty,
+                    recycle_penalty=breakdown.recycle_penalty,
+                    reason_codes=breakdown.reason_codes,
+                )
             reason_codes = list(strategy.reason_codes)
             if len(actual_attack.attacker_ids) >= 3:
                 reason_codes.append("enables_third_attacker")
@@ -857,6 +875,8 @@ class TurnPlanner:
                 reason_codes.append("reserves_combat_spell")
             if main2_candidate is not None and main2_candidate.card_sequence_ids:
                 reason_codes.append("uses_second_main")
+            if dead_resource_bonus > 0.0:
+                reason_codes.append("converts_dead_card_to_resource")
             candidate = TurnPlanCandidate(
                 strategy_mode=strategy.mode,
                 primary_goal=strategy.primary_goal,
@@ -1090,27 +1110,22 @@ class TurnPlanner:
         )
         remaining_ids = set(sequence)
         remaining_hand = [card for card in hand if card.instance_id not in remaining_ids]
-        relevant_effects = {
-            SpellEffect.RETURN_CREATURES_TO_HAND: ("AFTER_BLOCKERS_DECLARED", "key_bounce_window"),
-            SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT: ("AFTER_BLOCKERS_DECLARED", "broad_attack_bonus"),
-        }
         intents: list[dict] = []
         reserved = 0
         for card in remaining_hand:
             effect = card.template.spell_effect
-            if effect not in relevant_effects:
+            if effect != SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
                 continue
             if card.template.resource_cost > ending_available_resources:
                 continue
-            trigger, reason = relevant_effects[effect]
-            if strategy.mode == "STABILIZE" and effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+            if strategy.mode == "STABILIZE":
                 continue
             reserved = max(reserved, card.template.resource_cost)
             intents.append(
                 {
                     "card_instance_id": card.instance_id,
-                    "allowed_triggers": (trigger,),
-                    "condition_reason_code": reason,
+                    "allowed_triggers": ("COMBAT_START",),
+                    "condition_reason_code": "broad_attack_bonus",
                     "reserved_resources": card.template.resource_cost,
                     "preferred_target_ids": (),
                 }
@@ -1209,7 +1224,10 @@ class TurnPlanner:
                 )
                 scored_cards.append((tie_break, card))
             scored_cards.sort(key=lambda item: item[0])
-            selected = scored_cards[0][1]
+            unprotected = [item for item in scored_cards if item[1].instance_id not in protected_ids]
+            if not unprotected:
+                break
+            selected = unprotected[0][1]
             chosen.append(selected)
             remaining_hand = [card for card in remaining_hand if card.instance_id != selected.instance_id]
             projected_total += 1
@@ -1220,6 +1238,14 @@ class TurnPlanner:
     def score_air_resource_count_option(self, ai, player: PlayerState, engine, selected: list[CardInstance]) -> float:
         selected_ids = {card.instance_id for card in selected}
         remaining_hand = [card for card in player.hand if card.instance_id not in selected_ids]
+        protected_ids = self.air_current_plan_protected_ids(
+            ai,
+            player,
+            engine,
+            list(player.hand),
+            available_resources=player.available_resources(),
+            total_resources=player.total_resources(),
+        )
         projected_available = player.available_resources() + (1 if selected and player.resources_played_this_turn == 0 else 0)
         projected_total = player.total_resources() + len(selected)
         plan = self.best_air_main_phase_plan(
@@ -1233,21 +1259,29 @@ class TurnPlanner:
         keep_penalty = 0.0
         for card in selected:
             duplicate_count = sum(1 for existing in player.hand if existing.template.template_id == card.template.template_id)
+            keep_value = self.air_resource_keep_value(
+                ai,
+                player,
+                engine,
+                card,
+                hand=list(player.hand),
+                projected_available_resources=player.available_resources(),
+                projected_total_resources=player.total_resources(),
+                duplicate_count=duplicate_count,
+                protected_ids=set(),
+            )
             keep_penalty += max(
                 0.0,
-                self.air_resource_keep_value(
-                    ai,
-                    player,
-                    engine,
-                    card,
-                    hand=list(player.hand),
-                    projected_available_resources=player.available_resources(),
-                    projected_total_resources=player.total_resources(),
-                    duplicate_count=duplicate_count,
-                    protected_ids=set(),
-                ),
+                keep_value,
             )
         score = plan["score"] - keep_penalty * 0.12
+        score += self.air_dead_resource_card_bonus(
+            ai,
+            player,
+            engine,
+            selected,
+            hand=list(player.hand),
+        )
         if player.total_resources() == 0:
             if not selected:
                 score -= 4.0
@@ -1263,7 +1297,51 @@ class TurnPlanner:
             score -= 1.4
         elif len(player.hand) - len(selected) <= 2 and len(selected) >= 2:
             score -= 0.8
+        if any(card.instance_id in protected_ids for card in selected):
+            score -= 8.0
         return score
+
+    def air_dead_resource_card_bonus(
+        self,
+        ai,
+        player: PlayerState,
+        engine,
+        selected: list[CardInstance],
+        *,
+        hand: list[CardInstance],
+    ) -> float:
+        if player.total_resources() > 1 or not selected:
+            return 0.0
+        bonus = 0.0
+        for card in selected:
+            if card.template.card_type == CardType.CREATURE:
+                continue
+            duplicate_count = sum(1 for existing in hand if existing.template.template_id == card.template.template_id)
+            keep_value = self.air_resource_keep_value(
+                ai,
+                player,
+                engine,
+                card,
+                hand=hand,
+                projected_available_resources=player.available_resources(),
+                projected_total_resources=player.total_resources(),
+                duplicate_count=duplicate_count,
+                protected_ids=set(),
+            )
+            if keep_value >= 0.0:
+                continue
+            if self.air_card_has_live_use(
+                ai,
+                player,
+                engine,
+                card,
+                hand,
+                player.available_resources(),
+                player.total_resources(),
+            ):
+                continue
+            bonus += min(1.6, 0.6 + abs(keep_value) * 0.25)
+        return bonus
 
     def best_air_main_phase_plan(
         self,
@@ -1372,6 +1450,8 @@ class TurnPlanner:
                 "ready_attacker_count": ready_attacker_count + (1 if template.has_ability(Ability.HASTE) else 0),
             }
         if template.card_type not in {CardType.RITUAL, CardType.SPELL}:
+            return None
+        if template.card_type == CardType.SPELL and getattr(template, "spell_timing", None) == SpellTiming.COMBAT:
             return None
         if available_resources < template.resource_cost or total_resources < template.recycle_cost:
             return None
@@ -1665,6 +1745,14 @@ class TurnPlanner:
         answer_card = ai._find_air_only_answer_card(player, enemy, engine, hand)
         if answer_card is not None:
             protected_ids.add(answer_card.instance_id)
+        if engine.phase == PHASE_MAIN_1 and any(creature.is_ready() for creature in player.battlefield):
+            for card in hand:
+                if (
+                    card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+                    and available_resources >= card.template.resource_cost
+                    and total_resources >= card.template.recycle_cost
+                ):
+                    protected_ids.add(card.instance_id)
         return protected_ids
 
     def air_card_has_live_use(
@@ -1746,7 +1834,12 @@ class TurnPlanner:
             )
             return comparison["is_useful"]
         if template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
-            return False
+            return (
+                projected_available_resources >= template.resource_cost
+                and projected_total_resources >= template.recycle_cost
+                and engine.phase == PHASE_MAIN_1
+                and any(creature.is_ready() for creature in player.battlefield)
+            )
         return ai.has_valid_spell_targets(player, engine, card)
 
     def air_card_role_is_redundant(self, card: CardInstance, hand: list[CardInstance]) -> bool:

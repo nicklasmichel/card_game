@@ -193,8 +193,6 @@ def draw(self) -> None:
 
     if self.engine.phase == PHASE_MULLIGAN:
         self.draw_mulligan_overlay()
-    if self.engine.pending_order is not None:
-        self.draw_block_order_overlay()
     if self.engine.pending_dice_battle is not None:
         self.draw_dice_battle_overlay()
     self.draw_discard_target_overlay()

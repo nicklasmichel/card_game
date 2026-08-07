@@ -47,8 +47,8 @@ class EffectEvaluatorComponent:
             player,
             engine,
             remaining_hand,
-            available_resources=next_available,
-            total_resources=next_total,
+            available_resources=available_resources,
+            total_resources=total_resources,
             start_creature_discount=creature_discount,
             start_own_creature_count=own_creature_count,
             start_ready_attacker_count=ready_attacker_count,
@@ -422,26 +422,27 @@ class EffectEvaluatorComponent:
         strategy = ai._evaluate_air_strategy(player, engine)
         if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
             return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
-        if engine.reaction_context.trigger not in {ReactionTrigger.AFTER_ATTACKERS_DECLARED, ReactionTrigger.AFTER_BLOCKERS_DECLARED, ReactionTrigger.BEFORE_FIRST_COMBAT}:
+        if engine.reaction_context.trigger != ReactionTrigger.COMBAT_START:
+            return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
+        if player != engine.active_player:
             return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
         attackers = engine.get_current_attacker_creatures(player, engine.reaction_context)
         if not attackers or player.available_resources() < card.template.resource_cost:
             return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
         enemy = engine.players[1 - player.player_id]
-        if engine.reaction_context.trigger == ReactionTrigger.AFTER_ATTACKERS_DECLARED and engine.available_blockers(enemy):
-            return {"is_useful": False, "value": -1.1, "damage_gain": 0, "is_lethal": False}
         direct_gain = 0
         kill_gain = 0.0
         for attacker in attackers:
-            blockers = [engine.get_unit_by_id(blocker_id) for blocker_id in engine.block_assignments.get(attacker.unit_id, []) if engine.get_unit_by_id(blocker_id) is not None]
+            blocker_id = engine.block_assignments.get(attacker.unit_id)
+            blockers = [engine.get_unit_by_id(blocker_id)] if blocker_id is not None and engine.get_unit_by_id(blocker_id) is not None else []
             current_aw = engine.get_creature_attack_value(attacker)
             boosted_aw = current_aw + card.template.spell_amount
             if not blockers and attacker.unit_id not in engine.blocked_attackers:
-                direct_gain += card.template.spell_amount
+                direct_gain += 0
             for blocker in blockers:
                 if current_aw < blocker.current_hp <= boosted_aw:
                     kill_gain += ai._air_creature_board_value(blocker) * 0.45 + 1.2
-        base_damage = sum(engine.get_creature_attack_value(attacker) for attacker in attackers if not engine.block_assignments.get(attacker.unit_id))
+        base_damage = sum(engine.get_creature_damage_value(attacker) for attacker in attackers if not engine.block_assignments.get(attacker.unit_id))
         boosted_damage = base_damage + direct_gain
         is_lethal = boosted_damage >= enemy.life and base_damage < enemy.life
         score = direct_gain * (1.0 + 0.3 * strategy.weights.player_damage) + kill_gain - card.template.resource_cost * 0.7
@@ -456,123 +457,27 @@ class EffectEvaluatorComponent:
                 engine,
                 CardInstance(-999, type("TempTemplate", (), {"spell_amount": 1, "resource_cost": 1})()),
             )
-            if plus_one["is_lethal"] == is_lethal and plus_one["damage_gain"] >= direct_gain and plus_one["value"] >= score - 1.0:
+            if plus_one["is_useful"] and plus_one["is_lethal"] == is_lethal and kill_gain <= 0:
+                score -= 2.4
+            elif plus_one["is_lethal"] == is_lethal and plus_one["damage_gain"] >= direct_gain and plus_one["value"] >= score - 1.0:
                 score -= 2.1
         return {"is_useful": is_lethal or score >= (1.8 if card.template.spell_amount == 1 else 2.8), "value": score, "damage_gain": direct_gain, "is_lethal": is_lethal}
 
     def evaluate_jagdwind_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
-        if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
-            return {"is_useful": False, "value": -4.0, "target_id": None}
-        if engine.reaction_context.trigger not in {
-            ReactionTrigger.AFTER_ATTACKERS_DECLARED,
-            ReactionTrigger.AFTER_BLOCKERS_DECLARED,
-            ReactionTrigger.BEFORE_FIRST_COMBAT,
-        }:
-            return {"is_useful": False, "value": -4.0, "target_id": None}
-        if player.available_resources() < card.template.resource_cost:
-            return {"is_useful": False, "value": -4.0, "target_id": None}
-        enemy = engine.players[1 - player.player_id]
-        blockers_available = bool(engine.available_blockers(enemy))
-        if engine.reaction_context.trigger == ReactionTrigger.AFTER_ATTACKERS_DECLARED and blockers_available:
-            return {"is_useful": False, "value": -1.2, "target_id": None}
-        candidates = [creature for creature in player.battlefield if engine.has_valid_jagdwind_target(player) and creature.unit_id in engine.block_assignments]
-        best_result = {"is_useful": False, "value": -4.0, "target_id": None}
-        for creature in candidates:
-            aw = engine.get_creature_attack_value(creature)
-            blockers = [
-                engine.get_unit_by_id(blocker_id)
-                for blocker_id in engine.block_assignments.get(creature.unit_id, [])
-                if engine.get_unit_by_id(blocker_id) is not None
-            ]
-            direct_damage_gain = 0
-            lethal_gain = False
-            score = -1.8
-            if not blockers and creature.unit_id not in engine.blocked_attackers:
-                if enemy.life <= aw:
-                    continue
-                direct_damage_gain = card.template.spell_amount
-                score += direct_damage_gain * 1.5
-                if enemy.life <= aw + card.template.spell_amount and enemy.life > aw:
-                    lethal_gain = True
-                    score += 8.0
-                elif enemy.life <= (aw + card.template.spell_amount) * 2 and enemy.life > aw * 2:
-                    sturmjagd = next(
-                        (
-                            hand_card
-                            for hand_card in player.hand
-                            if hand_card.instance_id != card.instance_id
-                            and hand_card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE
-                            and player.available_resources() >= card.template.resource_cost + hand_card.template.resource_cost
-                        ),
-                        None,
-                    )
-                    if sturmjagd is not None:
-                        score += 3.2
-                if creature.has_ability(Ability.FLYING) and not any(blocker.has_ability(Ability.FLYING) for blocker in enemy.battlefield):
-                    score += 0.8
-            else:
-                kill_gain = sum(1 for blocker in blockers if aw < blocker.current_hp <= aw + card.template.spell_amount)
-                score += kill_gain * 3.5
-                score += max(0, len(blockers) - 1) * 1.4
-                if blockers:
-                    most_valuable = max(blockers, key=ai._air_creature_board_value)
-                    if aw < most_valuable.current_hp <= aw + card.template.spell_amount:
-                        score += 2.5 + ai._air_creature_board_value(most_valuable) * 0.25
-                    if aw >= most_valuable.current_hp:
-                        score -= 1.8
-                    elif aw + card.template.spell_amount < max(blocker.current_hp for blocker in blockers):
-                        score -= 1.2
-                if creature.current_hp <= 1 and kill_gain > 0:
-                    score += 1.2
-            if direct_damage_gain <= 0 and not lethal_gain and score < 1.1:
-                continue
-            result = {"is_useful": True, "value": score, "target_id": creature.unit_id}
-            if result["value"] > best_result["value"]:
-                best_result = result
-        if not best_result["is_useful"] or best_result["value"] <= 1.1:
-            return {"is_useful": False, "value": best_result["value"], "target_id": None}
-        return best_result
+        comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
+        return {
+            "is_useful": comparison["is_useful"],
+            "value": comparison["value"],
+            "target_id": None,
+        }
 
     def evaluate_sturmjagd_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
-        if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
-            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
-        if engine.reaction_context.trigger not in {
-            ReactionTrigger.AFTER_BLOCKERS_DECLARED,
-            ReactionTrigger.BEFORE_FIRST_COMBAT,
-        }:
-            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
-        if player != engine.active_player:
-            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
-        if player.available_resources() < card.template.resource_cost or player.total_resources() < card.template.recycle_cost:
-            return {"is_useful": False, "value": -5.0, "damage": 0, "is_lethal": False}
-        attackers = ai._current_sturmjagd_attackers(player, engine)
-        if not attackers:
-            return {"is_useful": False, "value": -4.5, "damage": 0, "is_lethal": False}
-        enemy = engine.players[1 - player.player_id]
-        normal_damage = sum(engine.get_creature_attack_value(creature) for creature in attackers)
-        if normal_damage <= 0:
-            return {"is_useful": False, "value": -4.0, "damage": 0, "is_lethal": False}
-        if normal_damage >= enemy.life:
-            return {"is_useful": False, "value": -2.2, "damage": normal_damage, "is_lethal": True}
-        total_damage = normal_damage * 2
-        is_lethal = total_damage >= enemy.life
-        remaining_total_resources = player.total_resources() - card.template.recycle_cost
-        remaining_available_resources = max(0, player.available_resources() - card.template.resource_cost)
-        score = normal_damage * 1.55 - 4.2
-        score += max(0, len(attackers) - 1) * 1.1
-        if is_lethal:
-            score += 11.0
-        if normal_damage <= 1:
-            score -= 3.5
-        if len(attackers) == 1 and normal_damage <= 2:
-            score -= 1.5
-        resource_penalties = {0: 5.8, 1: 3.4, 2: 1.5, 3: 0.3}
-        score -= resource_penalties.get(remaining_total_resources, 0.0)
-        if remaining_available_resources <= 0 and not is_lethal:
-            score -= 0.8
-        if enemy.life - total_damage <= 2 and not is_lethal:
-            score += 1.2
-        if player.life <= 5 and normal_damage >= 4:
-            score += 1.4
-        is_useful = is_lethal or score >= 2.4
-        return {"is_useful": is_useful, "value": score, "damage": total_damage, "is_lethal": is_lethal}
+        comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
+        attackers = engine.get_current_attacker_creatures(player, engine.reaction_context)
+        boosted_damage = sum(engine.get_creature_damage_value(creature) for creature in attackers if not engine.block_assignments.get(creature.unit_id))
+        return {
+            "is_useful": comparison["is_useful"],
+            "value": comparison["value"],
+            "damage": boosted_damage,
+            "is_lethal": comparison["is_lethal"],
+        }

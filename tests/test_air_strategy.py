@@ -40,6 +40,7 @@ class AirStrategyTests(EngineTestCase):
         threat = self.make_creature("air_creature_orkangeist", owner_id=0)
         threat.tapped = False
         threat.summoning_sick = False
+        threat.sw = 3
 
         decision = self.engine.ai._evaluate_air_strategy(self.engine.ai_player, self.engine)
 

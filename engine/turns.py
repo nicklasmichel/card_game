@@ -18,6 +18,7 @@ from core.models import (
     PHASE_SPELL_TARGETING,
     MAIN_PHASES,
     PlayerState,
+    ReactionTrigger,
 )
 
 
@@ -144,10 +145,46 @@ def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
     return any(self.can_play_card(player, card) for card in player.hand)
 
 
+def can_take_second_main_actions(self, player: PlayerState) -> bool:
+    if player != self.active_player:
+        return False
+    if player.resources_played_this_turn < 2 and bool(player.hand):
+        return True
+    current_phase = self.phase
+    try:
+        self.phase = PHASE_MAIN_2
+        return any(self.can_play_card(player, card) for card in player.hand)
+    finally:
+        self.phase = current_phase
+
+
 def enter_second_main_phase(self) -> None:
     self.clear_combat_temporary_effects()
+    if not self.can_take_second_main_actions(self.active_player):
+        self.log("Zweite Hauptphase wird uebersprungen. Es sind keine weiteren Aktionen moeglich.")
+        self.end_turn()
+        return
     self.phase = PHASE_MAIN_2
     self.log("Zweite Hauptphase begonnen.")
+
+
+def begin_main_phase_priority_window(self, phase: str, continuation) -> None:
+    trigger = ReactionTrigger.MAIN_1_PRIORITY if phase == PHASE_MAIN_1 else ReactionTrigger.MAIN_2_PRIORITY
+    self.begin_general_spell_window(
+        trigger=trigger,
+        first_responder_id=1 - self.active_player.player_id,
+        resume_phase=phase,
+        continuation=continuation,
+    )
+
+
+def request_combat_transition(self) -> None:
+    if self.phase != PHASE_MAIN_1:
+        return
+    if self.available_attackers(self.active_player):
+        self.begin_main_phase_priority_window(PHASE_MAIN_1, self.begin_attack_declaration)
+        return
+    self.log("Keine Kreaturen koennen angreifen. Die Kampfphase kann nicht begonnen werden.")
 
 
 def enter_combat_or_second_main(self) -> None:
@@ -173,24 +210,7 @@ def auto_resolve_human_no_blockers_if_needed(self) -> None:
 def resolve_stalled_dice_battle_if_needed(self) -> None:
     if self.phase != PHASE_DICE_BATTLE or self.pending_dice_battle is None:
         return
-    battle = self.pending_dice_battle
-    if battle.resolution_complete:
-        return
-    if battle.pending_comparison is not None:
-        if not battle.pending_comparison.human_can_adapt:
-            self.resolve_pending_comparison(use_human_adaptation=False)
-        return
-    human_is_attacker = battle.attacker_owner == self.human_player.player_id
-    human_dice = battle.attacker_dice if human_is_attacker else battle.blocker_dice
-    enemy_dice = battle.blocker_dice if human_is_attacker else battle.attacker_dice
-    if any(not die.used for die in human_dice) and any(not die.used for die in enemy_dice):
-        return
-    attacker = self.get_unit_by_id(battle.attacker_id)
-    blocker = self.get_unit_by_id(battle.blocker_id)
-    if attacker is None or blocker is None:
-        battle.resolution_complete = True
-        return
-    self.finalize_or_continue_dice_battle(battle, attacker, blocker)
+    return
 
 
 def handle_human_timeout(self) -> None:
@@ -201,21 +221,21 @@ def handle_human_timeout(self) -> None:
     if self.phase == PHASE_MAIN_1 and self.active_player.is_human:
         if self.available_attackers(self.active_player):
             self.log("Zeit abgelaufen. Spieler wechselt in die Kampfphase.")
-            self.enter_combat_or_second_main()
+            self.request_combat_transition()
         else:
-            self.log("Zeit abgelaufen. Zug wird beendet.")
-            self.end_turn()
+            self.log("Zeit abgelaufen. Spieler beendet seinen Zug.")
+            self.request_end_turn()
         return
     if self.phase == PHASE_MAIN_2 and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Zug wird beendet.")
-        self.end_turn()
+        self.log("Zeit abgelaufen. Spieler beendet seinen Zug.")
+        self.request_end_turn()
         return
     if self.phase == PHASE_RECYCLE_PAYMENT and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Recycle-Auswahl wurde abgebrochen.")
+        self.log("Zeit abgelaufen. Spieler bricht die Recycle-Auswahl ab.")
         self.cancel_recycle_payment()
         return
     if self.phase == PHASE_SPELL_TARGETING and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Zauberauswahl wurde abgebrochen.")
+        self.log("Zeit abgelaufen. Spieler bricht die Zauberauswahl ab.")
         self.cancel_pending_spell_cast()
         return
     if self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.human_player.player_id:
@@ -227,7 +247,7 @@ def handle_human_timeout(self) -> None:
         chosen = self.human_player.hand[:required]
         self.pending_forced_discard.selected_card_ids = [card.instance_id for card in chosen]
         self.selected_hand_ids = list(self.pending_forced_discard.selected_card_ids)
-        self.log("Zeit abgelaufen. Handkarten wurden automatisch abgeworfen.")
+        self.log("Zeit abgelaufen. Spieler wirft Handkarten automatisch ab.")
         self.confirm_forced_discard()
         return
     if self.phase == PHASE_DECLARE_ATTACKERS and self.active_player.is_human:
@@ -264,25 +284,18 @@ def is_own_main_phase(self, player: PlayerState) -> bool:
 
 
 def has_more_dice_battles_after_current(self) -> bool:
-    battle = self.pending_dice_battle
-    if battle is None:
+    if self.pending_dice_battle is None:
         return False
-
-    attacker = self.get_unit_by_id(battle.attacker_id)
-    if attacker is not None and not self.is_creature_destroyed(attacker):
-        for blocker_id in self.current_blocker_order[self.current_blocker_index:]:
-            blocker = self.get_unit_by_id(blocker_id)
-            if blocker is not None and not self.is_creature_destroyed(blocker):
-                return True
-
     for attacker_id in self.combat_queue[self.current_attack_index + 1:]:
         next_attacker = self.get_unit_by_id(attacker_id)
         if next_attacker is None or self.is_creature_destroyed(next_attacker):
             continue
-        for blocker_id in self.block_assignments.get(attacker_id, []):
-            blocker = self.get_unit_by_id(blocker_id)
-            if blocker is not None and not self.is_creature_destroyed(blocker):
-                return True
+        blocker_id = self.block_assignments.get(attacker_id)
+        if blocker_id is None:
+            continue
+        blocker = self.get_unit_by_id(blocker_id)
+        if blocker is not None and not self.is_creature_destroyed(blocker):
+            return True
     return False
 
 
@@ -296,8 +309,6 @@ def clear_end_of_turn_temporary_effects(self) -> None:
 
 
 def clear_combat_temporary_effects(self) -> None:
-    self.active_player.attackers_die_bonus_this_turn = 0
-    self.active_player.direct_attack_damage_multiplier_this_turn.clear()
     for player in self.players:
         for creature in player.battlefield:
             creature.temporary_combat_aw_bonus = 0

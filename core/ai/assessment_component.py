@@ -86,15 +86,12 @@ class AssessmentComponent:
         return 0.0
 
     def has_plausible_combat_reaction(self, ai, player: PlayerState, engine, hand: list[CardInstance], available_resources: int) -> bool:
-        enemy = engine.players[1 - player.player_id]
         for card in hand:
             if card.template.card_type != CardType.SPELL:
                 continue
             if available_resources < card.template.resource_cost:
                 continue
             effect = card.template.spell_effect
-            if effect == SpellEffect.RETURN_CREATURES_TO_HAND and len(player.battlefield) + len(enemy.battlefield) >= card.template.spell_amount:
-                return True
             if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT and any(creature.is_ready() for creature in player.battlefield):
                 return True
         return False
@@ -180,28 +177,29 @@ class AssessmentComponent:
         enemy_kills = 0
         own_losses = 0
         for attacker in cloned_attackers:
-            assigned_blockers = [blockers_by_id[blocker_id] for blocker_id in blocker_assignments.get(attacker.unit_id, []) if blocker_id in blockers_by_id]
-            attacker_value = attacker.aw * 1.6 + attacker.current_hp * 1.1 + len(attacker.abilities) * 0.4
+            blocker_id = blocker_assignments.get(attacker.unit_id)
+            assigned_blockers = [blockers_by_id[blocker_id]] if blocker_id in blockers_by_id else []
+            attacker_value = attacker.sw * 1.8 + attacker.current_hp * 1.1 + len(attacker.abilities) * 0.4
             if not assigned_blockers:
-                direct_damage += attacker.aw
+                direct_damage += attacker.sw
                 damage_weight = 1.45 if strategy_weights is None else 1.1 + 0.35 * strategy_weights.player_damage
-                score += attacker.aw * damage_weight
+                score += attacker.sw * damage_weight
                 if attacker.has_ability(Ability.FLYING) and not any(blocker.has_ability(Ability.FLYING) for blocker in blockers):
                     score += 0.8 if strategy_weights is None else 0.55 + 0.25 * strategy_weights.flying_damage
                 continue
             blocker_aw_total = sum(blocker.aw for blocker in assigned_blockers)
             kills_here = 0
-            if any(attacker.aw >= blocker.current_hp for blocker in assigned_blockers):
-                kills_here = sum(1 for blocker in assigned_blockers if attacker.aw >= blocker.current_hp)
+            if any(attacker.sw >= blocker.current_hp for blocker in assigned_blockers):
+                kills_here = sum(1 for blocker in assigned_blockers if attacker.sw >= blocker.current_hp)
                 enemy_kills += kills_here
                 enemy_weight = 0.7 if strategy_weights is None else 0.45 + 0.25 * strategy_weights.enemy_losses
-                score += sum((blocker.aw + blocker.current_hp * 1.1) * enemy_weight for blocker in assigned_blockers if attacker.aw >= blocker.current_hp)
+                score += sum((blocker.aw + blocker.current_hp * 1.1) * enemy_weight for blocker in assigned_blockers if attacker.sw >= blocker.current_hp)
             if blocker_aw_total >= attacker.current_hp:
                 own_losses += 1
                 own_weight = 0.8 if strategy_weights is None else 0.45 + 0.35 * strategy_weights.own_losses
                 score -= attacker_value * own_weight
             else:
-                score += 0.7 + attacker.aw * 0.25 + kills_here * 0.3
+                score += 0.7 + attacker.sw * 0.35 + kills_here * 0.3
         if len(cloned_attackers) >= 3:
             score += 2.0 if strategy_weights is None else 1.0 + strategy_weights.third_attacker
         if direct_damage >= enemy.life:
@@ -243,13 +241,10 @@ class AssessmentComponent:
         blockers_by_id = {blocker.unit_id: blocker for blocker in remaining_blockers}
         direct_damage = 0
         for attacker in enemy_attackers:
-            assigned_blockers = [
-                blockers_by_id[blocker_id]
-                for blocker_id in blocker_assignments.get(attacker.unit_id, [])
-                if blocker_id in blockers_by_id
-            ]
+            blocker_id = blocker_assignments.get(attacker.unit_id)
+            assigned_blockers = [blockers_by_id[blocker_id]] if blocker_id in blockers_by_id else []
             if not assigned_blockers:
-                direct_damage += attacker.aw
+                direct_damage += attacker.sw
         return {"damage": direct_damage, "is_lethal": direct_damage >= player.life}
 
     def count_probable_attackers(self, ai, player: PlayerState, hand: list[CardInstance]) -> int:
@@ -267,14 +262,14 @@ class AssessmentComponent:
             if not creature.is_ready():
                 continue
             if no_blockers or (creature.has_ability(Ability.FLYING) and flying_blockers == 0):
-                probable_damage += creature.aw + creature.temporary_aw_bonus + (aura_bonus if creature.has_ability(Ability.FLYING) else 0)
+                probable_damage += creature.sw
         for card in hand:
             if card.template.card_type != CardType.CREATURE:
                 continue
             if not card.template.has_ability(Ability.HASTE):
                 continue
             if no_blockers or (card.template.has_ability(Ability.FLYING) and flying_blockers == 0):
-                probable_damage += card.template.aw + (aura_bonus if card.template.has_ability(Ability.FLYING) else 0)
+                probable_damage += card.template.effective_sw
         return probable_damage
 
     def count_unblockable_haste_attackers(self, ai, player: PlayerState, enemy: PlayerState, hand: list[CardInstance]) -> int:

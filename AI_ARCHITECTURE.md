@@ -30,6 +30,41 @@
 4. `ReactionPlanner` arbeitet mit aktivem Plan, Reservierungen und `ReactionIntent`.
 5. Nach Kartenziehen, Zufall oder gegnerischer Reaktion darf die KI neu planen.
 
+## Zauber-Timing
+
+| Kategorie | Erlaubtes Timing |
+| --- | --- |
+| Ritual | nur eigene Hauptphasen |
+| Spontanzauber | Hauptphasen beider Spieler |
+| Kampfzauber | nur Kampfbeginn und/oder Kampfende |
+
+- Rituale bleiben `CardType.RITUAL`.
+- Zauber bleiben `CardType.SPELL` und werden zusaetzlich ueber `spell_timing` unterschieden:
+  - `SpellTiming.INSTANT`
+  - `SpellTiming.COMBAT`
+- Kampfzauber koennen ihre gueltigen Fenster ueber `legal_reaction_windows` weiter einschränken.
+
+## Kampfzauberfenster
+
+- `Kampfbeginn` oeffnet erst nach Angreifern und Blockern.
+- Zwischen `Kampfbeginn` und `Kampfende` gibt es keine weiteren allgemeinen Zauberfenster.
+- `Kampfende` oeffnet nach allen Kreaturenkaempfen und allen ungeblockten Treffern.
+- In Hauptphase 1 und Hauptphase 2 gibt es beim Phasenwechsel ein allgemeines Prioritaetsfenster fuer Spontanzauber.
+- In beiden Fenstern gilt derselbe Prioritaetsablauf:
+  1. aktueller Prioritaetsspieler spielt oder passt
+  2. Prioritaet wechselt
+  3. zwei Passen in Folge verrechnen den Stapel
+  4. danach wird der gespeicherte Ablauf fortgesetzt
+
+## Luftzauber im finalen Timing
+
+| Luftzauber | Kategorie | Erlaubtes Timing |
+| --- | --- | --- |
+| Verwehung | Spontanzauber | Hauptphasen beider Spieler |
+| Verwirbelung | Spontanzauber | Hauptphasen beider Spieler |
+| Jagdwind | Kampfzauber | nur Kampfbeginn, nur Angreifer |
+| Sturmjagd | Kampfzauber | nur Kampfbeginn, nur Angreifer |
+
 ## Komponenten und Verantwortlichkeiten
 
 - `HeuristicStrategicAI`: zentraler Orchestrator, oeffentliche KI-Einstiegspunkte, Komponentenverdrahtung

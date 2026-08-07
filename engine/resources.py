@@ -249,7 +249,8 @@ def resolve_creature_play(self, card: CardInstance, recycle_resource_ids: List[i
         )
         self.log(
             f"{self.active_player.name} spielt {card.template.name} "
-            f"({card.template.aw}/{card.template.vw}) fuer {self.format_card_cost(cost)}."
+            f"(AW {card.template.aw} / VW {card.template.vw} / LW {card.template.effective_lw} / SW {card.template.effective_sw}) "
+            f"fuer {self.format_card_cost(cost)}."
         )
     self.register_hand_card_played(self.active_player)
     if card.template.draw_on_play > 0:

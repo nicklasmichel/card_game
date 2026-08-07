@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import CardCost, CardTemplate, CardType, Element, SpellEffect, SpellTargetMode
+from core.models import CardCost, CardTemplate, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode, SpellTiming
 
 
 FIRE_SPELLS = [
@@ -12,10 +12,12 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START,),
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=3,
-        rules_text="Ein Angreifer erhaelt +3 AW fuer diesen Zug.",
+        rules_text="Eine Kreatur erhaelt +3 AW fuer diesen Kampf.",
     ),
     CardTemplate(
         template_id="fire_spell_raserei",
@@ -25,10 +27,12 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START,),
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=6,
-        rules_text="Ein Angreifer erhaelt +6 AW fuer diesen Zug.",
+        rules_text="Eine Kreatur erhaelt +6 AW fuer diesen Kampf.",
     ),
     CardTemplate(
         template_id="fire_spell_versengen",
@@ -38,10 +42,12 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
-        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER,
-        target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START, ReactionTrigger.COMBAT_END),
+        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE,
+        target_mode=SpellTargetMode.CREATURE,
         spell_amount=1,
-        rules_text="Fuege einer Kreatur oder einem Spieler 1 Schaden zu.",
+        rules_text="Fuege einer Kreatur 1 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_verbrennen",
@@ -51,10 +57,12 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
-        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER,
-        target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START, ReactionTrigger.COMBAT_END),
+        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE,
+        target_mode=SpellTargetMode.CREATURE,
         spell_amount=2,
-        rules_text="Fuege einer Kreatur oder einem Spieler 2 Schaden zu.",
+        rules_text="Fuege einer Kreatur 2 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_verkohlen",
@@ -64,10 +72,12 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
-        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER,
-        target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START, ReactionTrigger.COMBAT_END),
+        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE,
+        target_mode=SpellTargetMode.CREATURE,
         spell_amount=3,
-        rules_text="Fuege einer Kreatur oder einem Spieler 3 Schaden zu.",
+        rules_text="Fuege einer Kreatur 3 Schaden zu.",
     ),
     CardTemplate(
         template_id="fire_spell_verzehren",
@@ -77,9 +87,11 @@ FIRE_SPELLS = [
         vw=0,
         element=Element.FIRE,
         card_type=CardType.SPELL,
-        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER,
-        target_mode=SpellTargetMode.CREATURE_OR_PLAYER,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START, ReactionTrigger.COMBAT_END),
+        spell_effect=SpellEffect.DEAL_DAMAGE_TO_CREATURE,
+        target_mode=SpellTargetMode.CREATURE,
         spell_amount=4,
-        rules_text="Fuege einer Kreatur oder einem Spieler 4 Schaden zu.",
+        rules_text="Fuege einer Kreatur 4 Schaden zu.",
     ),
 ]

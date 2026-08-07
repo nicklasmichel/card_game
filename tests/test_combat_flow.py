@@ -2,430 +2,135 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from core.models import (
-    CardInstance,
-    DiceRoundRecord,
-    DieResult,
-    PendingComparison,
-    PendingDiceBattle,
-    PHASE_DECLARE_ATTACKERS,
-    PHASE_DECLARE_BLOCKERS,
-    PHASE_DICE_BATTLE,
-    PHASE_MAIN_2,
-    PHASE_REACTION,
-    PHASE_MAIN_1,
-)
+from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
 from tests.helpers import EngineTestCase
 
 
 class CombatFlowTests(EngineTestCase):
-    def test_main_one_without_attackers_does_not_enter_second_main(self) -> None:
-        self.engine.phase = PHASE_MAIN_1
-        self.engine.turn_number = 2
-        self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-        ]
+    def test_unblocked_attack_uses_sw_not_aw(self) -> None:
+        attacker = self.make_creature("fire_creature_infernobrecher", owner_id=0)
+        self.engine.active_player_index = 0
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [attacker.unit_id]
 
-        self.engine.enter_combat_or_second_main()
+        self.engine.confirm_attackers()
+        self.engine.begin_combat_resolution()
+        self.engine.end_dice_battle()
 
-        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
-        self.assertNotIn("Zweite Hauptphase begonnen.", self.engine.log_messages)
+        self.assertEqual(self.engine.ai_player.life, 20 - attacker.sw)
+        self.assertEqual(attacker.sw, 3)
+        self.assertEqual(attacker.aw, 5)
 
-    def test_unblocked_multi_attack_advances_turn_only_once_without_reactions(self) -> None:
-        attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
-        attacker_two = self.make_creature("air_creature_sturmgeist", owner_id=1)
-        self.engine.human_player.hand = []
-        self.engine.ai_player.hand = []
-        self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-        ]
-        self.engine.human_player.battlefield = []
-        self.engine.ai_player.battlefield = [attacker_one, attacker_two]
-        self.engine.active_player_index = 1
-        self.engine.turn_number = 3
-        self.engine.phase = PHASE_DECLARE_BLOCKERS
-        self.engine.block_assignments = {
-            attacker_one.unit_id: [],
-            attacker_two.unit_id: [],
-        }
+    def test_blocked_combat_uses_aw_and_vw_as_w6_pool_sizes(self) -> None:
+        attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        blocker = self.make_creature("water_creature_kuestenkaempfer", owner_id=1)
 
-        self.engine.finish_block_assignment()
+        with patch.object(self.engine.rng, "randint", side_effect=[3, 2, 5, 5, 6]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
 
-        self.assertEqual(self.engine.turn_number, 3)
-        self.assertEqual(self.engine.active_player, self.engine.ai_player)
-        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
-        self.assertNotIn("Zug 4: Spieler ist am Zug.", self.engine.log_messages)
+        battle = self.engine.pending_dice_battle
+        self.assertIsNotNone(battle)
+        self.assertEqual(battle.attacker_rolls, [3, 2, 5])
+        self.assertEqual(battle.blocker_rolls, [5, 6])
+        self.assertEqual(battle.attack_sum, 10)
+        self.assertEqual(battle.defense_sum, 11)
+        self.assertEqual(battle.winner, "blocker")
+        self.assertEqual(attacker.current_hp, attacker.lw - blocker.sw)
 
-    def test_unblocked_attackers_wait_until_blocked_combats_finish(self) -> None:
-        unblocked_attacker = self.make_creature("air_creature_windschwinge", owner_id=1)
-        blocked_attacker = self.make_creature("fire_creature_flammenbestie", owner_id=1)
+    def test_tie_rerolls_full_pools_until_resolved(self) -> None:
+        attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[3, 3, 3, 3, 3, 3, 6, 6, 6, 1, 1, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        battle = self.engine.pending_dice_battle
+        self.assertEqual(battle.reroll_count, 1)
+        self.assertEqual(len(battle.history), 2)
+        self.assertIn("Gleichstand", battle.history[0].outcome_text)
+        self.assertNotEqual(battle.attack_sum, battle.defense_sum)
+
+    def test_winner_deals_own_sw_damage_and_lethal_removes_creature(self) -> None:
+        attacker = self.make_creature("fire_creature_infernobestie", owner_id=0)
+        blocker = self.make_creature("air_creature_sturmschwinge", owner_id=1)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertIsNone(self.engine.get_unit_by_id(blocker.unit_id))
+        self.assertEqual(self.engine.pending_dice_battle.creature_damage, attacker.sw)
+
+    def test_human_block_assignment_is_one_to_one_only(self) -> None:
+        attacker_one = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        attacker_two = self.make_creature("fire_creature_glutbrecher", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
 
-        self.engine.active_player_index = 1
-        self.engine.ai_player.hand = []
-        self.engine.human_player.hand = []
         self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.active_player_index = 1
         self.engine.block_assignments = {
-            unblocked_attacker.unit_id: [],
-            blocked_attacker.unit_id: [blocker.unit_id],
+            attacker_one.unit_id: None,
+            attacker_two.unit_id: None,
         }
 
-        self.engine.begin_combat_resolution()
+        self.engine.toggle_blocker_assignment(blocker.unit_id)
+        self.engine.toggle_selected_attack_target(attacker_one.unit_id)
+        self.assertEqual(self.engine.block_assignments[attacker_one.unit_id], blocker.unit_id)
 
-        self.assertEqual(self.engine.human_player.life, 20)
-        self.assertIsNotNone(self.engine.pending_dice_battle)
-        self.assertEqual(self.engine.pending_dice_battle.attacker_id, blocked_attacker.unit_id)
-        self.assertIsNone(self.engine.pending_direct_attack)
+        self.engine.toggle_blocker_assignment(blocker.unit_id)
+        self.engine.toggle_selected_attack_target(attacker_two.unit_id)
+        self.assertIsNone(self.engine.block_assignments[attacker_two.unit_id])
 
-    def test_windschwinge_can_only_be_blocked_by_flying_creature(self) -> None:
-        attacker = self.make_creature("air_creature_windschwinge", owner_id=1)
+    def test_flying_still_restricts_blockers(self) -> None:
+        attacker = self.make_creature("air_creature_windschwinge", owner_id=0)
         ground_blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0)
         flying_blocker = self.make_creature("air_creature_himmelsschwinge", owner_id=0)
 
-        self.engine.active_player_index = 1
         self.engine.phase = PHASE_DECLARE_BLOCKERS
-        self.engine.block_assignments = {attacker.unit_id: []}
-        self.engine.selected_attack_target_id = attacker.unit_id
+        self.engine.active_player_index = 1
+        self.engine.block_assignments = {attacker.unit_id: None}
 
         self.engine.toggle_blocker_assignment(ground_blocker.unit_id)
-
-        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [])
+        self.engine.toggle_selected_attack_target(attacker.unit_id)
+        self.assertIsNone(self.engine.block_assignments[attacker.unit_id])
 
         self.engine.toggle_blocker_assignment(flying_blocker.unit_id)
+        self.engine.toggle_selected_attack_target(attacker.unit_id)
+        self.assertEqual(self.engine.block_assignments[attacker.unit_id], flying_blocker.unit_id)
 
-        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [flying_blocker.unit_id])
-
-    def test_orkanschwinge_and_orkangeist_use_plain_stats(self) -> None:
-        orkanschwinge = self.make_creature("air_creature_orkanschwinge", owner_id=0)
-        orkangeist = self.make_creature("air_creature_orkangeist", owner_id=0)
-
-        self.assertEqual(self.engine.get_creature_attack_value(orkanschwinge), 2)
-        self.assertEqual(self.engine.get_creature_defense_value(orkanschwinge), 4)
-        self.assertEqual(self.engine.get_creature_attack_value(orkangeist), 4)
-        self.assertEqual(self.engine.get_creature_defense_value(orkangeist), 2)
-
-    def test_human_provoke_assigns_selected_blocker_to_attacker(self) -> None:
-        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=0)
-        blocker = self.make_creature("fire_creature_glutbestie", owner_id=1)
-
-        self.engine.phase = PHASE_DECLARE_ATTACKERS
-        self.engine.toggle_attacker(attacker.unit_id)
-        self.engine.toggle_provoke_target(blocker.unit_id)
-        self.engine.confirm_attackers()
-
-        self.assertEqual(self.engine.provoke_assignments[attacker.unit_id], blocker.unit_id)
-        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
-        self.assertEqual(self.engine.blocker_to_attackers[blocker.unit_id], [attacker.unit_id])
-
-    def test_provoke_forced_block_cannot_be_removed(self) -> None:
-        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=1)
-        blocker = self.make_creature("water_creature_flusskrieger", owner_id=0)
-
-        self.engine.active_player_index = 1
-        self.engine.phase = PHASE_DECLARE_ATTACKERS
-        self.engine.selected_attackers = [attacker.unit_id]
-        self.engine.provoke_assignments = {attacker.unit_id: blocker.unit_id}
-        self.engine.confirm_attackers()
-
-        self.engine.selected_attack_target_id = attacker.unit_id
-        self.engine.toggle_blocker_assignment(blocker.unit_id)
-
-        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
-        self.assertIn("muss diesen Angreifer durch Provozieren blocken", self.engine.log_messages[-1])
-
-    def test_ai_provoke_chooses_and_assigns_blocker(self) -> None:
-        attacker = self.make_creature("earth_creature_granitkrieger", owner_id=1)
-        blocker = self.make_creature("water_creature_flusskrieger", owner_id=0)
-
-        self.engine.active_player_index = 1
-        self.engine.phase = PHASE_DECLARE_ATTACKERS
-        self.engine.ai_declare_attackers()
-
-        self.assertEqual(self.engine.provoke_assignments[attacker.unit_id], blocker.unit_id)
-        self.assertEqual(self.engine.block_assignments[attacker.unit_id], [blocker.unit_id])
-
-    def test_defender_can_block_two_attackers_in_same_combat_phase(self) -> None:
-        attacker_one = self.make_creature("fire_creature_glutbestie", owner_id=1)
-        attacker_two = self.make_creature("fire_creature_glutbrecher", owner_id=1)
-        defender = self.make_creature("earth_creature_schildwache", owner_id=0)
-
-        self.engine.active_player_index = 1
-        self.engine.phase = PHASE_DECLARE_BLOCKERS
-        self.engine.block_assignments = {
-            attacker_one.unit_id: [],
-            attacker_two.unit_id: [],
-        }
-
-        self.engine.selected_attack_target_id = attacker_one.unit_id
-        self.engine.toggle_blocker_assignment(defender.unit_id)
-        self.engine.selected_attack_target_id = attacker_two.unit_id
-        self.engine.toggle_blocker_assignment(defender.unit_id)
-
-        self.assertEqual(self.engine.block_assignments[attacker_one.unit_id], [defender.unit_id])
-        self.assertEqual(self.engine.block_assignments[attacker_two.unit_id], [defender.unit_id])
-        self.assertEqual(self.engine.blocker_to_attackers[defender.unit_id], [attacker_one.unit_id, attacker_two.unit_id])
-
-    def test_human_adaptation_creates_choice_and_can_reroll_comparison(self) -> None:
-        attacker = self.make_creature("fire_creature_flammenbestie", owner_id=1)
-        blocker = self.make_creature("water_creature_wellenformer", owner_id=0)
-        attacker.current_hp = attacker.vw
-        blocker.current_hp = blocker.vw
-
-        self.engine.active_player_index = 1
-        self.engine.phase = PHASE_DICE_BATTLE
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=1,
-            blocker_owner=0,
-            attacker_dice=[DieResult(10, attacker.aw)],
-            blocker_dice=[DieResult(1, blocker.aw)],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
-
-        self.engine.choose_human_die(0)
-
-        self.assertIsNotNone(self.engine.pending_dice_battle)
-        self.assertIsNotNone(battle.pending_comparison)
-        self.assertTrue(battle.pending_comparison.human_can_adapt)
-        self.assertEqual(len(battle.history), 0)
-
-        with patch.object(self.engine.rng, "randint", return_value=20):
-            self.engine.resolve_pending_comparison(use_human_adaptation=True)
-
-        self.assertTrue(battle.blocker_used_adaptation)
-        self.assertEqual(len(battle.history), 1)
-        self.assertLess(attacker.current_hp, attacker.vw)
-        self.assertIs(self.engine.pending_dice_battle, battle)
-        self.assertTrue(battle.resolution_complete)
-
-    def test_trample_deals_player_damage_from_remaining_attack_dice_after_last_blocker(self) -> None:
+    def test_trample_uses_difference_divided_by_six(self) -> None:
         attacker = self.make_creature("fire_creature_infernobrecher", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        blocker.current_hp = 0
 
-        self.engine.active_player_index = 0
-        self.engine.defending_player.life = 20
-        self.engine.block_assignments = {attacker.unit_id: [blocker.unit_id]}
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[
-                DieResult(18, attacker.aw, used=True),
-                DieResult(17, attacker.aw, used=True),
-                DieResult(16, attacker.aw, used=False),
-                DieResult(15, attacker.aw, used=False),
-                DieResult(14, attacker.aw, used=False),
-            ],
-            blocker_dice=[
-                DieResult(5, blocker.aw, used=True),
-                DieResult(4, blocker.aw, used=True),
-                DieResult(3, blocker.aw, used=True),
-            ],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 4, 2, 2, 3, 3, 2]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
 
-        self.engine.finalize_or_continue_dice_battle(battle, attacker, blocker)
+        battle = self.engine.pending_dice_battle
+        self.assertEqual(battle.attack_sum, 20)
+        self.assertEqual(battle.defense_sum, 8)
+        self.assertEqual(battle.trample_damage, 2)
+        self.assertEqual(self.engine.ai_player.life, 18)
+        self.assertEqual(battle.creature_damage, attacker.sw)
 
-        self.assertEqual(self.engine.ai_player.life, 17)
-        self.assertIs(self.engine.pending_dice_battle, battle)
-        self.assertTrue(battle.resolution_complete)
-
-    def test_dice_battle_must_be_closed_manually_after_resolution(self) -> None:
-        attacker = self.make_creature("fire_creature_flammenbestie", owner_id=0)
+    def test_begin_combat_resolution_keeps_battlefield_attacker_order(self) -> None:
+        left = self.make_creature("fire_creature_glutbestie", owner_id=0)
+        right = self.make_creature("fire_creature_glutbrecher", owner_id=0)
         blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-
-        self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DICE_BATTLE
-        self.engine.block_assignments = {attacker.unit_id: [blocker.unit_id]}
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[DieResult(20, attacker.aw, used=True)],
-            blocker_dice=[DieResult(1, blocker.aw, used=True)],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
-
-        self.engine.finalize_or_continue_dice_battle(battle, attacker, blocker)
-
-        self.assertTrue(battle.resolution_complete)
-        self.assertIs(self.engine.pending_dice_battle, battle)
-        self.assertIn("Kampf abschliessen", [spec.label for spec in self.engine.get_button_specs()])
-
-        self.engine.end_dice_battle()
-
-        self.assertIsNone(self.engine.pending_dice_battle)
-
-    def test_dice_battle_button_shows_next_combat_when_another_battle_remains(self) -> None:
-        attacker_one = self.make_creature("fire_creature_flammenbestie", owner_id=0)
-        blocker_one = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        attacker_two = self.make_creature("fire_creature_glutbestie", owner_id=0)
-        blocker_two = self.make_creature("earth_creature_schildwache", owner_id=1)
-
-        self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DICE_BATTLE
-        self.engine.combat_queue = [attacker_one.unit_id, attacker_two.unit_id]
-        self.engine.current_attack_index = 0
-        self.engine.current_blocker_order = [blocker_one.unit_id]
-        self.engine.current_blocker_index = 1
         self.engine.block_assignments = {
-            attacker_one.unit_id: [blocker_one.unit_id],
-            attacker_two.unit_id: [blocker_two.unit_id],
+            right.unit_id: None,
+            left.unit_id: blocker.unit_id,
         }
-        battle = PendingDiceBattle(
-            attacker_id=attacker_one.unit_id,
-            blocker_id=blocker_one.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[DieResult(20, attacker_one.aw, used=True)],
-            blocker_dice=[DieResult(1, blocker_one.aw, used=True)],
-            attacker_snapshot=self.snapshot(attacker_one),
-            blocker_snapshot=self.snapshot(blocker_one),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
 
-        self.engine.finalize_or_continue_dice_battle(battle, attacker_one, blocker_one)
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 1, 1, 1]):
+            self.engine.begin_combat_resolution()
 
-        self.assertTrue(battle.resolution_complete)
-        self.assertIn("Naechster Kampf", [spec.label for spec in self.engine.get_button_specs()])
+        self.assertEqual(self.engine.combat_queue, [left.unit_id, right.unit_id])
+        self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
 
-    def test_dice_battle_cannot_be_closed_early(self) -> None:
-        attacker = self.make_creature("fire_creature_flammenbestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-
-        self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DICE_BATTLE
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[DieResult(20, attacker.aw, used=False)],
-            blocker_dice=[DieResult(1, blocker.aw, used=False)],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
-
-        self.engine.end_dice_battle()
-
-        self.assertIs(self.engine.pending_dice_battle, battle)
-        self.assertEqual(self.engine.log_messages, [])
-
-    def test_end_dice_battle_handles_finished_queue_without_index_error(self) -> None:
-        attacker = self.make_creature("fire_creature_flammenbestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        self.engine.human_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkenschwinge"]),
-        ]
-        self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_wolkengeist"]),
-        ]
-
-        self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DICE_BATTLE
-        self.engine.turn_number = 3
-        self.engine.combat_queue = [attacker.unit_id]
-        self.engine.current_attack_index = 1
-        self.engine.current_blocker_order = [blocker.unit_id]
-        self.engine.current_blocker_index = 1
-        self.engine.block_assignments = {attacker.unit_id: [blocker.unit_id]}
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[DieResult(20, attacker.aw, used=True)],
-            blocker_dice=[DieResult(1, blocker.aw, used=True)],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        battle.resolution_complete = True
-        self.engine.pending_dice_battle = battle
-
-        self.engine.end_dice_battle()
-
-        self.assertIsNone(self.engine.pending_dice_battle)
-        self.assertEqual(self.engine.turn_number, 3)
-        self.assertEqual(self.engine.active_player, self.engine.human_player)
-        self.assertEqual(self.engine.phase, PHASE_MAIN_2)
-
-    def test_combat_queue_uses_battlefield_order_for_attackers(self) -> None:
-        attacker_left = self.make_creature("fire_creature_glutbestie", owner_id=0)
-        attacker_right = self.make_creature("fire_creature_glutbrecher", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-
-        self.engine.active_player_index = 0
-        self.engine.block_assignments = {
-            attacker_right.unit_id: [],
-            attacker_left.unit_id: [blocker.unit_id],
-        }
-        self.engine.begin_combat_resolution()
-
-        self.assertEqual(self.engine.combat_queue, [attacker_left.unit_id, attacker_right.unit_id])
-
-    def test_enraged_attacker_stays_selected_during_attack_declaration(self) -> None:
+    def test_enraged_creature_remains_mandatory_attacker(self) -> None:
         attacker = self.make_creature("fire_creature_glutbestie", owner_id=0)
-
         self.engine.phase = PHASE_MAIN_1
+
         self.engine.begin_attack_declaration()
         self.engine.toggle_attacker(attacker.unit_id)
 
         self.assertIn(attacker.unit_id, self.engine.selected_attackers)
-
-    def test_battle_snapshot_keeps_last_hp_after_creature_removal(self) -> None:
-        attacker = self.make_creature("fire_creature_flammenbestie", owner_id=0)
-        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        blocker.current_hp = 1
-
-        self.engine.active_player_index = 0
-        self.engine.phase = PHASE_DICE_BATTLE
-        battle = PendingDiceBattle(
-            attacker_id=attacker.unit_id,
-            blocker_id=blocker.unit_id,
-            attacker_owner=0,
-            blocker_owner=1,
-            attacker_dice=[DieResult(20, attacker.aw, used=True)],
-            blocker_dice=[DieResult(1, blocker.aw, used=True)],
-            attacker_snapshot=self.snapshot(attacker),
-            blocker_snapshot=self.snapshot(blocker),
-            ai_strategy_name="Test",
-            ai_choose_die=lambda dice: dice[0],
-        )
-        self.engine.pending_dice_battle = battle
-
-        comparison = PendingComparison(
-            attacker_die=DieResult(20, attacker.aw, used=True),
-            blocker_die=DieResult(1, blocker.aw, used=True),
-            human_is_attacker=True,
-        )
-        self.engine.apply_comparison_result(battle, comparison)
-
-        self.assertIsNone(self.engine.get_unit_by_id(blocker.unit_id))
-        self.assertEqual(battle.blocker_snapshot.current_hp, 0)
-
-
-
-

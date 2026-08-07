@@ -69,27 +69,23 @@ def _estimate_attack_damage(player: PlayerState, enemy: PlayerState) -> int:
         if not creature.is_ready() or creature.current_hp <= 0:
             continue
         if not blockers:
-            damage += creature.aw + creature.temporary_aw_bonus
+            damage += creature.sw
             continue
         if creature.has_ability(Ability.TRAMPLE):
-            smallest = min((blocker.current_hp for blocker in blockers), default=0)
-            damage += max(0, creature.aw + creature.temporary_aw_bonus - smallest)
+            expected_margin = max(0.0, creature.aw * 3.5 - min((blocker.vw * 3.5 for blocker in blockers), default=0.0))
+            damage += int(expected_margin // 6)
     return damage
 
 
 def _estimate_total_direct_spell_damage(hand: list[CardInstance]) -> int:
-    return sum(
-        card.template.spell_amount
-        for card in hand
-        if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER
-    )
+    return 0
 
 
 def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInstance], available_resources: int, total_resources: int, phase: str) -> FireStrategicSnapshot:
     enemy = engine.players[1 - player.player_id]
     ramp_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DECK_TO_TAPPED_RESOURCES]
     draw_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DRAW_CARDS]
-    burn_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER]
+    burn_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE]
     board_wipes = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES]
     own_ready = [creature for creature in player.battlefield if creature.is_ready() and creature.current_hp > 0]
     playable_threats = [
@@ -112,7 +108,7 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
     dangerous_board = bool(enemy.battlefield) and (
         expected_enemy_damage >= max(4, player.life // 3)
         or enemy_flyers > 0
-        or max((creature.aw for creature in enemy.battlefield), default=0) >= 3
+        or max((creature.sw for creature in enemy.battlefield), default=0) >= 3
     )
     can_ramp_safely = total_resources < 5 and expected_enemy_damage < max(4, player.life - 5)
     needs_refuel = len(hand) <= 2 or (
@@ -144,7 +140,7 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
         expected_enemy_damage=expected_enemy_damage,
         best_board_wipe_enemy_kills=best_enemy_kills,
         best_board_wipe_own_losses=best_own_losses,
-        lethal_available=attack_damage + spell_damage >= enemy.life,
+        lethal_available=attack_damage >= enemy.life,
         opponent_lethal_threat=expected_enemy_damage >= player.life,
         dangerous_board=dangerous_board,
         can_ramp_safely=can_ramp_safely,

@@ -38,6 +38,8 @@ class EngineTestCase(unittest.TestCase):
             cost=creature.cost,
             aw=creature.aw,
             vw=creature.vw,
+            lw=creature.lw,
+            sw=creature.sw,
             current_hp=creature.current_hp,
             element=creature.element,
             abilities=creature.abilities,

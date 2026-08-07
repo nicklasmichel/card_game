@@ -124,8 +124,8 @@ def draw_combat_links(self) -> None:
             blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
             if blocker_rect is None:
                 continue
-            blocker_selected = blocker_id == self.engine.selected_blocker_id or blocker_id in self.engine.blocker_to_attackers
-            blocker_color = HIGHLIGHT if attacker_selected else ((102, 188, 112) if len(blocker_ids) == 1 else (212, 170, 94))
+            blocker_selected = blocker_id == self.engine.selected_blocker_id
+            blocker_color = HIGHLIGHT if attacker_selected else (102, 188, 112)
             self.draw_polyline(
                 start=(attacker_rect.centerx, attacker_rect.bottom if attacker_rect.centery < blocker_rect.centery else attacker_rect.top),
                 end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > attacker_rect.centery else blocker_rect.bottom),
@@ -355,13 +355,9 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
             selected = False
             if target_key == "player_creatures" and creature.unit_id in self.engine.selected_attackers:
                 selected = True
-            if target_key == "player_creatures" and creature.unit_id in self.engine.blocker_to_attackers:
-                selected = True
             if target_key == "player_creatures" and creature.unit_id == self.engine.selected_blocker_id:
                 selected = True
             if target_key == "enemy_creatures" and creature.unit_id == self.engine.selected_attack_target_id:
-                selected = True
-            if self.engine.pending_order is not None and creature.unit_id in self.engine.pending_order.chosen_order:
                 selected = True
             attacking = creature.unit_id in self.engine.selected_attackers
             extra_line = ""

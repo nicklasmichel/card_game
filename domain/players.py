@@ -15,6 +15,8 @@ class BattlefieldCreature:
     cost: CardCost
     aw: int
     vw: int
+    lw: int
+    sw: int
     element: Element
     abilities: frozenset[Ability]
     rules_text: str
@@ -46,6 +48,8 @@ class BattlefieldCreature:
             cost=card.template.cost,
             aw=card.template.aw,
             vw=card.template.vw,
+            lw=card.template.effective_lw,
+            sw=card.template.effective_sw,
             element=card.template.element,
             abilities=card.template.abilities,
             rules_text=card.template.rules_text,
@@ -60,7 +64,7 @@ class BattlefieldCreature:
             tap_enemy_creature_on_play=card.template.tap_enemy_creature_on_play,
             return_other_own_haste_on_combat_death=card.template.return_other_own_haste_on_combat_death,
             own_flying_attack_aura=card.template.own_flying_attack_aura,
-            current_hp=card.template.vw,
+            current_hp=card.template.effective_lw,
             temporary_aw_bonus=0,
             temporary_combat_aw_bonus=0,
             tapped=not has_haste,
@@ -69,7 +73,7 @@ class BattlefieldCreature:
 
     @property
     def damage_taken(self) -> int:
-        return self.vw - self.current_hp
+        return self.lw - self.current_hp
 
     @property
     def aw_vw(self) -> str:
@@ -82,7 +86,7 @@ class BattlefieldCreature:
         return ability in self.abilities or ability in self.temporary_abilities
 
     def block_capacity(self) -> int:
-        return 2 if self.has_ability(Ability.DEFENDER) else 1
+        return 1
 
     def short_status(self) -> str:
         if self.tapped:
@@ -105,8 +109,6 @@ class PlayerState:
     resources_played_this_turn: int = 0
     summoner_passive_draw_used_this_turn: bool = False
     creature_cost_reduction_this_turn: int = 0
-    attackers_die_bonus_this_turn: int = 0
-    direct_attack_damage_multiplier_this_turn: dict[int, int] = field(default_factory=dict)
     summoner_tapped: bool = False
     turns_started: int = 0
     mulligan_used: bool = False
@@ -115,8 +117,6 @@ class PlayerState:
         for resource in self.resources:
             resource.tapped = False
         for creature in self.battlefield:
-            if creature.has_ability(Ability.REGENERATION) and creature.current_hp < creature.vw:
-                creature.current_hp = min(creature.vw, creature.current_hp + 1)
             creature.tapped = False
             creature.summoning_sick = False
         self.resources_played_this_turn = 0

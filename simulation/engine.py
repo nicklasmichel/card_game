@@ -13,7 +13,6 @@ from core.models import (
     Ability,
     CardInstance,
     CardType,
-    PendingComparison,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -21,7 +20,6 @@ from core.models import (
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
     PHASE_MAIN_2,
-    PHASE_ORDER_BLOCKERS,
     PHASE_REACTION,
     PHASE_SPELL_TARGETING,
     PlayerState,
@@ -137,7 +135,6 @@ class SimulationGameEngine(GameEngine):
             player.summoner_passive_draw_used_this_turn = False
             player.creature_cost_reduction_this_turn = 0
             player.attackers_die_bonus_this_turn = 0
-            player.direct_attack_damage_multiplier_this_turn.clear()
             player.summoner_tapped = False
             player.turns_started = 0
             player.mulligan_used = True
@@ -426,7 +423,7 @@ class SimulationGameEngine(GameEngine):
         before = self.defending_player.life
         pending = self.pending_direct_attack
         attacker = self.get_unit_by_id(pending.attacker_id) if pending is not None else None
-        before_aw = self.get_creature_attack_value(attacker) if attacker is not None else 0
+        before_sw = self.get_creature_damage_value(attacker) if attacker is not None else 0
         super().resolve_pending_direct_attack_after_reaction()
         if self.telemetry is None or pending is None or attacker is None:
             return
@@ -446,9 +443,9 @@ class SimulationGameEngine(GameEngine):
             bonus = max(0, self.get_creature_attack_value(attacker) - attacker.aw)
             if bonus > 0:
                 if bonus >= 6:
-                    owner_telemetry.fire_raserei_extra_player_damage += max(0, damage - before_aw)
+                    owner_telemetry.fire_raserei_extra_player_damage += max(0, damage - before_sw)
                 else:
-                    owner_telemetry.fire_wutanfall_extra_player_damage += max(0, damage - before_aw)
+                    owner_telemetry.fire_wutanfall_extra_player_damage += max(0, damage - before_sw)
 
     def confirm_attackers(self) -> None:
         attackers = [self.get_unit_by_id(unit_id) for unit_id in self.selected_attackers]
@@ -601,107 +598,8 @@ class SimulationGameEngine(GameEngine):
         return True
 
     def _auto_assign_blocks(self) -> None:
-        defender = self.defending_player
-        ai = self._set_reference_player(defender.player_id)
-        attackers = [
-            attacker
-            for attacker in (self.get_unit_by_id(attacker_id) for attacker_id in self.block_assignments)
-            if attacker is not None
-        ]
-        available_blockers = self.available_blockers(defender)
-        assignments = ai.choose_blockers_for_attackers(attackers, available_blockers, self.block_assignments)
-        for attacker_id, blocker_ids in assignments.items():
-            attacker = self.get_unit_by_id(attacker_id)
-            if attacker is None:
-                continue
-            for blocker_id in blocker_ids:
-                blocker = self.get_unit_by_id(blocker_id)
-                if blocker is None or blocker_id in self.block_assignments[attacker_id]:
-                    continue
-                if not self.can_creature_block_attacker(blocker, attacker):
-                    continue
-                self.block_assignments[attacker_id].append(blocker_id)
-                self.blocker_to_attackers.setdefault(blocker_id, []).append(attacker_id)
-                self.log(f"{defender.name} blockt {attacker.name} mit {blocker.name}.")
+        self.ai_assign_blocks()
         self.finish_block_assignment()
-
-    def _auto_order_blockers(self) -> None:
-        pending = self.pending_order
-        if pending is None:
-            return
-        owner = self.get_unit_owner(pending.attacker_id)
-        if owner is None:
-            self.pending_order = None
-            self.advance_combat_resolution()
-            return
-        ai = self._set_reference_player(owner.player_id)
-        blockers = [self.get_unit_by_id(blocker_id) for blocker_id in pending.blocker_ids]
-        ordered = ai.choose_block_order([blocker for blocker in blockers if blocker is not None])
-        self.current_blocker_order = [blocker.unit_id for blocker in ordered]
-        self.current_blocker_index = 0
-        self.pending_order = None
-        self.phase = PHASE_DICE_BATTLE
-        self.advance_combat_resolution()
-
-    def _auto_progress_dice_battle(self) -> None:
-        battle = self.pending_dice_battle
-        if battle is None:
-            return
-        if battle.pending_comparison is not None:
-            comparison = battle.pending_comparison
-            attacker_ai = self._ai_by_player_id[battle.attacker_owner]
-            blocker_ai = self._ai_by_player_id[battle.blocker_owner]
-            attacker = self.get_unit_by_id(battle.attacker_id)
-            blocker = self.get_unit_by_id(battle.blocker_id)
-            if attacker is not None and attacker.has_ability(Ability.ADAPTATION) and not battle.attacker_used_adaptation:
-                own_loses = comparison.attacker_die.total <= comparison.blocker_die.total
-                would_die = self.get_creature_current_hp(attacker) <= 1 and own_loses
-                if attacker_ai.should_use_adaptation(attacker, comparison.attacker_die, comparison.blocker_die, own_loses, would_die, comparison.attacker_die.total == comparison.blocker_die.total):
-                    comparison.attacker_die.base_roll = self.rng.randint(1, 20)
-                    battle.attacker_used_adaptation = True
-                    self.log(f"{attacker.name} nutzt Anpassung.")
-            if blocker is not None and blocker.has_ability(Ability.ADAPTATION) and not battle.blocker_used_adaptation:
-                own_loses = comparison.blocker_die.total <= comparison.attacker_die.total
-                would_die = self.get_creature_current_hp(blocker) <= 1 and own_loses
-                if blocker_ai.should_use_adaptation(blocker, comparison.blocker_die, comparison.attacker_die, own_loses, would_die, comparison.attacker_die.total == comparison.blocker_die.total):
-                    comparison.blocker_die.base_roll = self.rng.randint(1, 20)
-                    battle.blocker_used_adaptation = True
-                    self.log(f"{blocker.name} nutzt Anpassung.")
-            comparison.attacker_die.used = True
-            comparison.blocker_die.used = True
-            battle.pending_comparison = None
-            self.apply_comparison_result(battle, comparison)
-            return
-        if battle.resolution_complete:
-            self.end_dice_battle()
-            return
-        attacker_available = [die for die in battle.attacker_dice if not die.used]
-        blocker_available = [die for die in battle.blocker_dice if not die.used]
-        if not attacker_available or not blocker_available:
-            battle.resolution_complete = True
-            self.end_dice_battle()
-            return
-        attacker_ai = self._ai_by_player_id[battle.attacker_owner]
-        blocker_ai = self._ai_by_player_id[battle.blocker_owner]
-        attacker_choice = attacker_ai.choose_die_strategy().choose(attacker_available, self.rng)
-        blocker_choice = blocker_ai.choose_die_strategy().choose(blocker_available, self.rng)
-        battle.pending_comparison = PendingComparison(
-            attacker_die=attacker_choice,
-            blocker_die=blocker_choice,
-            human_is_attacker=True,
-        )
-        attacker = self.get_unit_by_id(battle.attacker_id)
-        blocker = self.get_unit_by_id(battle.blocker_id)
-        self.begin_general_spell_window(
-            trigger=ReactionTrigger.BEFORE_DICE_COMPARISON,
-            first_responder_id=battle.blocker_owner,
-            resume_phase=PHASE_DICE_BATTLE,
-            continuation=self._auto_progress_dice_battle,
-            attacker_die=attacker_choice,
-            blocker_die=blocker_choice,
-            attacker_creature=attacker,
-            blocker_creature=blocker,
-        )
 
     def process_next_simulation_action(self) -> bool:
         if self.phase == PHASE_GAME_OVER:
@@ -775,10 +673,6 @@ class SimulationGameEngine(GameEngine):
             self._record_action(self.defending_player.player_id, "declare_blocks")
             self._auto_assign_blocks()
             return True
-        if self.phase == PHASE_ORDER_BLOCKERS:
-            self._record_action(self.active_player.player_id, "order_blockers")
-            self._auto_order_blockers()
-            return True
         if self.phase == PHASE_REACTION:
             player_id = self.reaction_priority_player_id
             if player_id is None:
@@ -797,7 +691,7 @@ class SimulationGameEngine(GameEngine):
             return True
         if self.phase == PHASE_DICE_BATTLE:
             self._record_action(self.active_player.player_id, "dice_progress")
-            self._auto_progress_dice_battle()
+            self.end_dice_battle()
             return True
         if self.phase == PHASE_FORCED_DISCARD:
             pending = self.pending_forced_discard

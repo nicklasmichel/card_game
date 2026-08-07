@@ -286,14 +286,8 @@ class HeuristicStrategicAI(CommonAIMixin):
                     own_unit = engine.get_unit_by_id(battle.attacker_id if battle.attacker_owner == player.player_id else battle.blocker_id)
                     threatened = 2 if own_unit is not None and own_unit.current_hp <= 1 else 1
                 score = (threatened, 0, 0)
-            elif card.template.spell_effect == SpellEffect.REROLL_OPEN_DIE:
-                _target, target_score = self.reaction_planner._best_verwirbelung_target(self, player, engine)
-                score = (2 if target_score >= 2.0 else 1 if target_score >= 0.9 else 0, int(target_score * 10), 0)
             elif card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_ATTACKER_THIS_COMBAT:
                 comparison = self._evaluate_air_jagdwind_reaction_plan(player, engine, card)
-                score = (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 0)
-            elif card.template.spell_effect == SpellEffect.DOUBLE_UNBLOCKED_ATTACK_DAMAGE:
-                comparison = self._evaluate_air_sturmjagd_reaction_plan(player, engine, card)
                 score = (2 if comparison["is_useful"] else 0, int(comparison["value"] * 10), 0)
             elif card.template.spell_effect == SpellEffect.DRAW_PER_DEATH_THIS_TURN:
                 comparison = self._evaluate_air_orkanwende_plan(
@@ -413,14 +407,14 @@ class HeuristicStrategicAI(CommonAIMixin):
             current_attackers = {attacker.unit_id for attacker in engine.get_current_attacker_creatures(owner, getattr(engine, "reaction_context", None))}
             if creature.unit_id in current_attackers:
                 score += 1.6
-            attacker_pressure = sum(1 for blocker_ids in engine.block_assignments.values() if creature.unit_id in blocker_ids)
+            attacker_pressure = sum(1 for blocker_id in engine.block_assignments.values() if blocker_id == creature.unit_id)
             if attacker_pressure > 0:
                 score += 1.8 + attacker_pressure * 0.8
             if creature.has_ability(Ability.FLYING):
                 score += 0.6
             return score
         score = -0.8 + creature.aw * 0.15 + creature.current_hp * 0.1
-        if creature.current_hp < creature.vw:
+        if creature.current_hp < creature.lw:
             score += 2.0
         if creature.has_ability(Ability.HASTE):
             score += 0.7

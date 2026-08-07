@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.models import BattlefieldCreature, CardInstance, PlayerState, SpellTargetRef
+from core.models import BattlefieldCreature, CardInstance, PlayerState
 
 
 @dataclass(slots=True)
@@ -18,7 +18,6 @@ class AIContext:
     total_resources: int
     tapped_resource_ids: tuple[int, ...]
     creatures_died_this_turn: int
-    open_die_targets: tuple[SpellTargetRef, ...]
 
 
 def build_ai_context(engine, player: PlayerState) -> AIContext:
@@ -42,5 +41,4 @@ def build_ai_context(engine, player: PlayerState) -> AIContext:
             if getattr(resource, "tapped", False) and resource.resource_id is not None
         ),
         creatures_died_this_turn=engine.creatures_died_this_turn,
-        open_die_targets=tuple(engine.get_open_die_target_refs()) if hasattr(engine, "get_open_die_target_refs") else (),
     )

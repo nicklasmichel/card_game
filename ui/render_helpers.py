@@ -4,7 +4,7 @@ from typing import List
 
 import pygame
 
-from core.models import Ability, CardTemplate, CardType, Element
+from core.models import Ability, CardTemplate, CardType, Element, SpellTiming
 from ui.style import CARD_BADGE_LIGHT, CARD_BORDER
 
 
@@ -34,6 +34,8 @@ def get_element_symbol_key(element: Element) -> str:
 def get_creature_type_line(self, template: CardTemplate) -> str:
     if template.card_type == CardType.CREATURE:
         return f"Kreatur - {template.element.value}"
+    if template.card_type == CardType.SPELL and template.spell_timing is not None:
+        return f"{template.spell_timing.value} - {template.element.value}"
     return f"{template.card_type.value} - {template.element.value}"
 
 
@@ -41,7 +43,10 @@ def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
     names = self.get_ability_names(template.abilities)
     line_one = ", ".join(names)
     if not line_one and template.card_type in {CardType.RITUAL, CardType.SPELL}:
-        line_one = template.card_type.value
+        if template.card_type == CardType.SPELL and template.spell_timing is not None:
+            line_one = template.spell_timing.value
+        else:
+            line_one = template.card_type.value
     line_two = normalize_rules_text(getattr(template, "rules_text", ""), names)
     return line_one, line_two
 
@@ -53,24 +58,31 @@ def get_card_ability_lines_from_creature(self, creature) -> tuple[str, str]:
     return line_one, line_two
 
 
-def get_display_creature_stats(self, creature) -> tuple[str, str]:
+def get_display_creature_stats(self, creature) -> tuple[str, str, str, str]:
     display_aw = self.engine.get_creature_attack_value(creature)
     display_vw = self.engine.get_creature_defense_value(creature)
-    display_hp = self.engine.get_creature_current_hp(creature)
-    return f"{display_aw}/{display_vw}", f"{display_hp}/{display_vw}"
+    current_lw = self.engine.get_creature_current_lw(creature)
+    max_lw = self.engine.get_creature_max_lw(creature)
+    display_sw = self.engine.get_creature_damage_value(creature)
+    return str(display_aw), str(display_vw), f"{current_lw}/{max_lw}", str(display_sw)
+
+
+def get_display_template_stats(self, template) -> tuple[str, str, str, str]:
+    if hasattr(self, "engine"):
+        max_lw = self.engine.get_template_max_lw(template)
+        display_sw = self.engine.get_template_damage_value(template)
+    else:
+        max_lw = template.effective_lw
+        display_sw = template.effective_sw
+    return str(template.aw), str(template.vw), f"{max_lw}/{max_lw}", str(display_sw)
 
 
 def get_ability_names(self, abilities) -> List[str]:
     order = [
         Ability.ENRAGED,
-        Ability.IGNITE,
         Ability.TRAMPLE,
         Ability.HASTE,
         Ability.FLYING,
-        Ability.DEFENDER,
-        Ability.PROVOKE,
-        Ability.REGENERATION,
-        Ability.ADAPTATION,
     ]
     display_names = {
         Ability.ENRAGED: "Wütend",

@@ -125,8 +125,7 @@ def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surfac
             template_id=card.template.template_id,
             title=card.template.name,
             cost=display_cost,
-            stats=f"{card.template.aw}/{card.template.vw}" if is_creature else "",
-            defense_text=f"{card.template.vw}/{card.template.vw}" if is_creature else None,
+            stats=self.get_display_template_stats(card.template) if is_creature else None,
             element=card.template.element,
             type_line=self.get_creature_type_line(card.template),
             line_one=line_one,
@@ -171,7 +170,7 @@ def build_preview_deck_surface(self, player) -> pygame.Surface:
 
 def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
     accent = (98, 151, 109) if is_human else (177, 98, 98)
-    stats_text, defense_text = self.get_display_creature_stats(creature)
+    stats = self.get_display_creature_stats(creature)
     line_one = ""
     line_two = extra_line
     ability_line_one, ability_line_two = self.get_card_ability_lines_from_creature(creature)
@@ -185,8 +184,7 @@ def build_preview_creature_surface(self, creature, is_human: bool, extra_line: s
             template_id=getattr(creature, "template_id", None),
             title=creature.name,
             cost=creature.cost,
-            stats=stats_text,
-            defense_text=defense_text,
+            stats=stats,
             element=creature.element,
             type_line=f"Kreatur - {creature.element.value}",
             line_one=line_one,
@@ -214,7 +212,7 @@ def build_preview_summoner_surface(self, summoner_key: str, life: int, think_pro
             scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             surface.blit(scaled, (0, 0))
             pygame.draw.rect(surface, CARD_BORDER, pygame.Rect(0, 0, self.card_width, self.card_height), 2, border_radius=9)
-        self.draw_summoner_footer(surface, life)
+        self.draw_summoner_footer(surface, summoner_key, life)
         return surface
 
     return self.render_scaled_card_surface(2.0, _render)

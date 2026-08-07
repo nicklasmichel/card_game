@@ -20,7 +20,7 @@ def _resource_candidates(ai, player, hand, count: int):
         hand,
         key=lambda card: (
             1 if card.template.card_type == CardType.CREATURE and card.template.resource_cost >= 4 else 0,
-            1 if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER else 0,
+            1 if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE else 0,
             card.template.resource_cost + card.template.recycle_cost,
             card.template.aw + card.template.vw,
         ),
@@ -35,7 +35,7 @@ def _apply_resource_gain(player, available_resources: int, total_resources: int,
 
 def _score_fire_creature(card, snapshot) -> float:
     template = card.template
-    value = template.aw * 1.8 + template.vw * 1.25
+    value = template.sw * 2.2 + template.lw * 1.35 + template.aw * 0.65 + template.vw * 0.45
     if template.has_ability(Ability.TRAMPLE):
         value += 1.8 + snapshot.enemy_creatures * 0.35
     if getattr(template, "must_attack_each_turn", False):
@@ -53,10 +53,10 @@ def _score_fire_main_phase_card(player, enemy, engine, card, snapshot, phase: st
         if snapshot.available_resources < template.resource_cost or snapshot.total_resources < template.recycle_cost:
             return -999.0
         return _score_fire_creature(card, snapshot) + (1.2 if snapshot.can_deploy_threat else 0.0)
-    if template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER:
+    if template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE:
         target = choose_best_damage_target(engine, player, template.spell_amount)
-        if target.target_type == "player":
-            return 50.0 if enemy.life <= template.spell_amount else (3.0 if snapshot.lethal_available else 0.5)
+        if target is None:
+            return -999.0
         creature = engine.get_unit_by_id(target.creature_id or -1)
         if creature is None:
             return -999.0
@@ -83,7 +83,9 @@ def _choose_fire_sequence(ai, player, enemy, engine, hand, available_resources: 
     augmented = replace(snapshot, available_resources=available_resources, total_resources=total_resources)
     playable = [
         card for card in hand
-        if available_resources >= card.template.resource_cost and total_resources >= card.template.recycle_cost
+        if available_resources >= card.template.resource_cost
+        and total_resources >= card.template.recycle_cost
+        and engine.can_play_card(player, card)
     ]
     if not playable:
         return [], available_resources, total_resources, 0.0
@@ -107,10 +109,10 @@ def _choose_attackers(ai, player, enemy, engine):
         if not blockers:
             chosen.append(creature)
             continue
-        if creature.has_ability(Ability.TRAMPLE) and creature.aw >= min((blocker.current_hp for blocker in blockers), default=99):
+        if creature.has_ability(Ability.TRAMPLE) and creature.sw >= min((blocker.current_hp for blocker in blockers), default=99):
             chosen.append(creature)
             continue
-        if creature.aw >= max((blocker.current_hp for blocker in blockers), default=0) and player.life > 6:
+        if creature.sw >= max((blocker.current_hp for blocker in blockers), default=0) and player.life > 6:
             chosen.append(creature)
     return chosen
 
@@ -124,12 +126,13 @@ def _build_attack_candidate(ai, player, enemy, engine, reserved_resources: int):
     blockers = [creature for creature in enemy.battlefield if creature.current_hp > 0 and creature.is_ready() and not creature.cannot_block]
     for creature in attackers:
         if not blockers:
-            direct_damage += engine.get_creature_attack_value(creature)
+            direct_damage += engine.get_creature_damage_value(creature)
             continue
         if creature.has_ability(Ability.TRAMPLE):
-            smallest = min((blocker.current_hp for blocker in blockers), default=0)
-            direct_damage += max(0, engine.get_creature_attack_value(creature) - smallest)
-        enemy_losses += sum(1 for blocker in blockers if blocker.current_hp <= engine.get_creature_attack_value(creature))
+            smallest_vw = min((engine.get_creature_defense_value(blocker) for blocker in blockers), default=0)
+            expected_margin = max(0.0, engine.get_creature_attack_value(creature) * 3.5 - smallest_vw * 3.5)
+            direct_damage += int(expected_margin // 6)
+        enemy_losses += sum(1 for blocker in blockers if blocker.current_hp <= engine.get_creature_damage_value(creature))
     counter = ai.assessment.estimate_enemy_counterattack(ai, player, enemy, attacking_ids={creature.unit_id for creature in attackers})
     return AttackCandidate(
         attacker_ids=tuple(creature.unit_id for creature in attackers),
@@ -158,7 +161,7 @@ def _build_candidate(ai, player: PlayerState, engine, hand, available_resources:
         reserved_resources = max(reserved_resources, 0)
     if any(card.template.template_id == "fire_spell_raserei" for card in remaining_after_main1):
         reserved_resources = max(reserved_resources, 0)
-    if any(card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE_OR_PLAYER for card in remaining_after_main1):
+    if any(card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE for card in remaining_after_main1):
         reserved_resources = max(reserved_resources, 1)
     attack = _build_attack_candidate(ai, player, enemy, engine, reserved_resources)
     main2 = None

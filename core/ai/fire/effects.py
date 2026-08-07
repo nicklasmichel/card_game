@@ -4,12 +4,6 @@ from core.models import Ability, CardInstance, PlayerState, SpellEffect, SpellTa
 
 
 def score_fire_damage_target(player: PlayerState, enemy: PlayerState, amount: int, target) -> float:
-    if isinstance(target, PlayerState):
-        if target.player_id == enemy.player_id:
-            if enemy.life <= amount:
-                return 100.0 + amount
-            return 2.0 + amount * 0.2
-        return -4.0
     if target.current_hp <= 0:
         return -999.0
     owner_is_enemy = target in enemy.battlefield
@@ -21,16 +15,19 @@ def score_fire_damage_target(player: PlayerState, enemy: PlayerState, amount: in
     return (threat + flyer_bonus + kill_bonus + wounded_bonus) if owner_is_enemy else -own_penalty
 
 
-def choose_best_damage_target(engine, player: PlayerState, amount: int) -> SpellTargetRef:
+def choose_best_damage_target(engine, player: PlayerState, amount: int) -> SpellTargetRef | None:
     enemy = engine.players[1 - player.player_id]
-    best_target = SpellTargetRef("player", player_id=enemy.player_id)
-    best_score = score_fire_damage_target(player, enemy, amount, enemy)
-    for creature in enemy.battlefield + player.battlefield:
+    creatures = enemy.battlefield + player.battlefield
+    if not creatures:
+        return None
+    best_creature = creatures[0]
+    best_score = score_fire_damage_target(player, enemy, amount, best_creature)
+    for creature in creatures[1:]:
         score = score_fire_damage_target(player, enemy, amount, creature)
         if score > best_score:
             best_score = score
-            best_target = SpellTargetRef("creature", creature_id=creature.unit_id)
-    return best_target
+            best_creature = creature
+    return SpellTargetRef("creature", creature_id=best_creature.unit_id)
 
 
 def evaluate_fire_board_wipe(player: PlayerState, enemy: PlayerState, amount: int) -> dict:

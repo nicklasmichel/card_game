@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.models import CardCost, CardTemplate, CardType, Element, SpellEffect, SpellTargetMode
+from core.models import CardCost, CardTemplate, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode, SpellTiming
 
 
 AIR_SPELLS = [
@@ -12,6 +12,7 @@ AIR_SPELLS = [
         vw=0,
         element=Element.AIR,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.INSTANT,
         spell_effect=SpellEffect.RETURN_CREATURES_TO_HAND,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=1,
@@ -25,6 +26,7 @@ AIR_SPELLS = [
         vw=0,
         element=Element.AIR,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.INSTANT,
         spell_effect=SpellEffect.RETURN_CREATURES_TO_HAND,
         target_mode=SpellTargetMode.CREATURE,
         spell_amount=2,
@@ -38,10 +40,12 @@ AIR_SPELLS = [
         vw=0,
         element=Element.AIR,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START,),
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
         target_mode=SpellTargetMode.NONE,
         spell_amount=1,
-        rules_text="Deine angreifenden Kreaturen erhalten fuer diesen Kampf +1 AW.",
+        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +1 AW.",
     ),
     CardTemplate(
         template_id="air_spell_sturmjagd",
@@ -51,9 +55,11 @@ AIR_SPELLS = [
         vw=0,
         element=Element.AIR,
         card_type=CardType.SPELL,
+        spell_timing=SpellTiming.COMBAT,
+        legal_reaction_windows=(ReactionTrigger.COMBAT_START,),
         spell_effect=SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT,
         target_mode=SpellTargetMode.NONE,
         spell_amount=2,
-        rules_text="Deine angreifenden Kreaturen erhalten fuer diesen Kampf +2 AW.",
+        rules_text="Angreifende Kreaturen erhalten fuer diesen Kampf +2 AW.",
     ),
 ]
