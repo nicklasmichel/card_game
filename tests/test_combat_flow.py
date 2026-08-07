@@ -2,11 +2,37 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from core.models import Ability, CardCost, CardInstance, CardTemplate, Element, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
+from core.config import STARTING_LIFE
+from core.models import (
+    Ability,
+    CardCost,
+    CardInstance,
+    CardTemplate,
+    Element,
+    PHASE_DECLARE_ATTACKERS,
+    PHASE_DECLARE_BLOCKERS,
+    PHASE_DICE_BATTLE,
+    PHASE_MAIN_1,
+    PHASE_MAIN_2,
+    PHASE_REACTION,
+    SpellTargetRef,
+)
 from tests.helpers import EngineTestCase
 
 
 class CombatFlowTests(EngineTestCase):
+    def add_spell_to_hand(self, owner_id: int, template_id: str) -> CardInstance:
+        card = CardInstance(self.engine.make_instance_id(), self.engine.templates[template_id])
+        self.engine.players[owner_id].hand.append(card)
+        return card
+
+    def prepare_blocked_combat(self) -> tuple:
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=1)
+        self.engine.active_player_index = 0
+        self.engine.block_assignments = {attacker.unit_id: blocker.unit_id}
+        return attacker, blocker
+
     def test_unblocked_attack_uses_sw_not_aw(self) -> None:
         attacker = self.make_creature("fire_creature_hoellenbestie", owner_id=0)
         self.engine.active_player_index = 0
@@ -17,7 +43,7 @@ class CombatFlowTests(EngineTestCase):
         self.engine.begin_combat_resolution()
         self.engine.end_dice_battle()
 
-        self.assertEqual(self.engine.ai_player.life, 20 - attacker.sw)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - attacker.sw)
         self.assertEqual(attacker.sw, 3)
         self.assertEqual(attacker.aw, 6)
 
@@ -129,7 +155,7 @@ class CombatFlowTests(EngineTestCase):
 
         battle = self.engine.pending_dice_battle
         self.assertEqual(battle.trample_damage, 2)
-        self.assertEqual(self.engine.ai_player.life, 18)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - 2)
         self.assertEqual(battle.creature_damage, attacker.sw)
 
     def test_trample_overflow_is_zero_when_blocker_has_equal_or_higher_current_hp(self) -> None:
@@ -219,4 +245,86 @@ class CombatFlowTests(EngineTestCase):
         self.engine.toggle_attacker(attacker.unit_id)
 
         self.assertNotIn(attacker.unit_id, self.engine.selected_attackers)
+
+    def test_combat_start_window_is_skipped_when_no_player_has_playable_combat_spell(self) -> None:
+        self.prepare_blocked_combat()
+
+        self.engine.begin_pre_first_combat_window()
+
+        self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
+        self.assertIn("Kampfbeginn wird automatisch uebersprungen.", self.engine.log_messages)
+        self.assertIn("Spieler passt automatisch.", self.engine.log_messages)
+        self.assertIn("Gegner passt automatisch.", self.engine.log_messages)
+        self.assertFalse(any(message.startswith("Kampfbeginn:") for message in self.engine.log_messages))
+
+    def test_combat_start_window_opens_only_for_attacker_with_playable_spell(self) -> None:
+        attacker, blocker = self.prepare_blocked_combat()
+        self.engine.human_player.resources.append(self.make_resource("fire_spell_versengen"))
+        spell = self.add_spell_to_hand(0, "fire_spell_versengen")
+
+        self.engine.begin_pre_first_combat_window()
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_priority_player_id, 0)
+        self.assertEqual(self.engine.reaction_sequence_player_ids, [0])
+        self.assertTrue(self.engine.begin_spell_cast_from_card(spell, PHASE_REACTION))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=blocker.unit_id))
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
+        self.assertNotEqual(self.engine.phase, PHASE_REACTION)
+        self.assertIsNone(self.engine.reaction_context)
+        self.assertFalse(any("Gegner ist als Naechstes mit Reagieren oder Passen am Zug." == message for message in self.engine.log_messages))
+        self.assertLessEqual(blocker.current_hp, blocker.lw - 1)
+        self.assertIn(attacker.unit_id, self.engine.combat_queue)
+
+    def test_combat_start_window_opens_only_for_defender_with_playable_spell(self) -> None:
+        self.prepare_blocked_combat()
+        self.engine.ai_player.resources.append(self.make_resource("fire_spell_versengen"))
+        self.add_spell_to_hand(1, "fire_spell_versengen")
+
+        self.engine.begin_pre_first_combat_window()
+
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_priority_player_id, 1)
+        self.assertEqual(self.engine.reaction_sequence_player_ids, [1])
+        self.assertIn("Gegner ist als Naechstes mit Reagieren oder Passen am Zug.", self.engine.log_messages)
+
+    def test_combat_start_window_gives_each_player_at_most_one_decision_in_order(self) -> None:
+        _, blocker = self.prepare_blocked_combat()
+        self.engine.human_player.resources.append(self.make_resource("fire_spell_versengen"))
+        self.engine.ai_player.resources.append(self.make_resource("fire_spell_versengen"))
+        spell = self.add_spell_to_hand(0, "fire_spell_versengen")
+        self.add_spell_to_hand(1, "fire_spell_versengen")
+
+        self.engine.begin_pre_first_combat_window()
+
+        self.assertEqual(self.engine.reaction_sequence_player_ids, [0, 1])
+        self.assertTrue(self.engine.begin_spell_cast_from_card(spell, PHASE_REACTION))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=blocker.unit_id))
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
+        self.assertEqual(self.engine.phase, PHASE_REACTION)
+        self.assertEqual(self.engine.reaction_priority_player_id, 1)
+        self.assertEqual(
+            self.engine.log_messages.count("Spieler ist als Naechstes mit Reagieren oder Passen am Zug."),
+            1,
+        )
+        self.engine.pass_reaction()
+        self.assertNotEqual(self.engine.phase, PHASE_REACTION)
+        self.assertIsNone(self.engine.reaction_context)
+
+    def test_post_combat_window_is_skipped_after_only_playable_combat_spell_was_used_at_start(self) -> None:
+        _, blocker = self.prepare_blocked_combat()
+        self.engine.human_player.resources.append(self.make_resource("fire_spell_versengen"))
+        spell = self.add_spell_to_hand(0, "fire_spell_versengen")
+
+        self.engine.begin_pre_first_combat_window()
+        self.assertTrue(self.engine.begin_spell_cast_from_card(spell, PHASE_REACTION))
+        self.engine.select_spell_target_ref(SpellTargetRef("creature", creature_id=blocker.unit_id))
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 1, 1, 1]):
+            self.engine.end_dice_battle()
+
+        self.assertNotEqual(self.engine.phase, PHASE_REACTION)
+        self.assertIn("Kampfende wird automatisch uebersprungen.", self.engine.log_messages)
+        self.assertFalse(any(message.startswith("Kampfende:") for message in self.engine.log_messages))
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from core.config import STARTING_LIFE
 from core.models import (
     Ability,
     CardInstance,
@@ -57,8 +58,8 @@ class SpellTests(EngineTestCase):
             "fire_ritual_kohlevorrat": ("Kohlevorrat", 2, 0, SpellEffect.DECK_TO_TAPPED_RESOURCES, 2, 0),
             "fire_ritual_glutvision": ("Glutvision", 2, 0, SpellEffect.DRAW_CARDS, 0, 2),
             "fire_ritual_flammenvision": ("Flammenvision", 4, 0, SpellEffect.DRAW_CARDS, 0, 3),
-            "fire_ritual_hitzewelle": ("Hitzewelle", 3, 0, SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES, 2, 0),
-            "fire_ritual_feuerwelle": ("Feuerwelle", 5, 0, SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES, 4, 0),
+            "fire_ritual_hitzewelle": ("Hitzewelle", 3, 0, SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS, 2, 0),
+            "fire_ritual_feuerwelle": ("Feuerwelle", 5, 0, SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS, 4, 0),
         }
         for template_id, (name, resources, recycle, effect, amount, draw_count) in expected.items():
             card = self.engine.templates[template_id]
@@ -124,7 +125,7 @@ class SpellTests(EngineTestCase):
     def test_glutvision_draws_two_without_self_damage_or_discard(self) -> None:
         self.give_resources(0, 2)
         ritual = self.give_card("fire_ritual_glutvision")
-        self.engine.human_player.life = 20
+        self.engine.human_player.life = STARTING_LIFE
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"]),
             CardInstance(self.engine.make_instance_id(), self.engine.templates["earth_creature_steinkobold"]),
@@ -137,7 +138,7 @@ class SpellTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 2)
         self.assertEqual(len(self.engine.human_player.discard_pile), 1)
-        self.assertEqual(self.engine.human_player.life, 20)
+        self.assertEqual(self.engine.human_player.life, STARTING_LIFE)
 
     def test_flammenvision_draws_three_in_second_main_phase(self) -> None:
         self.give_resources(0, 4)
@@ -155,13 +156,13 @@ class SpellTests(EngineTestCase):
 
         self.assertEqual(len(self.engine.human_player.hand), 3)
 
-    def test_hitzewelle_hits_all_creatures_and_not_players(self) -> None:
+    def test_hitzewelle_hits_all_creatures_and_players(self) -> None:
         self.give_resources(0, 3)
         ritual = self.give_card("fire_ritual_hitzewelle")
         own = self.make_creature("fire_creature_gluthetzer", owner_id=0)
         enemy = self.make_creature("earth_creature_felsensoldat", owner_id=1)
-        self.engine.human_player.life = 20
-        self.engine.ai_player.life = 20
+        self.engine.human_player.life = STARTING_LIFE
+        self.engine.ai_player.life = STARTING_LIFE
         self.engine.phase = PHASE_MAIN_1
 
         self.engine.begin_spell_cast(ritual.instance_id)
@@ -170,25 +171,93 @@ class SpellTests(EngineTestCase):
 
         self.assertEqual(own.current_hp, own.lw - 2)
         self.assertEqual(enemy.current_hp, enemy.lw - 2)
-        self.assertEqual(self.engine.human_player.life, 20)
-        self.assertEqual(self.engine.ai_player.life, 20)
+        self.assertEqual(self.engine.human_player.life, STARTING_LIFE - 2)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - 2)
 
-    def test_feuerwelle_applies_damage_to_all_before_deaths_are_cleaned_up(self) -> None:
+    def test_feuerwelle_applies_damage_to_players_and_all_creatures_before_cleanup(self) -> None:
         self.give_resources(0, 5)
         ritual = self.give_card("fire_ritual_feuerwelle")
         own = self.make_creature("fire_creature_glutbrecher", owner_id=0)
         enemy_one = self.make_creature("earth_creature_steinkobold", owner_id=1)
         enemy_two = self.make_creature("fire_creature_glutwesen", owner_id=1)
+        self.engine.human_player.life = STARTING_LIFE
+        self.engine.ai_player.life = STARTING_LIFE
         self.engine.phase = PHASE_MAIN_1
 
         self.engine.begin_spell_cast(ritual.instance_id)
         self.engine.confirm_pending_spell_cast()
         self.resolve_current_reaction_window_with_passes()
 
+        self.assertEqual(self.engine.human_player.life, STARTING_LIFE - 4)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - 4)
         self.assertIsNone(self.engine.get_unit_by_id(own.unit_id))
         self.assertIsNone(self.engine.get_unit_by_id(enemy_one.unit_id))
         self.assertIsNone(self.engine.get_unit_by_id(enemy_two.unit_id))
         self.assertGreaterEqual(self.engine.creatures_died_this_turn, 3)
+
+    def test_hitzewelle_game_over_when_only_enemy_dies(self) -> None:
+        self.give_resources(0, 3)
+        ritual = self.give_card("fire_ritual_hitzewelle")
+        self.engine.human_player.life = 5
+        self.engine.ai_player.life = 2
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.begin_spell_cast(ritual.instance_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.phase, PHASE_GAME_OVER)
+        self.assertEqual(self.engine.human_player.life, 3)
+        self.assertEqual(self.engine.ai_player.life, 0)
+        self.assertIn("Spieler gewinnt", self.engine.game_over_text)
+
+    def test_hitzewelle_game_over_when_only_controller_dies(self) -> None:
+        self.give_resources(0, 3)
+        ritual = self.give_card("fire_ritual_hitzewelle")
+        self.engine.human_player.life = 2
+        self.engine.ai_player.life = 5
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.begin_spell_cast(ritual.instance_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.phase, PHASE_GAME_OVER)
+        self.assertEqual(self.engine.human_player.life, 0)
+        self.assertEqual(self.engine.ai_player.life, 3)
+        self.assertIn("Gegner gewinnt", self.engine.game_over_text)
+
+    def test_hitzewelle_double_death_is_draw(self) -> None:
+        self.give_resources(0, 3)
+        ritual = self.give_card("fire_ritual_hitzewelle")
+        self.engine.human_player.life = 2
+        self.engine.ai_player.life = 2
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.begin_spell_cast(ritual.instance_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.phase, PHASE_GAME_OVER)
+        self.assertEqual(self.engine.human_player.life, 0)
+        self.assertEqual(self.engine.ai_player.life, 0)
+        self.assertIn("Unentschieden", self.engine.game_over_text)
+
+    def test_feuerwelle_double_death_is_draw_even_when_life_totals_differ(self) -> None:
+        self.give_resources(0, 5)
+        ritual = self.give_card("fire_ritual_feuerwelle")
+        self.engine.human_player.life = 2
+        self.engine.ai_player.life = 3
+        self.engine.phase = PHASE_MAIN_1
+
+        self.engine.begin_spell_cast(ritual.instance_id)
+        self.engine.confirm_pending_spell_cast()
+        self.resolve_current_reaction_window_with_passes()
+
+        self.assertEqual(self.engine.phase, PHASE_GAME_OVER)
+        self.assertLessEqual(self.engine.human_player.life, 0)
+        self.assertLessEqual(self.engine.ai_player.life, 0)
+        self.assertIn("Unentschieden", self.engine.game_over_text)
 
     def test_air_rueckenwind_reduces_only_creature_resource_costs(self) -> None:
         self.give_resources(0, 4)
@@ -240,7 +309,7 @@ class SpellTests(EngineTestCase):
         self.assertIsNotNone(self.engine.get_unit_by_id(attacker.unit_id))
         self.assertIsNotNone(self.engine.reaction_context)
         self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.COMBAT_END)
-        self.assertEqual(self.engine.human_player.life, 20 - attacker.sw)
+        self.assertEqual(self.engine.human_player.life, STARTING_LIFE - attacker.sw)
 
     def test_air_sturmruf_requires_two_creatures_in_own_discard(self) -> None:
         self.give_resources(0, 2)
@@ -716,15 +785,15 @@ class SpellTests(EngineTestCase):
 
     def test_general_spell_window_opens_after_combat_ends(self) -> None:
         self.give_resources(0, 1)
-        self.give_card("air_spell_verwehung")
+        self.give_card("fire_spell_versengen")
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)
-        self.engine.ai_player.life = 20
+        self.engine.ai_player.life = STARTING_LIFE
         self.engine.active_player_index = self.engine.human_player.player_id
         self.engine.block_assignments = {attacker.unit_id: None}
 
         self.engine.begin_combat_resolution()
 
-        self.assertEqual(self.engine.ai_player.life, 20 - attacker.sw)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - attacker.sw)
         self.assertEqual(self.engine.phase, PHASE_REACTION)
         self.assertIsNotNone(self.engine.reaction_context)
         self.assertEqual(self.engine.reaction_context.trigger, ReactionTrigger.COMBAT_END)

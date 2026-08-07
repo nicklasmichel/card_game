@@ -316,7 +316,7 @@ class AiConfirmationTests(EngineTestCase):
         expendable_attacker = self.make_creature("air_creature_sturmgeist", owner_id=1)
         self.make_creature("air_creature_orkangeist", owner_id=0)
         self.make_creature("air_creature_orkangeist", owner_id=0)
-        self.engine.human_player.life = 20
+        self.engine.human_player.life = 10
 
         prepared = self.engine.prepare_ai_turn_action()
 

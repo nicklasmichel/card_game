@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.config import STARTING_LIFE
 from core.models import CardInstance, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, ReactionContext, ReactionTrigger, SpellEffect, SpellTargetRef, SpellTiming
 from tests.helpers import EngineTestCase
 
@@ -191,6 +192,7 @@ class AirSpellReworkTests(EngineTestCase):
 
     def test_jagdwind_buffs_all_attackers_but_not_other_creatures_and_ends_after_combat(self) -> None:
         self.give_resources(0, 1)
+        self.give_card("air_spell_jagdwind")
         attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
         attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         resting = self.make_creature("air_creature_windschwinge", owner_id=0)
@@ -209,18 +211,22 @@ class AirSpellReworkTests(EngineTestCase):
     def test_sturmjagd_stacks_and_increases_direct_damage(self) -> None:
         self.give_resources(0, 3)
         attacker = self.make_creature("air_creature_windschwinge", owner_id=0)
+        jagdwind = self.give_card("air_spell_jagdwind")
         self.open_combat_start_window([attacker.unit_id], active_player_id=0)
 
-        self.cast_air_spell("air_spell_jagdwind")
+        self.assertTrue(self.engine.begin_spell_from_hand(jagdwind.instance_id))
+        self.resolve_reaction_window()
+        sturmjagd = self.give_card("air_spell_sturmjagd")
         self.open_combat_start_window([attacker.unit_id], active_player_id=0)
-        self.cast_air_spell("air_spell_sturmjagd")
+        self.assertTrue(self.engine.begin_spell_from_hand(sturmjagd.instance_id))
+        self.resolve_reaction_window()
 
         self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw)
         self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw + 3)
-        self.engine.ai_player.life = 20
+        self.engine.ai_player.life = STARTING_LIFE
         self.engine.pending_direct_attack = _PendingDirectAttackStub(attacker.unit_id, self.engine.get_creature_damage_value(attacker), 1)
         self.engine.resolve_pending_direct_attack_after_reaction()
-        self.assertEqual(self.engine.ai_player.life, 20 - (attacker.sw + 3))
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - (attacker.sw + 3))
 
     def test_ai_does_not_reserve_verwehung_for_combat(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
@@ -256,8 +262,8 @@ class AirSpellReworkTests(EngineTestCase):
 
         prepared = self.engine.prepare_ai_turn_action()
 
-        self.assertTrue(prepared)
-        self.assertEqual(self.engine.pending_ai_action["kind"], "reaction_pass")
+        self.assertFalse(prepared)
+        self.assertIsNone(self.engine.pending_ai_action)
 
     def test_ai_casts_sw_buffs_when_only_unblocked_sw_damage_matters(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from core.ai_logic import SimpleAI
 from cards import build_card_templates, build_test_deck, validate_deck_definitions
 from cards.registry import get_deck_templates
-from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, GAME_MODE, HUMAN_DECK_NAME, STARTING_HAND_SIZE
+from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, GAME_MODE, HUMAN_DECK_NAME, STARTING_HAND_SIZE, STARTING_LIFE
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -142,6 +142,7 @@ class GameEngine:
         begin_spell_from_hand,
         begin_spell_cast,
         begin_spell_cast_from_card,
+        advance_combat_window_priority,
         begin_reaction_window,
         build_spell_reaction_context,
         begin_general_spell_window,
@@ -230,6 +231,8 @@ class GameEngine:
         self.reaction_context: Optional[ReactionContext] = None
         self.reaction_priority_player_id: Optional[int] = None
         self.reaction_pass_count = 0
+        self.reaction_sequence_player_ids: List[int] = []
+        self.reaction_sequence_index = 0
         self.reaction_base_stack_size = 0
         self.reaction_resume_phase = PHASE_MAIN_1
         self.reaction_continuation = None
@@ -399,7 +402,7 @@ class GameEngine:
 
         for player in self.players:
             player.summoner_key = deck_names[player.player_id]
-            player.life = 20
+            player.life = STARTING_LIFE
             player.deck = build_test_deck(deck_names[player.player_id], self.templates, self.make_instance_id)
             self.rng.shuffle(player.deck)
             player.hand.clear()
@@ -439,7 +442,7 @@ class GameEngine:
     def start_test_combat(self) -> None:
         for player in self.players:
             player.summoner_key = HUMAN_DECK_NAME if player.player_id == 0 else AI_DECK_NAME
-            player.life = 20
+            player.life = STARTING_LIFE
             player.deck.clear()
             player.hand.clear()
             player.discard_pile.clear()
@@ -496,6 +499,8 @@ class GameEngine:
         self.reaction_context = None
         self.reaction_priority_player_id = None
         self.reaction_pass_count = 0
+        self.reaction_sequence_player_ids = []
+        self.reaction_sequence_index = 0
         self.reaction_base_stack_size = 0
         self.reaction_resume_phase = PHASE_MAIN_1
         self.reaction_continuation = None

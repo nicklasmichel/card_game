@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.ai.fire.effects import evaluate_fire_board_wipe
+from core.ai.fire.planning import build_fire_turn_plan_payload
 from core.ai.strategies.fire import (
     FIRE_MODE_CONTROL,
     FIRE_MODE_DEPLOY_THREAT,
@@ -9,7 +11,7 @@ from core.ai.strategies.fire import (
     FIRE_MODE_STABILIZE,
     FireStrategy,
 )
-from core.models import CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PlayerState, ReactionContext, ReactionTrigger
+from core.models import Ability, CardInstance, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION, PlayerState, ReactionContext, ReactionTrigger
 from tests.helpers import EngineTestCase
 
 
@@ -24,8 +26,8 @@ class FireStrategyTests(EngineTestCase):
         strategy = self.engine.ai.strategy_registry.resolve("fire")
         self.assertIsInstance(strategy, FireStrategy)
 
-    def test_fire_passive_draws_extra_card_below_ten_life(self) -> None:
-        self.engine.ai_player.life = 9
+    def test_fire_passive_draws_extra_card_below_five_life(self) -> None:
+        self.engine.ai_player.life = 4
         self.engine.ai_player.turns_started = 1
         self.engine.ai_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
@@ -38,8 +40,8 @@ class FireStrategyTests(EngineTestCase):
         self.assertTrue(self.engine.ai_player.summoner_passive_draw_used_this_turn)
         self.assertIn("Gegner zieht 1 zusaetzliche Karte durch den Beschwoerer.", self.engine.log_messages)
 
-    def test_fire_passive_does_not_draw_at_ten_life(self) -> None:
-        self.engine.ai_player.life = 10
+    def test_fire_passive_does_not_draw_at_five_life(self) -> None:
+        self.engine.ai_player.life = 5
         self.engine.ai_player.turns_started = 1
         self.engine.ai_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"]),
@@ -219,4 +221,145 @@ class FireStrategyTests(EngineTestCase):
         self.assertTrue(prepared)
         self.assertEqual(self.engine.pending_ai_action["kind"], "cast_spell")
         self.assertEqual(self.engine.pending_ai_action["card_id"], self.engine.ai_player.hand[1].instance_id)
+
+    def test_fire_ai_prioritizes_hitzewelle_for_immediate_lethal(self) -> None:
+        ritual = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_hitzewelle"])
+        self.engine.ai_player.hand = [ritual]
+        self.engine.ai_player.resources = [
+            self.make_resource("fire_creature_gluthetzer"),
+            self.make_resource("fire_creature_gluthetzer"),
+            self.make_resource("fire_creature_gluthetzer"),
+        ]
+        self.engine.ai_player.life = 5
+        self.engine.human_player.life = 2
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=self.engine.ai_player.available_resources(),
+            total_resources=self.engine.ai_player.total_resources(),
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [ritual.instance_id])
+
+    def test_fire_ai_prioritizes_feuerwelle_for_immediate_lethal(self) -> None:
+        ritual = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_feuerwelle"])
+        self.engine.ai_player.hand = [ritual]
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_gluthetzer") for _ in range(5)]
+        self.engine.ai_player.life = 6
+        self.engine.human_player.life = 4
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=self.engine.ai_player.available_resources(),
+            total_resources=self.engine.ai_player.total_resources(),
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [ritual.instance_id])
+
+    def test_fire_ai_treats_double_death_ritual_as_draw_not_win(self) -> None:
+        self.engine.ai_player.life = 2
+        self.engine.human_player.life = 2
+
+        result = evaluate_fire_board_wipe(self.engine.ai, self.engine.ai_player, self.engine.human_player, 2)
+
+        self.assertTrue(result["is_draw"])
+        self.assertFalse(result["is_lethal"])
+
+    def test_fire_ai_does_not_play_ritual_that_only_kills_itself(self) -> None:
+        ritual = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_hitzewelle"])
+        self.engine.ai_player.hand = [ritual]
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_gluthetzer") for _ in range(3)]
+        self.engine.ai_player.life = 2
+        self.engine.human_player.life = 5
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=self.engine.ai_player.available_resources(),
+            total_resources=self.engine.ai_player.total_resources(),
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [])
+
+    def test_fire_ai_detects_ritual_plus_blocker_removal_combat_lethal(self) -> None:
+        ritual = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_hitzewelle"])
+        self.engine.ai_player.hand = [ritual]
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_gluthetzer") for _ in range(3)]
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=1, ready=True)
+        attacker.sw = 3
+        attacker.current_hp = 3
+        blocker = self.make_creature("earth_creature_steinkobold", owner_id=0, ready=True)
+        blocker.current_hp = 2
+        self.engine.ai_player.life = 8
+        self.engine.human_player.life = 5
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=self.engine.ai_player.available_resources(),
+            total_resources=self.engine.ai_player.total_resources(),
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [ritual.instance_id])
+        self.assertIn(attacker.unit_id, payload["attacker_ids"])
+        self.assertGreaterEqual(payload["expected_attack_damage"], 3)
+
+    def test_fire_ai_detects_trample_overflow_after_ritual_damage(self) -> None:
+        ritual = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_hitzewelle"])
+        self.engine.ai_player.hand = [ritual]
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_gluthetzer") for _ in range(3)]
+        attacker = self.make_creature("fire_creature_gluthetzer", owner_id=1, ready=True)
+        attacker.abilities = tuple(set(attacker.abilities) | {Ability.TRAMPLE})
+        attacker.sw = 3
+        attacker.current_hp = 3
+        blocker = self.make_creature("earth_creature_felsensoldat", owner_id=0, ready=True)
+        blocker.current_hp = 4
+        self.engine.ai_player.life = 8
+        self.engine.human_player.life = 3
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=self.engine.ai_player.available_resources(),
+            total_resources=self.engine.ai_player.total_resources(),
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [ritual.instance_id])
+        self.assertIn(attacker.unit_id, payload["attacker_ids"])
+        self.assertGreaterEqual(payload["expected_attack_damage"], 1)
+
+    def test_fire_ai_penalizes_ritual_that_opens_counter_lethal(self) -> None:
+        self.engine.ai_player.life = 5
+        self.engine.human_player.life = 8
+        self.make_creature("earth_creature_steinkobold", owner_id=1, ready=True).current_hp = 2
+        enemy_attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0, ready=True)
+        enemy_attacker.sw = 3
+        enemy_attacker.current_hp = 3
+
+        result = evaluate_fire_board_wipe(self.engine.ai, self.engine.ai_player, self.engine.human_player, 2)
+
+        self.assertFalse(result["is_lethal"])
+        self.assertLess(result["score"], 0.0)
 

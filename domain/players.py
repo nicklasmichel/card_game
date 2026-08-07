@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from core.config import STARTING_LIFE
 from .cards import CardCost, CardInstance, ResourceCard
 from .enums import Ability, Element
 
@@ -102,7 +103,7 @@ class PlayerState:
     name: str
     is_human: bool
     summoner_key: str = ""
-    life: int = 20
+    life: int = STARTING_LIFE
     deck: List[CardInstance] = field(default_factory=list)
     hand: List[CardInstance] = field(default_factory=list)
     discard_pile: List[CardInstance] = field(default_factory=list)

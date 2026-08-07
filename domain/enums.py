@@ -31,6 +31,7 @@ class SpellEffect(Enum):
     DEAL_DAMAGE_TO_CREATURE_OR_PLAYER = "Schaden an Kreatur oder Spieler"
     DEAL_DAMAGE_TO_ALL_ENEMY_CREATURES = "Schaden an alle gegnerischen Kreaturen"
     DEAL_DAMAGE_TO_ALL_CREATURES = "Schaden an alle Kreaturen"
+    DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS = "Schaden an alle Kreaturen und Spieler"
     SACRIFICE_FOR_DAMAGE = "Kreatur opfern und Schaden verursachen"
     DRAW_AND_SELF_DAMAGE = "Karten ziehen und Eigenschaden"
     DRAW_CARDS = "Karten ziehen"

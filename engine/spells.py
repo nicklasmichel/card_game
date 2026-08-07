@@ -153,6 +153,44 @@ def reaction_window_shows_stack_preview(self, context: ReactionContext | None = 
     return bool(get_reaction_window_profile(self, context).get("shows_stack_preview", True))
 
 
+def is_combat_priority_window(self, context: ReactionContext | None = None) -> bool:
+    active_context = context or self.reaction_context
+    return active_context is not None and active_context.trigger in {
+        ReactionTrigger.COMBAT_START,
+        ReactionTrigger.COMBAT_END,
+    }
+
+
+def get_combat_window_eligible_player_ids(self, context: ReactionContext, first_responder_id: int) -> list[int]:
+    ordered_ids = [first_responder_id, 1 - first_responder_id]
+    return [
+        player_id
+        for player_id in ordered_ids
+        if has_legal_reaction_for_player(self, self.get_player_by_id(player_id), context)
+    ]
+
+
+def log_combat_window_auto_passes(self, context: ReactionContext) -> None:
+    title = self.get_reaction_window_title(context)
+    self.log(f"{title} wird automatisch uebersprungen.")
+    for player in self.players:
+        self.log(f"{player.name} passt automatisch.")
+
+
+def advance_combat_window_priority(self) -> None:
+    context = self.reaction_context
+    while self.reaction_sequence_index + 1 < len(self.reaction_sequence_player_ids):
+        self.reaction_sequence_index += 1
+        next_player_id = self.reaction_sequence_player_ids[self.reaction_sequence_index]
+        next_player = self.get_player_by_id(next_player_id)
+        if has_legal_reaction_for_player(self, next_player, context):
+            self.reaction_priority_player_id = next_player_id
+            self.log(f"{next_player.name} ist als Naechstes mit Reagieren oder Passen am Zug.")
+            return
+        self.log(f"{next_player.name} passt automatisch.")
+    self.finish_reaction_window()
+
+
 def begin_general_spell_window(
     self,
     *,
@@ -736,9 +774,12 @@ def commit_spell_cast(
         else:
             self.statistics.register_spell_played(controller.player_id)
     if origin_phase == PHASE_REACTION:
+        self.phase = PHASE_REACTION
+        if is_combat_priority_window(self) and self.reaction_sequence_player_ids:
+            self.advance_combat_window_priority()
+            return True
         self.reaction_pass_count = 0
         self.reaction_priority_player_id = 1 - controller.player_id
-        self.phase = PHASE_REACTION
         return True
     context = destroyed_context or build_spell_reaction_context(self, controller, card, targets)
     first_responder = 1 - controller.player_id
@@ -765,18 +806,33 @@ def begin_reaction_window(
     continuation: Optional[Callable[[], None]] = None,
 ) -> None:
     is_general_window = bool(get_reaction_window_profile(self, context).get("is_general_window", False))
+    is_combat_window = is_combat_priority_window(self, context)
     if len(self.spell_stack) <= base_stack_size and context.trigger in MAIN_PHASE_PRIORITY_TRIGGERS and not has_any_legal_reaction(self, context):
         self.phase = resume_phase
         if continuation is not None:
             continuation()
         return
+    if len(self.spell_stack) <= base_stack_size and is_general_window and is_combat_window:
+        eligible_player_ids = get_combat_window_eligible_player_ids(self, context, first_responder_id)
+        if not eligible_player_ids:
+            log_combat_window_auto_passes(self, context)
+            self.phase = resume_phase
+            if continuation is not None:
+                continuation()
+            return
     if len(self.spell_stack) <= base_stack_size and not is_general_window and not has_any_legal_reaction(self, context):
         self.phase = resume_phase
         if continuation is not None:
             continuation()
         return
     self.reaction_context = context
-    self.reaction_priority_player_id = first_responder_id
+    self.reaction_sequence_player_ids = []
+    self.reaction_sequence_index = 0
+    if is_general_window and is_combat_window:
+        self.reaction_sequence_player_ids = get_combat_window_eligible_player_ids(self, context, first_responder_id)
+        self.reaction_priority_player_id = self.reaction_sequence_player_ids[0]
+    else:
+        self.reaction_priority_player_id = first_responder_id
     self.reaction_pass_count = 1 if len(self.spell_stack) > base_stack_size else 0
     self.reaction_base_stack_size = base_stack_size
     self.reaction_resume_phase = resume_phase
@@ -798,6 +854,12 @@ def pass_reaction(self) -> None:
         return
     player = self.get_player_by_id(self.reaction_priority_player_id)
     context = self.reaction_context
+    if is_combat_priority_window(self, context) and self.reaction_sequence_player_ids:
+        self.log(f"{player.name} passt.")
+        if self.statistics is not None:
+            self.statistics.register_reaction_pass()
+        self.advance_combat_window_priority()
+        return
     self.reaction_pass_count += 1
     self.log(f"{player.name} passt.")
     if self.statistics is not None:
@@ -823,6 +885,8 @@ def finish_reaction_window(self) -> None:
     self.reaction_context = None
     self.reaction_priority_player_id = None
     self.reaction_pass_count = 0
+    self.reaction_sequence_player_ids = []
+    self.reaction_sequence_index = 0
     self.reaction_base_stack_size = 0
     self.reaction_resume_phase = PHASE_MAIN_1
     self.reaction_continuation = None
@@ -984,14 +1048,9 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         any_pause = cleanup_destroyed_units_for_spells(self)
         return any_pause
     if effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES:
-        self.log(f"{item.source_card.template.name} fuegt allen Kreaturen {item.amount} Schaden zu.")
-        for player in self.players:
-            for creature in list(player.battlefield):
-                creature.current_hp -= item.amount
-                self.queue_creature_damage_event("blocker", item.amount, item.source_card.template.element)
-                if self.statistics is not None:
-                    self.statistics.register_spell_damage(item.controller.player_id, item.amount)
-        return cleanup_destroyed_units_for_spells(self)
+        return resolve_global_damage(self, item, item.amount, include_players=False)
+    if effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS:
+        return resolve_global_damage(self, item, item.amount, include_players=True)
     if effect == SpellEffect.SACRIFICE_FOR_DAMAGE:
         amount = item.sacrificed_creature_power
         target = item.targets[0] if item.targets else None
@@ -1050,6 +1109,31 @@ def resolve_spell_damage_to_creature(self, item: StackItem, creature, amount: in
     if self.statistics is not None:
         self.statistics.register_spell_damage(item.controller.player_id, amount)
     return cleanup_destroyed_units_for_spells(self)
+
+
+def resolve_global_damage(self, item: StackItem, amount: int, *, include_players: bool) -> bool:
+    if include_players:
+        self.log(f"{item.source_card.template.name} fuegt allen Kreaturen und Spielern {amount} Schaden zu.")
+    else:
+        self.log(f"{item.source_card.template.name} fuegt allen Kreaturen {amount} Schaden zu.")
+    if include_players:
+        for player in self.players:
+            player.life -= amount
+            self.queue_player_damage_event(player.player_id, amount, item.source_card.template.element)
+            if self.statistics is not None:
+                if player.player_id == item.controller.player_id:
+                    self.statistics.register_spell_self_damage(item.controller.player_id, amount)
+                else:
+                    self.statistics.register_player_damage(item.controller.player_id, amount)
+    for player in self.players:
+        for creature in list(player.battlefield):
+            creature.current_hp -= amount
+            self.queue_creature_damage_event("blocker", amount, item.source_card.template.element)
+            if self.statistics is not None:
+                self.statistics.register_spell_damage(item.controller.player_id, amount)
+    cleanup_destroyed_units_for_spells(self)
+    self.check_for_game_over()
+    return False
 
 
 def cleanup_destroyed_units_for_spells(self) -> bool:

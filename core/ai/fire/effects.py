@@ -1,6 +1,90 @@
 from __future__ import annotations
 
-from core.models import Ability, CardInstance, PlayerState, SpellEffect, SpellTargetRef
+from dataclasses import dataclass, replace
+
+from core.models import Ability, BattlefieldCreature, CardInstance, PlayerState, SpellEffect, SpellTargetRef
+
+
+@dataclass(slots=True, frozen=True)
+class ProjectedGlobalDamageState:
+    own_life: int
+    enemy_life: int
+    own_survivors: tuple[BattlefieldCreature, ...]
+    enemy_survivors: tuple[BattlefieldCreature, ...]
+    own_losses: int
+    enemy_kills: int
+    own_damage_marked: int
+    enemy_damage_marked: int
+    immediate_win: bool
+    immediate_loss: bool
+    is_draw: bool
+    projected_attack_damage: int
+    projected_enemy_counterattack_damage: int
+
+
+def _clone_survivors(creatures: list[BattlefieldCreature], amount: int) -> tuple[BattlefieldCreature, ...]:
+    survivors: list[BattlefieldCreature] = []
+    for creature in creatures:
+        projected_hp = creature.current_hp - amount
+        if projected_hp <= 0:
+            continue
+        survivors.append(replace(creature, current_hp=projected_hp))
+    return tuple(survivors)
+
+
+def _legal_blockers_for_attacker(attackers_owner_blockers: list[BattlefieldCreature], attacker: BattlefieldCreature) -> list[BattlefieldCreature]:
+    legal: list[BattlefieldCreature] = []
+    for blocker in attackers_owner_blockers:
+        if blocker.current_hp <= 0 or not blocker.is_ready() or blocker.cannot_block or blocker.vw <= 0:
+            continue
+        if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
+            continue
+        legal.append(blocker)
+    return legal
+
+
+def _estimate_projected_attack_damage(attackers: tuple[BattlefieldCreature, ...], blockers: tuple[BattlefieldCreature, ...]) -> int:
+    ready_attackers = [creature for creature in attackers if creature.current_hp > 0 and creature.is_ready()]
+    if not ready_attackers:
+        return 0
+    remaining_blockers = [creature for creature in blockers if creature.current_hp > 0 and creature.is_ready() and not creature.cannot_block and creature.vw > 0]
+    damage = 0
+    for attacker in ready_attackers:
+        legal_blockers = _legal_blockers_for_attacker(remaining_blockers, attacker)
+        if not legal_blockers:
+            damage += attacker.sw
+            continue
+        if attacker.has_ability(Ability.TRAMPLE):
+            damage += max(0, attacker.sw - min(blocker.current_hp for blocker in legal_blockers))
+        chosen = max(legal_blockers, key=lambda blocker: blocker.current_hp)
+        remaining_blockers = [blocker for blocker in remaining_blockers if blocker.unit_id != chosen.unit_id]
+    return damage
+
+
+def project_fire_global_damage_state(ai, player: PlayerState, enemy: PlayerState, amount: int) -> ProjectedGlobalDamageState:
+    own_survivors = _clone_survivors(player.battlefield, amount)
+    enemy_survivors = _clone_survivors(enemy.battlefield, amount)
+    own_life = player.life - amount
+    enemy_life = enemy.life - amount
+    projected_attack_damage = _estimate_projected_attack_damage(own_survivors, enemy_survivors)
+    projected_player = PlayerState(player.player_id, player.name, player.is_human, summoner_key=player.summoner_key, life=own_life, battlefield=list(own_survivors))
+    projected_enemy = PlayerState(enemy.player_id, enemy.name, enemy.is_human, summoner_key=enemy.summoner_key, life=enemy_life, battlefield=list(enemy_survivors))
+    projected_enemy_counterattack_damage = ai.assessment.estimate_enemy_counterattack(ai, projected_player, projected_enemy, attacking_ids=set())["damage"]
+    return ProjectedGlobalDamageState(
+        own_life=own_life,
+        enemy_life=enemy_life,
+        own_survivors=own_survivors,
+        enemy_survivors=enemy_survivors,
+        own_losses=sum(1 for creature in player.battlefield if creature.current_hp <= amount),
+        enemy_kills=sum(1 for creature in enemy.battlefield if creature.current_hp <= amount),
+        own_damage_marked=sum(min(amount, creature.current_hp) for creature in player.battlefield),
+        enemy_damage_marked=sum(min(amount, creature.current_hp) for creature in enemy.battlefield),
+        immediate_win=enemy_life <= 0 < own_life,
+        immediate_loss=own_life <= 0 < enemy_life,
+        is_draw=own_life <= 0 and enemy_life <= 0,
+        projected_attack_damage=projected_attack_damage,
+        projected_enemy_counterattack_damage=int(projected_enemy_counterattack_damage),
+    )
 
 
 def score_fire_damage_target(player: PlayerState, enemy: PlayerState, amount: int, target) -> float:
@@ -30,23 +114,61 @@ def choose_best_damage_target(engine, player: PlayerState, amount: int) -> Spell
     return SpellTargetRef("creature", creature_id=best_creature.unit_id)
 
 
-def evaluate_fire_board_wipe(player: PlayerState, enemy: PlayerState, amount: int) -> dict:
-    enemy_kills = sum(1 for creature in enemy.battlefield if creature.current_hp <= amount)
-    own_losses = sum(1 for creature in player.battlefield if creature.current_hp <= amount)
-    enemy_damage_marked = sum(min(amount, creature.current_hp) for creature in enemy.battlefield)
-    own_damage_marked = sum(min(amount, creature.current_hp) for creature in player.battlefield)
-    score = enemy_kills * 5.5 + enemy_damage_marked * 0.6 - own_losses * 4.2 - own_damage_marked * 0.45
+def evaluate_fire_board_wipe(ai, player: PlayerState, enemy: PlayerState, amount: int) -> dict:
+    projected = project_fire_global_damage_state(ai, player, enemy, amount)
+    if projected.immediate_win:
+        return {
+            "is_useful": True,
+            "score": 1000.0 + projected.enemy_kills * 2.0,
+            "enemy_kills": projected.enemy_kills,
+            "own_losses": projected.own_losses,
+            "is_lethal": True,
+            "is_draw": False,
+        }
+    if projected.immediate_loss:
+        return {
+            "is_useful": False,
+            "score": -1000.0,
+            "enemy_kills": projected.enemy_kills,
+            "own_losses": projected.own_losses,
+            "is_lethal": False,
+            "is_draw": False,
+        }
+    draw_score = 0.0
+    if projected.is_draw:
+        draw_score = 18.0 if ai.assessment.estimate_enemy_counterattack(ai, player, enemy, attacking_ids=set())["is_lethal"] else -8.0
+    score = (
+        projected.enemy_kills * 5.5
+        + projected.enemy_damage_marked * 0.6
+        - projected.own_losses * 4.2
+        - projected.own_damage_marked * 0.45
+        + amount * 1.8
+        + projected.projected_attack_damage * 8.0
+        - projected.projected_enemy_counterattack_damage * 5.5
+        + draw_score
+    )
+    post_ritual_lethal = projected.enemy_life > 0 and projected.own_life > 0 and projected.projected_attack_damage >= projected.enemy_life
+    if post_ritual_lethal:
+        score += 60.0
+    if projected.projected_enemy_counterattack_damage >= max(1, projected.own_life):
+        score -= 80.0
     return {
-        "is_useful": score > 2.0,
+        "is_useful": post_ritual_lethal or projected.is_draw or score > 2.0,
         "score": score,
-        "enemy_kills": enemy_kills,
-        "own_losses": own_losses,
+        "enemy_kills": projected.enemy_kills,
+        "own_losses": projected.own_losses,
+        "is_lethal": projected.immediate_win or post_ritual_lethal,
+        "is_draw": projected.is_draw,
+        "projected_attack_damage": projected.projected_attack_damage,
+        "projected_enemy_counterattack_damage": projected.projected_enemy_counterattack_damage,
+        "projected_enemy_life": projected.enemy_life,
+        "projected_own_life": projected.own_life,
     }
 
 
 def evaluate_fire_draw_spell(player: PlayerState, card: CardInstance) -> float:
     draw_count = card.template.spell_draw_count
-    passive_discount = 0.45 if player.life < 10 else 0.0
+    passive_discount = 0.45 if player.life < 5 else 0.0
     base = draw_count * 2.2 - passive_discount
     if len(player.hand) <= 2:
         base += 1.8

@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Any
 
 from cards import build_card_templates, build_test_deck, validate_deck_definitions
+from core.config import STARTING_LIFE
 from core.ai.simple_ai import HeuristicStrategicAI
 from core.game_logic import GameEngine
 from core.models import (
@@ -124,7 +125,7 @@ class SimulationGameEngine(GameEngine):
         self.reset_combat_state()
         for player in self.players:
             player.summoner_key = self.simulation_config.decks[player.player_id]
-            player.life = 20
+            player.life = STARTING_LIFE
             player.deck = build_test_deck(player.summoner_key, self.templates, self.make_instance_id)
             self.rng.shuffle(player.deck)
             player.hand.clear()
@@ -198,7 +199,7 @@ class SimulationGameEngine(GameEngine):
         self._record_turn_state()
         for player in self.players:
             telemetry = self.telemetry.player(player.player_id)
-            if player.summoner_key == "fire" and player.life < 10:
+            if player.summoner_key == "fire" and player.life < 5:
                 telemetry.fire_turns_under_ten += 1
             resources = player.total_resources()
             if player.summoner_key == "fire":

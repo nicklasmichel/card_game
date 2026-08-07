@@ -112,16 +112,14 @@ def build_full_art_card_surface(
     scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     base.blit(scaled, (0, 0))
 
-    stat_entries: list[tuple[str, str, tuple[int, int, int]]] = []
+    stat_pairs: tuple[tuple[str, tuple[int, int, int]], tuple[str, tuple[int, int, int]]] | None = None
     if stats is not None:
         aw_text, vw_text, lw_text, sw_text = stats
         lw_text_color = (255, 142, 142) if lw_text == "0" else (255, 255, 255)
-        stat_entries = [
-            ("AW", aw_text, (255, 255, 255)),
-            ("VW", vw_text, (255, 255, 255)),
-            ("LW", lw_text, lw_text_color),
-            ("SW", sw_text, (255, 255, 255)),
-        ]
+        stat_pairs = (
+            (f"{aw_text}/{vw_text}", (255, 255, 255)),
+            (f"{sw_text}/{lw_text}", lw_text_color if sw_text == "0" else (255, 255, 255)),
+        )
     header_y = max(s(4), int(self.card_height * 0.02))
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
     show_zero_cost = cost_value.resources == 0
@@ -151,18 +149,14 @@ def build_full_art_card_surface(
         rule_y += rule_line_height
 
     footer_y = self.card_height - s(14)
-    if stat_entries:
-        stat_rect = pygame.Rect(s(8), self.card_height - s(50), self.card_width - s(16), s(40))
-        stat_width = stat_rect.width // 4
-        label_font = body_italic_font
-        value_font = body_font
-        for index, (label, value, color) in enumerate(stat_entries):
-            left = stat_rect.x + index * stat_width
-            section_rect = pygame.Rect(left, stat_rect.y, stat_width, stat_rect.height)
-            label_surface = label_font.render(label, True, CARD_BADGE_LIGHT)
-            value_surface = value_font.render(value, True, color)
-            base.blit(label_surface, label_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(8))))
-            base.blit(value_surface, value_surface.get_rect(center=(section_rect.centerx, section_rect.y + s(25))))
+    if stat_pairs:
+        stat_font = number_font
+        stat_y = self.card_height - s(34)
+        left_text, left_color = stat_pairs[0]
+        right_text, right_color = stat_pairs[1]
+        blit_text_with_shadow(base, stat_font, left_text, left_color, s(10), stat_y)
+        right_width = stat_font.size(right_text)[0]
+        blit_text_with_shadow(base, stat_font, right_text, right_color, self.card_width - s(10) - right_width, stat_y)
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
     if tapped:

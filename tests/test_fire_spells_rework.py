@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from cards import DECK_DEFINITIONS
+from core.config import STARTING_LIFE
 from core.models import PHASE_MAIN_1, ReactionContext, ReactionTrigger, SpellEffect, SpellTargetRef, SpellTiming
 from tests.helpers import EngineTestCase
 
@@ -102,7 +103,7 @@ class FireSpellReworkTests(EngineTestCase):
 
         self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 2)
         self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw + 2)
-        self.engine.ai_player.life = 20
+        self.engine.ai_player.life = STARTING_LIFE
         self.engine._apply_pending_direct_attack(
             type("Pending", (), {
                 "attacker_id": attacker.unit_id,
@@ -111,7 +112,7 @@ class FireSpellReworkTests(EngineTestCase):
                 "base_damage": self.engine.get_creature_damage_value(attacker),
             })()
         )
-        self.assertEqual(self.engine.ai_player.life, 20 - (attacker.sw + 2))
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - (attacker.sw + 2))
 
     def test_bonus_ends_after_turn(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0)

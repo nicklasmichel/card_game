@@ -4,7 +4,13 @@ from dataclasses import replace
 
 from core.ai.candidates import AttackCandidate, EvaluationBreakdown, MainPhaseSequenceCandidate, PlanningState, TurnPlanCandidate
 from core.ai.fire.assessment import build_fire_snapshot
-from core.ai.fire.effects import choose_best_damage_target, evaluate_fire_board_wipe, evaluate_fire_draw_spell, evaluate_fire_ramp_spell
+from core.ai.fire.effects import (
+    choose_best_damage_target,
+    evaluate_fire_board_wipe,
+    evaluate_fire_draw_spell,
+    evaluate_fire_ramp_spell,
+    project_fire_global_damage_state,
+)
 from core.models import Ability, CardType, PHASE_MAIN_1, PHASE_MAIN_2, PlayerState, SpellEffect
 
 
@@ -49,7 +55,7 @@ def _score_fire_creature(card, snapshot) -> float:
     return value
 
 
-def _score_fire_main_phase_card(player, enemy, engine, card, snapshot, phase: str) -> float:
+def _score_fire_main_phase_card(ai, player, enemy, engine, card, snapshot, phase: str) -> float:
     template = card.template
     if template.card_type == CardType.CREATURE:
         if snapshot.available_resources < template.resource_cost or snapshot.total_resources < template.recycle_cost:
@@ -68,8 +74,11 @@ def _score_fire_main_phase_card(player, enemy, engine, card, snapshot, phase: st
         if snapshot.opponent_lethal_threat:
             base += creature.aw * 1.6
         return base - template.resource_cost * 0.3
-    if template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES:
-        result = evaluate_fire_board_wipe(player, enemy, template.spell_amount)
+    if template.spell_effect in (
+        SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES,
+        SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS,
+    ):
+        result = evaluate_fire_board_wipe(ai, player, enemy, template.spell_amount)
         return result["score"] + (2.2 if snapshot.opponent_lethal_threat else 0.0)
     if template.spell_effect == SpellEffect.DECK_TO_TAPPED_RESOURCES:
         phase_penalty = -0.5 if phase == PHASE_MAIN_1 else 0.7
@@ -91,8 +100,8 @@ def _choose_fire_sequence(ai, player, enemy, engine, hand, available_resources: 
     ]
     if not playable:
         return [], available_resources, total_resources, 0.0
-    best = max(playable, key=lambda card: _score_fire_main_phase_card(player, enemy, engine, card, augmented, phase))
-    best_score = _score_fire_main_phase_card(player, enemy, engine, best, augmented, phase)
+    best = max(playable, key=lambda card: _score_fire_main_phase_card(ai, player, enemy, engine, card, augmented, phase))
+    best_score = _score_fire_main_phase_card(ai, player, enemy, engine, best, augmented, phase)
     if best_score < 1.0:
         return [], available_resources, total_resources, 0.0
     return [best.instance_id], available_resources - best.template.resource_cost, total_resources - best.template.recycle_cost, best_score
@@ -128,11 +137,11 @@ def _build_attack_candidate(ai, player, enemy, engine, reserved_resources: int):
     blockers = [creature for creature in enemy.battlefield if creature.current_hp > 0 and creature.is_ready() and not creature.cannot_block]
     for creature in attackers:
         if not blockers:
-            direct_damage += engine.get_creature_damage_value(creature)
+            direct_damage += creature.sw
             continue
         if creature.has_ability(Ability.TRAMPLE):
-            direct_damage += max((max(0, engine.get_creature_damage_value(creature) - blocker.current_hp) for blocker in blockers), default=0)
-        enemy_losses += sum(1 for blocker in blockers if blocker.current_hp <= engine.get_creature_damage_value(creature))
+            direct_damage += max((max(0, creature.sw - blocker.current_hp) for blocker in blockers), default=0)
+        enemy_losses += sum(1 for blocker in blockers if blocker.current_hp <= creature.sw)
     counter = ai.assessment.estimate_enemy_counterattack(ai, player, enemy, attacking_ids={creature.unit_id for creature in attackers})
     return AttackCandidate(
         attacker_ids=tuple(creature.unit_id for creature in attackers),
@@ -156,6 +165,28 @@ def _build_candidate(ai, player: PlayerState, engine, hand, available_resources:
         ai, player, enemy, engine, hand_after_resources, main1_available, main1_total, PHASE_MAIN_1 if phase == PHASE_MAIN_1 else phase
     )
     remaining_after_main1 = [card for card in hand_after_resources if card.instance_id not in set(main1_sequence_ids)]
+    projected_player = player
+    projected_enemy = enemy
+    if main1_sequence_ids:
+        played_card = next((card for card in hand_after_resources if card.instance_id == main1_sequence_ids[0]), None)
+        if played_card is not None and played_card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS:
+            projected = project_fire_global_damage_state(ai, player, enemy, played_card.template.spell_amount)
+            projected_player = PlayerState(
+                player.player_id,
+                player.name,
+                player.is_human,
+                summoner_key=player.summoner_key,
+                life=projected.own_life,
+                battlefield=list(projected.own_survivors),
+            )
+            projected_enemy = PlayerState(
+                enemy.player_id,
+                enemy.name,
+                enemy.is_human,
+                summoner_key=enemy.summoner_key,
+                life=projected.enemy_life,
+                battlefield=list(projected.enemy_survivors),
+            )
     reserved_resources = 0
     if any(card.template.template_id == "fire_spell_wutanfall" for card in remaining_after_main1):
         reserved_resources = max(reserved_resources, 0)
@@ -163,7 +194,7 @@ def _build_candidate(ai, player: PlayerState, engine, hand, available_resources:
         reserved_resources = max(reserved_resources, 0)
     if any(card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE for card in remaining_after_main1):
         reserved_resources = max(reserved_resources, 1)
-    attack = _build_attack_candidate(ai, player, enemy, engine, reserved_resources)
+    attack = _build_attack_candidate(ai, projected_player, projected_enemy, engine, reserved_resources)
     main2 = None
     if phase == PHASE_MAIN_1 and attack.combat_started:
         main2_resource_cards = _resource_candidates(ai, player, remaining_after_main1, main2_resource_count)
@@ -209,7 +240,7 @@ def _build_candidate(ai, player: PlayerState, engine, hand, available_resources:
     )
     end_hand_ids = main2.projected_hand_ids if main2 is not None else main1.projected_hand_ids
     total_score = main1.score + attack.score + (0.0 if main2 is None else main2.score)
-    if strategy.mode == "LETHAL" and attack.expected_damage + build_fire_snapshot(ai, player, engine, hand=remaining_after_main1, available_resources=end_available, total_resources=end_total, phase=phase).total_direct_spell_damage >= enemy.life:
+    if strategy.mode == "LETHAL" and attack.expected_damage + build_fire_snapshot(ai, projected_player, engine, hand=remaining_after_main1, available_resources=end_available, total_resources=end_total, phase=phase).total_direct_spell_damage >= projected_enemy.life:
         total_score += 12.0
     breakdown = EvaluationBreakdown(
         total_score=total_score,
@@ -236,10 +267,10 @@ def _build_candidate(ai, player: PlayerState, engine, hand, available_resources:
         expected_end_hand_ids=end_hand_ids,
         expected_end_total_resources=main2.ending_total_resources if main2 is not None else main1.ending_total_resources,
         expected_end_available_resources=main2.ending_available_resources if main2 is not None else main1.ending_available_resources,
-        expected_end_own_creatures=len(player.battlefield),
-        expected_end_enemy_creatures=max(0, len(enemy.battlefield) - attack.expected_enemy_losses),
-        expected_enemy_life=max(0, enemy.life - attack.expected_damage),
-        expected_own_life=max(0, player.life - attack.expected_counterattack_damage),
+        expected_end_own_creatures=len(projected_player.battlefield),
+        expected_end_enemy_creatures=max(0, len(projected_enemy.battlefield) - attack.expected_enemy_losses),
+        expected_enemy_life=max(0, projected_enemy.life - attack.expected_damage),
+        expected_own_life=max(0, projected_player.life - attack.expected_counterattack_damage),
         recycle_loss=0,
         reason_codes=tuple(strategy.reason_codes),
     )

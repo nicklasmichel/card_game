@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.ai.fire.effects import evaluate_fire_board_wipe
 from core.models import Ability, CardInstance, CardType, PlayerState, SpellEffect
 from core.ai.strategies.base import StrategyMetric
 
@@ -56,10 +57,9 @@ def _estimate_enemy_damage(engine, player: PlayerState, enemy: PlayerState) -> i
     return int(counter["damage"])
 
 
-def _evaluate_best_board_wipe(player: PlayerState, enemy: PlayerState, amount: int) -> tuple[int, int]:
-    enemy_kills = sum(1 for creature in enemy.battlefield if creature.current_hp <= amount)
-    own_losses = sum(1 for creature in player.battlefield if creature.current_hp <= amount)
-    return enemy_kills, own_losses
+def _evaluate_best_board_wipe(ai, player: PlayerState, enemy: PlayerState, amount: int) -> tuple[int, int]:
+    result = evaluate_fire_board_wipe(ai, player, enemy, amount)
+    return int(result["enemy_kills"]), int(result["own_losses"])
 
 
 def _estimate_attack_damage(player: PlayerState, enemy: PlayerState) -> int:
@@ -77,8 +77,16 @@ def _estimate_attack_damage(player: PlayerState, enemy: PlayerState) -> int:
     return damage
 
 
-def _estimate_total_direct_spell_damage(hand: list[CardInstance]) -> int:
-    return 0
+def _estimate_total_direct_spell_damage(hand: list[CardInstance], available_resources: int, total_resources: int) -> int:
+    best = 0
+    for card in hand:
+        if (
+            card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS
+            and available_resources >= card.template.resource_cost
+            and total_resources >= card.template.recycle_cost
+        ):
+            best = max(best, card.template.spell_amount)
+    return best
 
 
 def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInstance], available_resources: int, total_resources: int, phase: str) -> FireStrategicSnapshot:
@@ -86,7 +94,13 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
     ramp_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DECK_TO_TAPPED_RESOURCES]
     draw_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DRAW_CARDS]
     burn_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE]
-    board_wipes = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES]
+    board_wipes = [
+        card for card in hand
+        if card.template.spell_effect in (
+            SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES,
+            SpellEffect.DEAL_DAMAGE_TO_ALL_CREATURES_AND_PLAYERS,
+        )
+    ]
     own_ready = [creature for creature in player.battlefield if creature.is_ready() and creature.current_hp > 0]
     playable_threats = [
         card for card in hand
@@ -98,12 +112,12 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
     best_enemy_kills = 0
     best_own_losses = 0
     for wipe in board_wipes:
-        enemy_kills, own_losses = _evaluate_best_board_wipe(player, enemy, wipe.template.spell_amount)
+        enemy_kills, own_losses = _evaluate_best_board_wipe(ai, player, enemy, wipe.template.spell_amount)
         if enemy_kills - own_losses > best_enemy_kills - best_own_losses:
             best_enemy_kills, best_own_losses = enemy_kills, own_losses
     expected_enemy_damage = _estimate_enemy_damage(engine, player, enemy)
     attack_damage = _estimate_attack_damage(player, enemy)
-    spell_damage = _estimate_total_direct_spell_damage(hand)
+    spell_damage = _estimate_total_direct_spell_damage(hand, available_resources, total_resources)
     enemy_flyers = sum(1 for creature in enemy.battlefield if creature.current_hp > 0 and creature.has_ability(Ability.FLYING))
     dangerous_board = bool(enemy.battlefield) and (
         expected_enemy_damage >= max(4, player.life // 3)
@@ -120,7 +134,7 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
     return FireStrategicSnapshot(
         own_life=player.life,
         enemy_life=enemy.life,
-        passive_active_next_turn=player.life < 10,
+        passive_active_next_turn=player.life < 5,
         hand_size=len(hand),
         available_resources=available_resources,
         total_resources=total_resources,

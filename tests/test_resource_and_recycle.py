@@ -287,6 +287,8 @@ class ResourceAndRecycleTests(EngineTestCase):
         self.engine.human_player.deck = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
         ]
+        self.engine.starting_player_id = 0
+        self.engine.turn_number = 1
         self.engine.active_player_index = 1
         attacker_one = self.make_creature("air_creature_windschwinge", owner_id=1)
         attacker_two = self.make_creature("air_creature_windgeist", owner_id=1)

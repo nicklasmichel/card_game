@@ -445,9 +445,16 @@ def end_turn(self) -> None:
 def check_for_game_over(self) -> None:
     if self.phase == PHASE_GAME_OVER:
         return
-    loser = next((player for player in self.players if player.life <= 0), None)
-    if loser is None:
+    dead_players = [player for player in self.players if player.life <= 0]
+    if not dead_players:
         return
+    if len(dead_players) == 2:
+        self.phase = PHASE_GAME_OVER
+        self.game_over_text = "Unentschieden. Beide Spieler haben 0 oder weniger Lebenspunkte."
+        self.log(self.game_over_text)
+        self.persist_game_results_once()
+        return
+    loser = dead_players[0]
     winner = self.players[1 - loser.player_id]
     self.phase = PHASE_GAME_OVER
     self.game_over_text = f"{winner.name} gewinnt. {loser.name} hat 0 oder weniger Lebenspunkte."
@@ -459,8 +466,12 @@ def persist_game_results_once(self) -> None:
     if self.game_over_saved or self.statistics is None:
         return
     self.game_over_saved = True
+    if self.players[0].life <= 0 and self.players[1].life <= 0:
+        winner_name = "Unentschieden"
+    else:
+        winner_name = self.players[1].name if self.players[0].life <= 0 else self.players[0].name
     row = self.statistics.finalize_game(
-        winner=self.players[1].name if self.players[0].life <= 0 else self.players[0].name,
+        winner=winner_name,
         human_life=self.human_player.life,
         ai_life=self.ai_player.life,
         human_resources_remaining=len(self.human_player.resources),
