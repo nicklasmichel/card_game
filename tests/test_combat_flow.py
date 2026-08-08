@@ -70,7 +70,7 @@ class CombatFlowTests(EngineTestCase):
 
         self.assertIn("Spieler beginnt und zieht im ersten Zug keine Karte.", self.engine.log_messages)
 
-    def test_no_attackers_keeps_game_in_first_main_phase(self) -> None:
+    def test_no_attackers_advances_to_second_main_or_ends_turn(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0, ready=True)
         self.engine.phase = PHASE_MAIN_1
 
@@ -80,9 +80,15 @@ class CombatFlowTests(EngineTestCase):
 
         self.engine.confirm_attackers()
 
-        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertIn("Keine Angreifer gewaehlt.", self.engine.log_messages)
-        self.assertNotIn("Zweite Hauptphase begonnen.", self.engine.log_messages)
+        self.assertIn(
+            self.engine.phase,
+            {PHASE_MAIN_2, PHASE_MAIN_1},
+        )
+        self.assertTrue(
+            "Zweite Hauptphase begonnen." in self.engine.log_messages
+            or "Zweite Hauptphase wird uebersprungen. Es sind keine weiteren Aktionen moeglich." in self.engine.log_messages
+        )
 
     def test_multiple_blocked_combats_share_one_dice_phase(self) -> None:
         attacker_one = self.make_creature("fire_creature_gluthetzer", owner_id=0)

@@ -2,32 +2,14 @@ Neue Partie gestartet.
 Mulligan ist deaktiviert.
 Zug 1: Gegner ist am Zug.
 Gegner beginnt und zieht im ersten Zug keine Karte.
-Gegner legt Ressource 1/2 (Sturmruf).
-Gegner legt Ressource 2/2 (Sturmruf).
+Gegner legt Ressource 1/2 (Himmelswende).
+Gegner legt Ressource 2/2 (Aufwind).
+Gegner spielt Windwesen.
 Zug 2: Spieler ist am Zug.
 Spieler zieht eine Karte.
-Spieler legt Ressource 1/2 (Raserei).
-Spieler legt Ressource 2/2 (Verkohlen).
+Spieler legt Ressource 1/2 (Wutanfall).
+Spieler legt Ressource 2/2 (Feuerwelle).
 Zug 3: Gegner ist am Zug.
-Gegner zieht eine Karte.
-Zug 4: Spieler ist am Zug.
-Spieler zieht eine Karte.
-Spieler spielt Glutvision.
-Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
-Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
-Gegner passt.
-Spieler zieht 2 Karten.
-Spieler legt Ressource 1/2 (Flammenhetzer).
-Spieler legt Ressource 2/2 (Flammenhetzer).
-Zug 5: Gegner ist am Zug.
-Gegner zieht eine Karte.
-Zug 6: Spieler ist am Zug.
-Spieler zieht eine Karte.
-Spieler legt Ressource 1/2 (Holzvorrat).
-Waehle 2 Ressourcen fuer Recycle von Hoellenbestie und bestaetige dann.
-Spieler spielt Hoellenbestie.
-Recycle aufgedeckt und zurueck ins Deck gemischt: Flammenhetzer, Holzvorrat.
-Zug 7: Gegner ist am Zug.
 Gegner zieht eine Karte.
 Gegner spielt Sturmgeist.
 Waehle deine Angreifer.
@@ -35,89 +17,52 @@ Keine Kreaturen koennen blocken. Schaden geht automatisch durch.
 Kampfbeginn wird automatisch uebersprungen.
 Spieler passt automatisch.
 Gegner passt automatisch.
+Windwesen ist ungeblockt und verursacht 1 Schaden an Spieler.
 Sturmgeist ist ungeblockt und verursacht 1 Schaden an Spieler.
 Kampfende wird automatisch uebersprungen.
 Spieler passt automatisch.
 Gegner passt automatisch.
 Zweite Hauptphase begonnen.
-Zug 8: Spieler ist am Zug.
+Zug 4: Spieler ist am Zug.
 Spieler zieht eine Karte.
 Spieler spielt Glutbrecher.
 Spieler legt Ressource 1/2 (Holzvorrat).
-Spieler spielt Glutwesen.
-Waehle deine Angreifer.
-Optional: Waehle fuer Wuetend-Angreifer einen gegnerischen Blocker. Danach weiter.
-Kampfbeginn wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Hoellenbestie ist ungeblockt und verursacht 3 Schaden an Gegner.
-Kampfende wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Zweite Hauptphase begonnen.
-Spieler legt Ressource 2/2 (Hitzewelle).
-Zug 9: Gegner ist am Zug.
+Zug 5: Gegner ist am Zug.
 Gegner zieht eine Karte.
-Waehle 2 Kreatur(en) fuer Verwirbelung. Ausgewaehlt: 0/2.
-Gegner spielt Verwirbelung.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Gegner spielt Verwehung.
 Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
 Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
 Spieler passt.
-Verwirbelung nimmt auf die Haende ihrer Besitzer zurueck: Hoellenbestie (Spieler), Glutbrecher (Spieler).
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Glutbrecher (Spieler).
 Waehle deine Angreifer.
 Keine Kreaturen koennen blocken. Schaden geht automatisch durch.
 Kampfbeginn wird automatisch uebersprungen.
 Spieler passt automatisch.
 Gegner passt automatisch.
+Windwesen ist ungeblockt und verursacht 1 Schaden an Spieler.
 Sturmgeist ist ungeblockt und verursacht 1 Schaden an Spieler.
 Kampfende wird automatisch uebersprungen.
 Spieler passt automatisch.
 Gegner passt automatisch.
 Zweite Hauptphase begonnen.
-Zug 10: Spieler ist am Zug.
+Zug 6: Spieler ist am Zug.
 Spieler zieht eine Karte.
-Waehle 2 Ressourcen fuer Recycle von Hoellenbestie und bestaetige dann.
-Spieler spielt Hoellenbestie.
-Recycle aufgedeckt und zurueck ins Deck gemischt: Holzvorrat, Hitzewelle.
-Waehle deine Angreifer.
-Optional: Waehle fuer Wuetend-Angreifer einen gegnerischen Blocker. Danach weiter.
-Kampfbeginn: Nach Angreifern, Blockern und Reihenfolge koennen nur Kampfzauber gespielt werden.
-Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
-Waehle 2 Ressourcen fuer Recycle von Raserei. Ausgewaehlt: 0/2.
-Waehle 2 Ressourcen fuer Recycle von Raserei. Ausgewaehlt: 1/2.
-Waehle eine eigene kaempfende Kreatur als Ziel fuer Raserei (+4 AW und +4 SW).
-Waehle eine eigene kaempfende Kreatur als Ziel fuer Raserei (+4 AW und +4 SW).
-Spieler spielt Raserei.
-Glutwesen erhaelt fuer diesen Kampf +4 AW und +4 SW.
-Glutwesen ist ungeblockt und verursacht 5 Schaden an Gegner.
-Kampfende wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Zweite Hauptphase begonnen.
-Zug 11: Gegner ist am Zug.
+Spieler spielt Glutbrecher.
+Spieler legt Ressource 1/2 (Infernobestie).
+Spieler spielt Glutvision.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler zieht 2 Karten.
+Zug 7: Gegner ist am Zug.
 Gegner zieht eine Karte.
-Gegner spielt Sturmschwinge.
-Recycle aufgedeckt und zurueck ins Deck gemischt: Sturmruf, Sturmruf.
 Waehle deine Angreifer.
 Keine Kreaturen koennen blocken. Schaden geht automatisch durch.
-Kampfbeginn wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Sturmgeist ist ungeblockt und verursacht 1 Schaden an Spieler.
-Kampfende wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Zweite Hauptphase begonnen.
-Gegner legt Ressource 1/2 (Rueckenwind).
-Gegner spielt Windschwinge.
-Recycle aufgedeckt und zurueck ins Deck gemischt: Rueckenwind.
-Zug 12: Spieler ist am Zug.
-Spieler zieht eine Karte.
-Waehle deine Angreifer.
-Optional: Waehle fuer Wuetend-Angreifer einen gegnerischen Blocker. Danach weiter.
-Kampfbeginn wird automatisch uebersprungen.
-Spieler passt automatisch.
-Gegner passt automatisch.
-Glutwesen ist ungeblockt und verursacht 1 Schaden an Gegner.
-Hoellenbestie ist ungeblockt und verursacht 3 Schaden an Gegner.
-Spieler gewinnt. Gegner hat 0 oder weniger Lebenspunkte.
+Kampfbeginn: Nach Angreifern, Blockern und Reihenfolge koennen nur Kampfzauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner spielt Sturmjagd.
+Eigene Angreifer erhalten fuer diesen Kampf +2 SW.
+Windwesen ist ungeblockt und verursacht 3 Schaden an Spieler.
+Sturmgeist ist ungeblockt und verursacht 3 Schaden an Spieler.
+Gegner gewinnt. Spieler hat 0 oder weniger Lebenspunkte.

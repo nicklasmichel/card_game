@@ -140,7 +140,7 @@ def confirm_attackers(self) -> None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
         self.log("Keine Angreifer gewaehlt.")
-        self.phase = PHASE_MAIN_1
+        self.enter_second_main_phase()
         return
     if getattr(self.active_player, "summoner_key", "") == "air" and not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
