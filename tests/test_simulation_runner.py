@@ -60,9 +60,9 @@ class SimulationRunnerTests(unittest.TestCase):
 
     def test_simulation_does_not_mutate_global_templates(self) -> None:
         engine = SimulationGameEngine(SimulationConfig(decks=("air", "fire"), seed=96000, starting_player_id=0))
-        before = engine.templates["fire_creature_infernowesen"].cost.resources
+        before = engine.templates["fire_creature_hoellenbestie"].cost.resources
         engine.run_to_completion()
-        after = engine.templates["fire_creature_infernowesen"].cost.resources
+        after = engine.templates["fire_creature_hoellenbestie"].cost.resources
         self.assertEqual(before, after)
 
     def test_air_and_fire_passives_are_tracked(self) -> None:

@@ -27,26 +27,29 @@ def _draw_rendered_die(self, rect: pygame.Rect, value: int) -> None:
         pygame.draw.circle(self.screen, (24, 24, 26), center, pip_radius)
 
 
-def _draw_dice_row(self, card_rect: pygame.Rect, rolls: list[int], *, title: str, winner: bool, top_row: bool) -> None:
+def _draw_dice_row(self, card_rect: pygame.Rect, rolls: list[int], *, winner: bool) -> None:
     if not rolls:
         return
-    die_size = max(16, min(22, (card_rect.width - 20) // max(3, min(len(rolls), 6))))
-    gap = max(3, die_size // 6)
+    max_columns = 3
     rows = [rolls[index:index + 3] for index in range(0, len(rolls), 3)]
-    label_font = pygame.font.SysFont("arial", max(12, die_size - 4), bold=True)
-    label_y = card_rect.y + 8 if top_row else card_rect.bottom - (len(rows) * (die_size + gap) + 30)
-    label_surface = label_font.render(title, True, (255, 244, 220) if winner else (230, 236, 244))
-    label_bg = pygame.Rect(card_rect.x + 8, label_y - 2, max(42, label_surface.get_width() + 10), label_surface.get_height() + 6)
-    pygame.draw.rect(self.screen, (36, 40, 48), label_bg, border_radius=6)
-    pygame.draw.rect(self.screen, HIGHLIGHT if winner else CARD_BORDER, label_bg, 1, border_radius=6)
-    self.screen.blit(label_surface, (label_bg.x + 5, label_bg.y + 3))
-    start_y = label_bg.bottom + 4
+    widest_row = max((len(row) for row in rows), default=1)
+    die_size = min(
+        max(24, (card_rect.width - 24) // max(1, widest_row)),
+        max(24, (card_rect.height - 24) // max(1, len(rows))),
+        34,
+    )
+    gap = max(3, die_size // 6)
+    total_height = len(rows) * die_size + max(0, len(rows) - 1) * gap
+    start_y = card_rect.y + (card_rect.height - total_height) // 2
     for row_index, row in enumerate(rows):
         row_width = len(row) * die_size + max(0, len(row) - 1) * gap
         start_x = card_rect.x + (card_rect.width - row_width) // 2
         for die_index, roll in enumerate(row):
             die_rect = pygame.Rect(start_x + die_index * (die_size + gap), start_y + row_index * (die_size + gap), die_size, die_size)
             _draw_rendered_die(self, die_rect, roll)
+    if winner:
+        inner_rect = pygame.Rect(card_rect.x + 4, card_rect.y + 4, card_rect.width - 8, card_rect.height - 8)
+        pygame.draw.rect(self.screen, HIGHLIGHT, inner_rect, 2, border_radius=8)
 
 
 def draw_mulligan_overlay(self) -> None:
@@ -79,8 +82,8 @@ def draw_dice_battle_overlay(self) -> None:
         self.combat_overlay_card_rects["blocker"] = blocker_rect
         pygame.draw.rect(self.screen, HIGHLIGHT if battle.winner == "attacker" else CARD_BORDER, attacker_rect, 3, border_radius=8)
         pygame.draw.rect(self.screen, HIGHLIGHT if battle.winner == "blocker" else CARD_BORDER, blocker_rect, 3, border_radius=8)
-        _draw_dice_row(self, attacker_rect, battle.attacker_rolls, title=str(battle.attack_sum), winner=battle.winner == "attacker", top_row=True)
-        _draw_dice_row(self, blocker_rect, battle.blocker_rolls, title=str(battle.defense_sum), winner=battle.winner == "blocker", top_row=False)
+        _draw_dice_row(self, attacker_rect, battle.attacker_rolls, winner=battle.winner == "attacker")
+        _draw_dice_row(self, blocker_rect, battle.blocker_rolls, winner=battle.winner == "blocker")
         if battle.reroll_count > 0:
             reroll_rect = pygame.Rect(
                 min(attacker_rect.centerx, blocker_rect.centerx) - 46,

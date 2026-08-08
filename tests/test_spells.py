@@ -488,7 +488,7 @@ class SpellTests(EngineTestCase):
 
         self.assertEqual(reduced_zero.resources, 0)
         self.assertEqual(reduced_zero.recycle, 2)
-        self.assertEqual(reduced_cost.resources, 2)
+        self.assertEqual(reduced_cost.resources, 1)
         self.assertEqual(reduced_cost.recycle, 3)
 
 
@@ -809,7 +809,7 @@ class SpellTests(EngineTestCase):
 
         self.engine.request_end_turn()
 
-        self.assertEqual(self.engine.turn_number, 2)
+        self.assertEqual(self.engine.turn_number, 1)
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(self.engine.active_player, self.engine.ai_player)
 

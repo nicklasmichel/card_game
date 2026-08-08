@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
+from core.ai.fire.assessment import build_fire_snapshot
 from core.ai.fire.effects import evaluate_fire_board_wipe
-from core.ai.fire.planning import build_fire_turn_plan_payload
+from core.ai.fire.planning import _score_fire_creature, build_fire_turn_plan_payload
 from core.ai.strategies.fire import (
     FIRE_MODE_CONTROL,
     FIRE_MODE_DEPLOY_THREAT,
@@ -131,6 +132,47 @@ class FireStrategyTests(EngineTestCase):
             phase=PHASE_MAIN_1,
         )
         self.assertEqual(decision.mode, FIRE_MODE_DEPLOY_THREAT)
+
+    def test_fire_ai_can_plan_glutwesen_as_cost_one_creature(self) -> None:
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutwesen"])
+        self.engine.ai_player.hand = [creature]
+        self.engine.ai_player.resources_played_this_turn = 2
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_glutwesen")]
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=1,
+            total_resources=1,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [creature.instance_id])
+
+    def test_fire_ai_recognizes_flammenwesen_as_cost_two_creature(self) -> None:
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenwesen"])
+        self.engine.ai_player.hand = [creature]
+        self.engine.ai_player.resources_played_this_turn = 2
+        self.engine.ai_player.resources = [
+            self.make_resource("fire_creature_glutwesen"),
+            self.make_resource("fire_creature_flammenwesen"),
+        ]
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=2,
+            total_resources=2,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [creature.instance_id])
 
     def test_fire_strategy_detects_refuel_mode(self) -> None:
         self.engine.ai_player.hand = [
@@ -349,6 +391,147 @@ class FireStrategyTests(EngineTestCase):
         self.assertEqual(payload["sequence"], [ritual.instance_id])
         self.assertIn(attacker.unit_id, payload["attacker_ids"])
         self.assertGreaterEqual(payload["expected_attack_damage"], 1)
+
+    def test_fire_ai_scores_glutbrecher_and_gluthetzer_by_keyword_not_body(self) -> None:
+        glutbrecher = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutbrecher"])
+        gluthetzer = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_gluthetzer"])
+        self.make_creature("earth_creature_steinwesen", owner_id=0, ready=True)
+        self.make_creature("earth_creature_felswesen", owner_id=0, ready=True)
+        snapshot = build_fire_snapshot(
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[glutbrecher, gluthetzer],
+            available_resources=3,
+            total_resources=3,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertNotEqual(_score_fire_creature(glutbrecher, snapshot), _score_fire_creature(gluthetzer, snapshot))
+        self.assertEqual(glutbrecher.template.aw, gluthetzer.template.aw)
+        self.assertEqual(glutbrecher.template.vw, gluthetzer.template.vw)
+        self.assertEqual(glutbrecher.template.sw, gluthetzer.template.sw)
+        self.assertEqual(glutbrecher.template.lw, gluthetzer.template.lw)
+
+    def test_fire_ai_scores_flammenbrecher_and_flammenhetzer_by_keyword_not_body(self) -> None:
+        flammenbrecher = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenbrecher"])
+        flammenhetzer = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_flammenhetzer"])
+        self.make_creature("earth_creature_steinwesen", owner_id=0, ready=True)
+        self.make_creature("earth_creature_felswesen", owner_id=0, ready=True)
+        snapshot = build_fire_snapshot(
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[flammenbrecher, flammenhetzer],
+            available_resources=4,
+            total_resources=4,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertNotEqual(_score_fire_creature(flammenbrecher, snapshot), _score_fire_creature(flammenhetzer, snapshot))
+        self.assertEqual(flammenbrecher.template.aw, flammenhetzer.template.aw)
+        self.assertEqual(flammenbrecher.template.vw, flammenhetzer.template.vw)
+        self.assertEqual(flammenbrecher.template.sw, flammenhetzer.template.sw)
+        self.assertEqual(flammenbrecher.template.lw, flammenhetzer.template.lw)
+
+    def test_fire_ai_requires_recycle_for_infernobestie(self) -> None:
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobestie"])
+        self.engine.ai_player.hand = [creature]
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=5,
+            total_resources=1,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [])
+
+    def test_fire_ai_requires_recycle_for_hoellenbestie(self) -> None:
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_hoellenbestie"])
+        self.engine.ai_player.hand = [creature]
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=list(self.engine.ai_player.hand),
+            available_resources=6,
+            total_resources=2,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(payload["sequence"], [])
+
+    def test_fire_snapshot_targets_six_resources_for_hoellenbestie(self) -> None:
+        creature = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_hoellenbestie"])
+        snapshot = build_fire_snapshot(
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[creature],
+            available_resources=4,
+            total_resources=4,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(snapshot.next_resource_goal, 6)
+        self.assertTrue(snapshot.can_ramp_safely)
+
+    def test_fire_snapshot_does_not_blindly_target_six_without_hoellenbestie(self) -> None:
+        ramp = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_ritual_holzvorrat"])
+        snapshot = build_fire_snapshot(
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[ramp],
+            available_resources=4,
+            total_resources=4,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertEqual(snapshot.next_resource_goal, 4)
+
+    def test_fire_ai_uses_infernobestie_sw_for_lethal(self) -> None:
+        attacker = self.make_creature("fire_creature_infernobestie", owner_id=1, ready=True)
+        self.engine.human_player.life = 4
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[],
+            available_resources=0,
+            total_resources=0,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertIn(attacker.unit_id, payload["attacker_ids"])
+        self.assertEqual(payload["expected_attack_damage"], 4)
+
+    def test_fire_ai_uses_hoellenbestie_sw_for_lethal(self) -> None:
+        attacker = self.make_creature("fire_creature_hoellenbestie", owner_id=1, ready=True)
+        self.engine.human_player.life = 5
+
+        payload = build_fire_turn_plan_payload(
+            self.engine.ai.turn_planner,
+            self.engine.ai,
+            self.engine.ai_player,
+            self.engine,
+            hand=[],
+            available_resources=0,
+            total_resources=0,
+            phase=PHASE_MAIN_1,
+        )
+
+        self.assertIn(attacker.unit_id, payload["attacker_ids"])
+        self.assertEqual(payload["expected_attack_damage"], 5)
 
     def test_fire_ai_penalizes_ritual_that_opens_counter_lethal(self) -> None:
         self.engine.ai_player.life = 5

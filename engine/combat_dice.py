@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -141,6 +143,41 @@ def _finalize_battle_rolls(self, battle: PendingDiceBattle, attacker: Battlefiel
     battle.resolution_complete = True
 
 
+def _format_rolls(rolls: Iterable[int]) -> str:
+    values = list(rolls)
+    return f"[{', '.join(str(value) for value in values)}]" if values else "[]"
+
+
+def _build_battle_resolution_log(self, battle: PendingDiceBattle, attacker, blocker, damage: int) -> str:
+    attacker_name = battle.attacker_snapshot.name
+    blocker_name = battle.blocker_snapshot.name
+    attacker_rolls = _format_rolls(battle.attacker_rolls)
+    blocker_rolls = _format_rolls(battle.blocker_rolls)
+    if battle.winner == "attacker":
+        loser_name = blocker_name
+        loser_hp = self.get_creature_current_hp(blocker)
+        message = (
+            f"{attacker_name} wuerfelt {attacker_rolls} = {battle.attack_sum}, "
+            f"{blocker_name} wuerfelt {blocker_rolls} = {battle.defense_sum}. "
+            f"{attacker_name} gewinnt und fuegt {blocker_name} {damage} Schaden zu."
+        )
+    else:
+        loser_name = attacker_name
+        loser_hp = self.get_creature_current_hp(attacker)
+        message = (
+            f"{attacker_name} wuerfelt {attacker_rolls} = {battle.attack_sum}, "
+            f"{blocker_name} wuerfelt {blocker_rolls} = {battle.defense_sum}. "
+            f"{blocker_name} gewinnt und fuegt {attacker_name} {damage} Schaden zu."
+        )
+    if battle.trample_damage > 0:
+        message += f" Trampelschaden an {self.defending_player.name}: {battle.trample_damage}."
+    if loser_hp > 0:
+        message += f" {loser_name} bleibt bei {loser_hp} Leben."
+    else:
+        message += f" {loser_name} wird zerstoert."
+    return message
+
+
 def apply_prepared_dice_battle(self, battle: PendingDiceBattle, *, batched: bool = False) -> None:
     attacker = self.get_unit_by_id(battle.attacker_id)
     blocker = self.get_unit_by_id(battle.blocker_id)
@@ -178,11 +215,11 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
             self.statistics.register_dice_comparison(attacker_damage=damage, blocker_damage=0)
         else:
             self.statistics.register_dice_comparison(attacker_damage=0, blocker_damage=damage)
-    battle.attacker_snapshot.current_hp = self.get_creature_current_hp(attacker)
-    battle.blocker_snapshot.current_hp = self.get_creature_current_hp(blocker)
     if batched:
         return
     self.cleanup_destroyed_units()
+    battle.attacker_snapshot.current_hp = self.get_creature_current_hp(attacker)
+    battle.blocker_snapshot.current_hp = self.get_creature_current_hp(blocker)
     if self.statistics is not None:
         self.statistics.finish_creature_combat(
             attacker_owner=battle.attacker_owner,
@@ -196,7 +233,7 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
             attacker_hp_after=self.get_creature_current_hp(attacker),
             blocker_hp_after=self.get_creature_current_hp(blocker),
         )
-    self.log(battle.history[-1].outcome_text)
+    self.log(_build_battle_resolution_log(self, battle, attacker, blocker, damage))
     self.check_for_game_over()
 
 
@@ -226,7 +263,13 @@ def end_dice_battle(self) -> None:
                     attacker_hp_after=battle.attacker_snapshot.current_hp,
                     blocker_hp_after=battle.blocker_snapshot.current_hp,
                 )
-            self.log(battle.history[-1].outcome_text)
+            if attacker is not None and blocker is not None:
+                damage = battle.creature_damage or (
+                    self.get_creature_damage_value(attacker)
+                    if battle.winner == "attacker"
+                    else self.get_creature_damage_value(blocker)
+                )
+                self.log(_build_battle_resolution_log(self, battle, attacker, blocker, damage))
         self.check_for_game_over()
     self.pending_dice_battle = None
     self.pending_dice_battles = []

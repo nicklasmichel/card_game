@@ -27,7 +27,6 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_creature_flammenbrecher", 2),
         ("fire_creature_gluthetzer", 2),
         ("fire_creature_flammenhetzer", 2),
-        ("fire_creature_infernowesen", 2),
         ("fire_creature_infernobestie", 2),
         ("fire_creature_hoellenbestie", 2),
         ("fire_ritual_holzvorrat", 2),
@@ -41,6 +40,7 @@ DECK_DEFINITIONS: dict[str, list[tuple[str, int]]] = {
         ("fire_spell_versengen", 2),
         ("fire_spell_verbrennen", 2),
         ("fire_spell_verkohlen", 2),
+        ("fire_spell_verzehren", 2),
     ],
     "air": [
         ("air_creature_windschwinge", 2),

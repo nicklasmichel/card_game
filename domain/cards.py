@@ -167,6 +167,7 @@ class StackItem:
     draw_count: int = 0
     sacrificed_creature_power: int = 0
     selected_keyword_ability: Ability | None = None
+    selected_combat_bonus_mode: str | None = None
 
 
 @dataclass
@@ -177,4 +178,5 @@ class PendingSpellCast:
     selected_targets: list[SpellTargetRef] = field(default_factory=list)
     selected_sacrifice_creature_id: int | None = None
     selected_keyword_ability: Ability | None = None
+    selected_combat_bonus_mode: str | None = None
     selected_recycle_resource_ids: list[int] = field(default_factory=list)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pygame
 
+from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
 from core.models import MAIN_PHASES, PHASE_REACTION
 from ui.render_helpers import blit_text_with_shadow
 from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLOR
@@ -102,7 +103,7 @@ def draw_summoner_footer(self, surface: pygame.Surface, summoner_key: str, life:
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
     rules_texts = {
         "air": "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte.",
-        "fire": "Wenn du deinen Zug mit weniger als 10 Leben beginnst, ziehe 1 zusaetzliche Karte.",
+        "fire": f"Wenn du deinen Zug mit weniger als {FIRE_SUMMONER_DRAW_THRESHOLD} Leben beginnst, ziehe 1 zusaetzliche Karte.",
     }
     rules_text = rules_texts.get(summoner_key, "")
     rules_start_y = int(self.card_height * 0.5)

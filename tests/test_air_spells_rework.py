@@ -56,12 +56,24 @@ class AirSpellReworkTests(EngineTestCase):
             resume_phase=PHASE_MAIN_1,
         )
 
-    def cast_air_spell(self, template_id: str, *, owner_id: int = 0, targets: list[SpellTargetRef] | None = None) -> None:
+    def cast_air_spell(
+        self,
+        template_id: str,
+        *,
+        owner_id: int = 0,
+        targets: list[SpellTargetRef] | None = None,
+        combat_bonus_mode: str | None = None,
+    ) -> None:
         card = self.give_card(template_id, owner_id=owner_id)
         self.assertTrue(self.engine.begin_spell_from_hand(card.instance_id))
         if self.engine.pending_spell_cast is None:
             self.resolve_reaction_window()
             return
+        pending = self.engine.pending_spell_cast
+        for resource in self.engine.players[owner_id].resources[: card.template.recycle_cost]:
+            self.engine.toggle_pending_spell_recycle_resource(resource.resource_id)
+        if combat_bonus_mode is not None:
+            self.engine.select_pending_spell_combat_bonus_mode(combat_bonus_mode)
         for target in targets or []:
             self.engine.select_spell_target_ref(target)
         self.assertTrue(self.engine.confirm_pending_spell_cast())
@@ -71,8 +83,8 @@ class AirSpellReworkTests(EngineTestCase):
         expected = {
             "air_spell_verwehung": ("Verwehung", 1, 0, SpellTiming.INSTANT, SpellEffect.RETURN_CREATURES_TO_HAND, 1, 0, 0, ()),
             "air_spell_verwirbelung": ("Verwirbelung", 2, 0, SpellTiming.INSTANT, SpellEffect.RETURN_CREATURES_TO_HAND, 2, 0, 0, ()),
-            "air_spell_jagdwind": ("Jagdwind", 1, 0, SpellTiming.COMBAT, SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT, 1, 0, 1, (ReactionTrigger.COMBAT_START,)),
-            "air_spell_sturmjagd": ("Sturmjagd", 2, 0, SpellTiming.COMBAT, SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT, 2, 0, 2, (ReactionTrigger.COMBAT_START,)),
+            "air_spell_jagdwind": ("Jagdwind", 1, 1, SpellTiming.COMBAT, SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT, 1, 2, 1, (ReactionTrigger.COMBAT_START,)),
+            "air_spell_sturmjagd": ("Sturmjagd", 2, 2, SpellTiming.COMBAT, SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT, 1, 4, 2, (ReactionTrigger.COMBAT_START,)),
         }
         for template_id, (name, resources, recycle, timing, effect, amount, aw_bonus, sw_bonus, legal_windows) in expected.items():
             template = self.engine.templates[template_id]
@@ -138,7 +150,7 @@ class AirSpellReworkTests(EngineTestCase):
 
     def test_verwirbelung_requires_two_distinct_creatures(self) -> None:
         spell = self.give_card("air_spell_verwirbelung")
-        self.give_resources(0, 2)
+        self.give_resources(0, 4)
         only_target = self.make_creature("air_creature_windschwinge", owner_id=0)
         self.engine.phase = PHASE_MAIN_1
         self.assertFalse(self.engine.can_play_card(self.engine.human_player, spell))
@@ -156,7 +168,7 @@ class AirSpellReworkTests(EngineTestCase):
     def test_jagdwind_and_sturmjagd_are_only_legal_at_combat_start(self) -> None:
         jagdwind = self.give_card("air_spell_jagdwind")
         sturmjagd = self.give_card("air_spell_sturmjagd")
-        self.give_resources(0, 2)
+        self.give_resources(0, 4)
         attacker = self.make_creature("air_creature_windschwinge", owner_id=0)
         self.engine.phase = PHASE_MAIN_1
         self.assertFalse(self.engine.can_play_card(self.engine.human_player, jagdwind))
@@ -190,15 +202,21 @@ class AirSpellReworkTests(EngineTestCase):
         self.assertFalse(self.engine.can_react_with_card(self.engine.human_player, jagdwind))
         self.assertFalse(self.engine.can_react_with_card(self.engine.human_player, sturmjagd))
 
-    def test_jagdwind_buffs_all_attackers_but_not_other_creatures_and_ends_after_combat(self) -> None:
-        self.give_resources(0, 1)
+    def test_jagdwind_requires_mode_selection_and_buffs_all_attackers(self) -> None:
+        self.give_resources(0, 2)
         self.give_card("air_spell_jagdwind")
         attacker_one = self.make_creature("air_creature_windschwinge", owner_id=0)
         attacker_two = self.make_creature("air_creature_windgeist", owner_id=0)
         resting = self.make_creature("air_creature_windschwinge", owner_id=0)
         self.open_combat_start_window([attacker_one.unit_id, attacker_two.unit_id], active_player_id=0)
 
-        self.cast_air_spell("air_spell_jagdwind")
+        jagdwind = next(card for card in self.engine.human_player.hand if card.template.template_id == "air_spell_jagdwind")
+        self.assertTrue(self.engine.begin_spell_from_hand(jagdwind.instance_id))
+        self.assertFalse(self.engine.pending_spell_ready())
+        self.engine.toggle_pending_spell_recycle_resource(self.engine.human_player.resources[0].resource_id)
+        self.engine.select_pending_spell_combat_bonus_mode("damage")
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
+        self.resolve_reaction_window()
 
         self.assertEqual(self.engine.get_creature_damage_value(attacker_one), attacker_one.sw + 1)
         self.assertEqual(self.engine.get_creature_damage_value(attacker_two), attacker_two.sw + 1)
@@ -208,25 +226,32 @@ class AirSpellReworkTests(EngineTestCase):
         self.assertEqual(self.engine.get_creature_damage_value(attacker_one), attacker_one.sw)
         self.assertEqual(self.engine.get_creature_damage_value(attacker_two), attacker_two.sw)
 
-    def test_sturmjagd_stacks_and_increases_direct_damage(self) -> None:
-        self.give_resources(0, 3)
+    def test_jagdwind_and_sturmjagd_stack_with_selected_modes(self) -> None:
+        self.give_resources(0, 5)
         attacker = self.make_creature("air_creature_windschwinge", owner_id=0)
         jagdwind = self.give_card("air_spell_jagdwind")
         self.open_combat_start_window([attacker.unit_id], active_player_id=0)
 
         self.assertTrue(self.engine.begin_spell_from_hand(jagdwind.instance_id))
+        self.engine.toggle_pending_spell_recycle_resource(self.engine.human_player.resources[0].resource_id)
+        self.engine.select_pending_spell_combat_bonus_mode("attack")
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
         self.resolve_reaction_window()
         sturmjagd = self.give_card("air_spell_sturmjagd")
         self.open_combat_start_window([attacker.unit_id], active_player_id=0)
         self.assertTrue(self.engine.begin_spell_from_hand(sturmjagd.instance_id))
+        for resource in self.engine.human_player.resources[:2]:
+            self.engine.toggle_pending_spell_recycle_resource(resource.resource_id)
+        self.engine.select_pending_spell_combat_bonus_mode("damage")
+        self.assertTrue(self.engine.confirm_pending_spell_cast())
         self.resolve_reaction_window()
 
-        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw)
-        self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw + 3)
+        self.assertEqual(self.engine.get_creature_attack_value(attacker), attacker.aw + 2)
+        self.assertEqual(self.engine.get_creature_damage_value(attacker), attacker.sw + 2)
         self.engine.ai_player.life = STARTING_LIFE
         self.engine.pending_direct_attack = _PendingDirectAttackStub(attacker.unit_id, self.engine.get_creature_damage_value(attacker), 1)
         self.engine.resolve_pending_direct_attack_after_reaction()
-        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - (attacker.sw + 3))
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - (attacker.sw + 2))
 
     def test_ai_does_not_reserve_verwehung_for_combat(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
@@ -265,7 +290,7 @@ class AirSpellReworkTests(EngineTestCase):
         self.assertFalse(prepared)
         self.assertIsNone(self.engine.pending_ai_action)
 
-    def test_ai_casts_sw_buffs_when_only_unblocked_sw_damage_matters(self) -> None:
+    def test_ai_prefers_cheaper_damage_mode_when_only_unblocked_damage_matters(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.ai_player.hand = [
             CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"]),
@@ -274,6 +299,8 @@ class AirSpellReworkTests(EngineTestCase):
         self.engine.ai_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
+            self.make_resource("earth_creature_steinwesen"),
+            self.make_resource("air_creature_windschwinge"),
         ]
         attacker = self.make_creature("air_creature_windschwinge", owner_id=1)
         self.engine.human_player.life = attacker.sw + 2

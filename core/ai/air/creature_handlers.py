@@ -52,19 +52,19 @@ class GenericAirCreatureHandler:
 SPECIALIZED_AIR_CREATURE_HANDLERS: tuple[AirCreatureHandler, ...] = (
     GenericAirCreatureHandler(
         template_id="air_creature_windschwinge",
-        guideline="Kleiner Flieger mit hohem Recyclepreis. Gut fuer fruehen Luftdruck, aber nur sinnvoll, wenn der Ressourceneinsatz den Schaden rechtfertigt.",
+        guideline="Kleiner Flieger nur ueber Recycle. Erzeugt Luftdruck und kann blocken, kostet aber dauerhaft Ressourcenbasis.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_sturmschwinge",
-        guideline="Mittlerer Flieger mit Recycle 2. Stark in Rennsituationen und fuer die dritte Angreifer-Kreatur, aber langfristig teuer.",
+        guideline="Mittlerer Flieger nur ueber Recycle 2. Stark fuer schwer blockbaren Schaden, aber mit echter Langzeitstrafe.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_windgeist",
-        guideline="Sofortiger Tempo-Angreifer auf eins. Stark, wenn er direkt Druck macht oder den dritten Angreifer ermoeglicht.",
+        guideline="Offensive Glaskanone ohne Schnell und ohne Blockwert. Hoher AW, aber erst ab dem Folgezug relevant.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_sturmgeist",
-        guideline="Schneller Zwei-Mana-Angreifer mit hohem AW und ohne Blockwert. Spielen, wenn der Sofortangriff den offenen Gegenschlag wert ist.",
+        guideline="Zwei-Mana-Glaskanone ohne Schnell und ohne Blockwert. Druck ueber AW, nicht ueber Haltbarkeit oder Soforttempo.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_orkanschwinge",
@@ -72,22 +72,22 @@ SPECIALIZED_AIR_CREATURE_HANDLERS: tuple[AirCreatureHandler, ...] = (
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_orkangeist",
-        guideline="Oberer Schnell-Angreifer mit viel AW, aber geringem SW. Gut fuer Tempozuege, dritte Angreifer und sofortigen Druck.",
+        guideline="Oberer Geist ohne Schnell und ohne Blockwert. Sehr hoher AW, aber bewusst fragil und erst im spaeteren Angriff relevant.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_windwesen",
-        guideline="Flexibler Vanilla-Einser. Einer der wenigen Luft-Blocker und deshalb defensiv wertvoller als die reinen Tempo-Kreaturen.",
+        guideline="Kleine Schnell-Kreatur mit voller Tempofunktion. Kann sofort angreifen und dank VW 1 auch blocken.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_sturmwesen",
-        guideline="Solider Zwei-Mana-Body mit echter Blockfaehigkeit. Gut zum Stabilisieren und als normale Kurvenkreatur.",
+        guideline="Schnelle Zwei-Mana-Kreatur mit VW 2, aber nur LW 1. Soforttempo ja, falsche Tank-Bewertung nein.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_orkanwesen",
-        guideline="Groesstes Vanilla-Luftwesen. Wertvoll, wenn Blockfaehigkeit gebraucht wird oder Tempo-Kreaturen nicht reichen.",
+        guideline="Groesstes Schnell-Wesen mit VW 3, aber weiter nur LW 1. Sofortdruck und Blockoption, keine echte Haltbarkeit.",
     ),
     GenericAirCreatureHandler(
         template_id="air_creature_luftelementar",
-        guideline="All-in-Finisher mit Fliegend, Schnell und SW 3. Sehr stark fuer unmittelbaren Druck oder lethal setups, aber der Recyclepreis ist hoch.",
+        guideline="Explosiver Fliegend-und-Schnell-Finisher. Sehr stark fuer sofortigen Druck oder lethal setups, aber Recycle 3 ist ein harter Langzeitpreis.",
     ),
 )

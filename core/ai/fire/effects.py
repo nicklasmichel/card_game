@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
 from core.models import Ability, BattlefieldCreature, CardInstance, PlayerState, SpellEffect, SpellTargetRef
 
 
@@ -172,7 +173,7 @@ def evaluate_fire_board_wipe(ai, player: PlayerState, enemy: PlayerState, amount
 
 def evaluate_fire_draw_spell(player: PlayerState, card: CardInstance) -> float:
     draw_count = card.template.spell_draw_count
-    passive_discount = 0.45 if player.life < 5 else 0.0
+    passive_discount = 0.45 if player.life < FIRE_SUMMONER_DRAW_THRESHOLD else 0.0
     base = draw_count * 2.2 - passive_discount
     if len(player.hand) <= 2:
         base += 1.8
@@ -188,4 +189,4 @@ def evaluate_fire_ramp_spell(player: PlayerState, card: CardInstance, next_resou
     gap = max(0, next_resource_goal - player.total_resources())
     if gap <= 0:
         return -2.0
-    return ramp * 2.4 + min(ramp, gap) * 1.2 - max(0, player.total_resources() - 4) * 1.5
+    return ramp * 2.4 + min(ramp, gap) * 1.2 - max(0, player.total_resources() - 5) * 1.5

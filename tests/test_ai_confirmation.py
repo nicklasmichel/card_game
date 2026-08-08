@@ -83,6 +83,41 @@ class AiConfirmationTests(EngineTestCase):
         self.assertEqual(sum(item.amount for item in plan.resource_reservations), 1)
         self.assertEqual(plan.attack.attacker_ids, (attacker.unit_id,))
 
+    def test_ai_spell_targeting_selects_global_combat_bonus_mode(self) -> None:
+        self.engine.phase = PHASE_SPELL_TARGETING
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.ai_player.summoner_key = "air"
+        spell = CardInstance(self.engine.make_instance_id(), self.engine.templates["air_spell_jagdwind"])
+        self.engine.ai_player.hand = [spell]
+        self.engine.ai_player.resources = [self.make_resource("fire_creature_gluthetzer")]
+        attacker = self.make_creature("air_creature_windschwinge", owner_id=1, ready=True)
+        self.engine.pending_spell_cast = type(
+            "Pending",
+            (),
+            {
+                "card_instance_id": spell.instance_id,
+                "controller_id": self.engine.ai_player.player_id,
+                "origin_phase": PHASE_REACTION,
+                "selected_targets": [],
+                "selected_sacrifice_creature_id": None,
+                "selected_keyword_ability": None,
+                "selected_combat_bonus_mode": None,
+                "selected_recycle_resource_ids": [],
+            },
+        )()
+        self.engine.reaction_context = ReactionContext(
+            trigger=ReactionTrigger.COMBAT_START,
+            active_player=self.engine.ai_player,
+            source_player=self.engine.ai_player,
+        )
+        self.engine.block_assignments = {attacker.unit_id: None}
+
+        prepared = self.engine.prepare_ai_turn_action()
+
+        self.assertTrue(prepared)
+        self.assertEqual(self.engine.pending_ai_action["kind"], "spell_targeting")
+        self.assertEqual(self.engine.pending_ai_action["selected_combat_bonus_mode"], "damage")
+
     def test_air_turn_plan_is_discarded_on_wrong_turn(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
@@ -234,7 +269,7 @@ class AiConfirmationTests(EngineTestCase):
             self.engine.log_messages,
         )
 
-    def test_ai_uses_planned_aufwind_follow_up_in_summoning_phase(self) -> None:
+    def test_ai_prefers_direct_creature_play_over_aufwind_with_new_air_curve(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
@@ -253,16 +288,8 @@ class AiConfirmationTests(EngineTestCase):
         prepared = self.engine.prepare_ai_turn_action()
 
         self.assertTrue(prepared)
-        self.assertEqual(self.engine.pending_ai_action["card_id"], self.engine.ai_player.hand[0].instance_id)
-
-        self.engine.execute_prepared_ai_action()
-        self.engine.pass_reaction()
-        self.engine.pass_reaction()
-
-        prepared_follow_up = self.engine.prepare_ai_turn_action()
-
-        self.assertTrue(prepared_follow_up)
         self.assertEqual(self.engine.pending_ai_action["kind"], "play_creature")
+        self.assertEqual(self.engine.pending_ai_action["card_id"], self.engine.ai_player.hand[1].instance_id)
 
 
 
@@ -413,7 +440,7 @@ class AiConfirmationTests(EngineTestCase):
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
-        creature = self.make_creature("air_creature_orkangeist", owner_id=1)
+        creature = self.make_creature("air_creature_luftelementar", owner_id=1)
         creature.current_hp = 1
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -450,7 +477,7 @@ class AiConfirmationTests(EngineTestCase):
             self.make_resource("air_creature_windschwinge"),
             self.make_resource("fire_creature_infernobestie"),
         ]
-        creature = self.make_creature("air_creature_orkangeist", owner_id=1)
+        creature = self.make_creature("air_creature_luftelementar", owner_id=1)
         creature.current_hp = 1
 
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)

@@ -32,9 +32,6 @@ class ResourceAndRecycleTests(EngineTestCase):
     def test_mixed_cost_can_recycle_one_of_the_tapped_resources(self) -> None:
         card = CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_infernobestie"])
         self.engine.human_player.hand = [card]
-        self.engine.ai_player.deck = [
-            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windschwinge"])
-        ]
         self.engine.human_player.resources = [
             self.make_resource("fire_creature_gluthetzer"),
             self.make_resource("water_creature_wassertropfen"),
@@ -49,20 +46,23 @@ class ResourceAndRecycleTests(EngineTestCase):
 
         self.assertTrue(started)
         self.assertEqual(self.engine.phase, PHASE_RECYCLE_PAYMENT)
-        selected_resource_id = self.engine.human_player.resources[0].resource_id
-        self.engine.toggle_recycle_resource_selection(selected_resource_id)
+        selected_resource_ids = [
+            self.engine.human_player.resources[0].resource_id,
+            self.engine.human_player.resources[1].resource_id,
+        ]
+        for resource_id in selected_resource_ids:
+            self.engine.toggle_recycle_resource_selection(resource_id)
         self.engine.confirm_recycle_payment()
 
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(self.engine.active_player.player_id, 0)
         self.assertEqual(len(self.engine.human_player.battlefield), 1)
-        self.assertEqual(len(self.engine.human_player.resources), 5)
-        self.assertEqual(sum(1 for resource in self.engine.human_player.resources if resource.tapped), 4)
-        self.assertEqual(len(self.engine.human_player.deck), 1)
-        self.assertTrue(self.engine.human_player.deck[0].was_recycled)
-        self.assertEqual(self.engine.statistics.player_stats[0].recycled_resources, 1)
+        self.assertEqual(len(self.engine.human_player.resources), 4)
+        self.assertTrue(all(resource_id not in {resource.resource_id for resource in self.engine.human_player.resources} for resource_id in selected_resource_ids))
+        self.assertGreaterEqual(sum(1 for resource in self.engine.human_player.resources if resource.tapped), 3)
+        self.assertEqual(self.engine.statistics.player_stats[0].recycled_resources, 2)
         self.assertEqual(self.engine.statistics.player_stats[0].recycled_cards_played, 1)
-        self.assertEqual(self.engine.statistics.player_stats[0].max_recycle_paid_once, 1)
+        self.assertEqual(self.engine.statistics.player_stats[0].max_recycle_paid_once, 2)
         self.assertEqual(self.engine.pending_visual_events[-1]["type"], "recycle_reveal")
 
     def test_recycle_play_requires_enough_total_resources(self) -> None:
@@ -500,7 +500,7 @@ class AiResourceStrategyTests(EngineTestCase):
             "air_creature_orkanschwinge",
         ])
 
-        self.assertEqual(len(self.choose_resource_ids()), 1)
+        self.assertEqual(len(self.choose_resource_ids()), 2)
 
     def test_ai_avoids_unnecessary_resources_above_air_curve(self) -> None:
         self.set_ai_resources(5)
@@ -661,7 +661,7 @@ class AiResourceStrategyTests(EngineTestCase):
         chosen = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 
         self.assertIsNotNone(chosen)
-        self.assertEqual(chosen.template.template_id, "air_ritual_aufwind")
+        self.assertEqual(chosen.template.template_id, "air_creature_windgeist")
 
     def test_ai_plays_one_resource_before_combat_for_haste_creature(self) -> None:
         self.engine.phase = PHASE_MAIN_1
@@ -669,7 +669,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.engine.ai_player.resources_played_this_turn = 0
         self.set_ai_resources(1)
         self.set_ai_hand([
-            "air_creature_sturmgeist",
+            "air_creature_sturmwesen",
             "air_spell_verwirbelung",
         ])
 
@@ -686,7 +686,7 @@ class AiResourceStrategyTests(EngineTestCase):
         chosen_card = self.engine.ai.choose_main_phase_card(self.engine.ai_player, self.engine)
 
         self.assertIsNotNone(chosen_card)
-        self.assertEqual(chosen_card.template.template_id, "air_creature_sturmgeist")
+        self.assertEqual(chosen_card.template.template_id, "air_creature_sturmwesen")
 
     def test_resource_first_plan_tracks_step_progress(self) -> None:
         self.engine.phase = PHASE_MAIN_1
@@ -694,7 +694,7 @@ class AiResourceStrategyTests(EngineTestCase):
         self.engine.ai_player.resources_played_this_turn = 0
         self.set_ai_resources(1)
         self.set_ai_hand([
-            "air_creature_sturmgeist",
+            "air_creature_sturmwesen",
             "air_spell_verwirbelung",
         ])
 

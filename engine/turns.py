@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
 from core.models import (
     BattlefieldCreature,
     CardInstance,
@@ -96,6 +97,7 @@ def start_turn(self) -> None:
     player.untap_for_turn()
     self.log(f"Zug {self.turn_number}: {player.name} ist am Zug.")
     player.summoner_passive_draw_used_this_turn = False
+    self.attack_declared_this_turn = False
     draw_allowed = not (player.player_id == self.starting_player_id and player.turns_started == 0)
     if draw_allowed:
         drawn = self.draw_card_for_player(player, "Ziehphase")
@@ -107,7 +109,11 @@ def start_turn(self) -> None:
             self.log(f"{player.name} kann keine Karte ziehen.")
     else:
         self.log(f"{player.name} beginnt und zieht im ersten Zug keine Karte.")
-    if getattr(player, "summoner_key", "") == "fire" and player.life < 5 and not player.summoner_passive_draw_used_this_turn:
+    if (
+        getattr(player, "summoner_key", "") == "fire"
+        and player.life < FIRE_SUMMONER_DRAW_THRESHOLD
+        and not player.summoner_passive_draw_used_this_turn
+    ):
         player.summoner_passive_draw_used_this_turn = True
         drawn = self.draw_card_for_player(player, "Beschwoerer-Passiv")
         if drawn is not None:
@@ -166,6 +172,10 @@ def can_take_second_main_actions(self, player: PlayerState) -> bool:
 
 def enter_second_main_phase(self) -> None:
     self.clear_combat_temporary_effects()
+    if not getattr(self, "attack_declared_this_turn", False):
+        self.log("Zweite Hauptphase wird uebersprungen. Es gab keinen Angriff.")
+        self.end_turn()
+        return
     if not self.can_take_second_main_actions(self.active_player):
         self.log("Zweite Hauptphase wird uebersprungen. Es sind keine weiteren Aktionen moeglich.")
         self.end_turn()

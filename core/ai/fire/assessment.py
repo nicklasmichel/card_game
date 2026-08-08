@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
 from core.ai.fire.effects import evaluate_fire_board_wipe
 from core.models import Ability, CardInstance, CardType, PlayerState, SpellEffect
 from core.ai.strategies.base import StrategyMetric
@@ -91,6 +92,8 @@ def _estimate_total_direct_spell_damage(hand: list[CardInstance], available_reso
 
 def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInstance], available_resources: int, total_resources: int, phase: str) -> FireStrategicSnapshot:
     enemy = engine.players[1 - player.player_id]
+    has_infernobestie = any(card.template.template_id == "fire_creature_infernobestie" for card in hand)
+    has_hoellenbestie = any(card.template.template_id == "fire_creature_hoellenbestie" for card in hand)
     ramp_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DECK_TO_TAPPED_RESOURCES]
     draw_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DRAW_CARDS]
     burn_cards = [card for card in hand if card.template.spell_effect == SpellEffect.DEAL_DAMAGE_TO_CREATURE]
@@ -124,17 +127,25 @@ def build_fire_snapshot(ai, player: PlayerState, engine, *, hand: list[CardInsta
         or enemy_flyers > 0
         or max((creature.sw for creature in enemy.battlefield), default=0) >= 3
     )
-    can_ramp_safely = total_resources < 5 and expected_enemy_damage < max(4, player.life - 5)
+    desired_resource_cap = 6 if has_hoellenbestie else 5 if has_infernobestie else 4
+    can_ramp_safely = total_resources < desired_resource_cap and expected_enemy_damage < max(4, player.life - 5)
     needs_refuel = len(hand) <= 2 or (
         len(playable_threats) == 0
         and not burn_cards
         and len(draw_cards) > 0
     )
-    next_goal = 5 if total_resources < 5 else 6 if (spell_damage >= 4 or len(draw_cards) > 0) else total_resources
+    if has_hoellenbestie:
+        next_goal = 6
+    elif has_infernobestie:
+        next_goal = 5
+    elif spell_damage >= 4 or len(draw_cards) > 0:
+        next_goal = 5 if total_resources < 5 else total_resources
+    else:
+        next_goal = 4 if total_resources < 4 else total_resources
     return FireStrategicSnapshot(
         own_life=player.life,
         enemy_life=enemy.life,
-        passive_active_next_turn=player.life < 5,
+        passive_active_next_turn=player.life < FIRE_SUMMONER_DRAW_THRESHOLD,
         hand_size=len(hand),
         available_resources=available_resources,
         total_resources=total_resources,

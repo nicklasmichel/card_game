@@ -41,7 +41,7 @@ AIR_RITUALS = [
         spell_effect=SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
         target_mode=SpellTargetMode.DISCARD_CREATURE_CARD,
         spell_amount=1,
-        rules_text="Nimm 1 Kreaturenkarte aus deinem Ablagestapel auf deine Hand.",
+        rules_text="Nimm 1 Kreatur aus deinem Ablagestapel auf deine Hand.",
     ),
     CardTemplate(
         template_id="air_ritual_sturmruf",
@@ -54,7 +54,7 @@ AIR_RITUALS = [
         spell_effect=SpellEffect.RETURN_CREATURES_FROM_OWN_DISCARD_TO_HAND,
         target_mode=SpellTargetMode.DISCARD_CREATURE_CARD,
         spell_amount=2,
-        rules_text="Nimm 2 Kreaturenkarten aus deinem Ablagestapel auf deine Hand.",
+        rules_text="Nimm 2 Kreaturen aus deinem Ablagestapel auf deine Hand.",
     ),
     CardTemplate(
         template_id="air_ritual_himmelswende",

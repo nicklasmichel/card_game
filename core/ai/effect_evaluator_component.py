@@ -422,7 +422,7 @@ class EffectEvaluatorComponent:
             threshold *= 0.7
         return {"is_useful": with_total > without_plan["score"] + threshold, "value": with_total - without_plan["score"], "draw_count": card.template.spell_draw_count, "wait_for_more": engine.phase == PHASE_MAIN_1 and len(remaining_hand) > 1, "with_total": with_total}
 
-    def evaluate_global_attack_bonus_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
+    def evaluate_global_attack_bonus_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance, *, selected_mode: str | None = None) -> dict:
         strategy = ai._evaluate_air_strategy(player, engine)
         if engine.phase not in {PHASE_REACTION, PHASE_SPELL_TARGETING} or engine.reaction_context is None:
             return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
@@ -433,6 +433,26 @@ class EffectEvaluatorComponent:
         attackers = engine.get_current_attacker_creatures(player, engine.reaction_context)
         if not attackers or player.available_resources() < card.template.resource_cost:
             return {"is_useful": False, "value": -4.0, "damage_gain": 0, "is_lethal": False}
+        if getattr(card.template, "template_id", None) in {"air_spell_jagdwind", "air_spell_sturmjagd"}:
+            if selected_mode is None:
+                variants = [
+                    self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card, selected_mode="attack"),
+                    self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card, selected_mode="damage"),
+                ]
+                return max(
+                    variants,
+                    key=lambda result: (
+                        1 if result["is_useful"] else 0,
+                        1 if result["is_lethal"] else 0,
+                        result["value"],
+                        result["damage_gain"],
+                    ),
+                )
+            combat_aw_bonus = card.template.combat_aw_bonus if selected_mode == "attack" else 0
+            combat_sw_bonus = card.template.combat_sw_bonus if selected_mode == "damage" else 0
+        else:
+            combat_aw_bonus = card.template.combat_aw_bonus
+            combat_sw_bonus = card.template.combat_sw_bonus
         enemy = engine.players[1 - player.player_id]
         direct_gain = 0
         kill_gain = 0.0
@@ -440,11 +460,11 @@ class EffectEvaluatorComponent:
             blocker_id = engine.block_assignments.get(attacker.unit_id)
             blockers = [engine.get_unit_by_id(blocker_id)] if blocker_id is not None and engine.get_unit_by_id(blocker_id) is not None else []
             current_aw = engine.get_creature_attack_value(attacker)
-            boosted_aw = current_aw + card.template.combat_aw_bonus
+            boosted_aw = current_aw + combat_aw_bonus
             current_sw = engine.get_creature_damage_value(attacker)
-            boosted_sw = current_sw + card.template.combat_sw_bonus
+            boosted_sw = current_sw + combat_sw_bonus
             if not blockers and attacker.unit_id not in engine.blocked_attackers:
-                direct_gain += card.template.combat_sw_bonus
+                direct_gain += combat_sw_bonus
             for blocker in blockers:
                 current_attack_sum = current_aw * 3.5
                 boosted_attack_sum = boosted_aw * 3.5
@@ -465,7 +485,7 @@ class EffectEvaluatorComponent:
             score += 1.2 * strategy.weights.third_attacker
         if is_lethal:
             score += 8.0 * strategy.weights.lethal
-        if card.template.combat_sw_bonus >= 2:
+        if combat_sw_bonus >= 2:
             plus_one = self.evaluate_global_attack_bonus_reaction_plan(
                 ai,
                 player,
@@ -476,7 +496,18 @@ class EffectEvaluatorComponent:
                 score -= 2.4
             elif plus_one["is_lethal"] == is_lethal and plus_one["damage_gain"] >= direct_gain and plus_one["value"] >= score - 1.0:
                 score -= 2.1
-        return {"is_useful": is_lethal or score >= (1.8 if card.template.combat_sw_bonus == 1 else 2.8), "value": score, "damage_gain": direct_gain, "is_lethal": is_lethal}
+        threshold = max(1.8, card.template.resource_cost * 0.9 + getattr(card.template, "recycle_cost", 0) * 0.75)
+        if combat_aw_bonus > 0 and combat_sw_bonus == 0:
+            threshold += 0.2
+        return {
+            "is_useful": is_lethal or score >= threshold,
+            "value": score,
+            "damage_gain": direct_gain,
+            "is_lethal": is_lethal,
+            "selected_mode": selected_mode,
+            "combat_aw_bonus": combat_aw_bonus,
+            "combat_sw_bonus": combat_sw_bonus,
+        }
 
     def evaluate_jagdwind_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
         comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
@@ -484,13 +515,14 @@ class EffectEvaluatorComponent:
             "is_useful": comparison["is_useful"],
             "value": comparison["value"],
             "target_id": None,
+            "selected_mode": comparison.get("selected_mode"),
         }
 
     def evaluate_sturmjagd_reaction_plan(self, ai, player: PlayerState, engine, card: CardInstance) -> dict:
         comparison = self.evaluate_global_attack_bonus_reaction_plan(ai, player, engine, card)
         attackers = engine.get_current_attacker_creatures(player, engine.reaction_context)
         boosted_damage = sum(
-            engine.get_creature_damage_value(creature) + card.template.combat_sw_bonus
+            engine.get_creature_damage_value(creature) + comparison.get("combat_sw_bonus", card.template.combat_sw_bonus)
             for creature in attackers
             if not engine.block_assignments.get(creature.unit_id)
         )
@@ -499,4 +531,5 @@ class EffectEvaluatorComponent:
             "value": comparison["value"],
             "damage": boosted_damage,
             "is_lethal": comparison["is_lethal"],
+            "selected_mode": comparison.get("selected_mode"),
         }

@@ -42,6 +42,53 @@ def get_overview_phase_label(phase: str) -> str:
     return phase
 
 
+def get_pending_spell_panel_label(self) -> str | None:
+    pending = self.engine.pending_spell_cast
+    card = self.engine.get_card_from_pending_spell(pending) if pending is not None else None
+    if pending is None or card is None:
+        return None
+    if card.template.card_type == CardType.RITUAL:
+        return "Ritual"
+    if self.engine.reaction_window_is_combat_window():
+        return "Kampfzauber"
+    return "Zauber"
+
+
+def get_action_panel_title(self) -> str:
+    if self.engine.phase == PHASE_REACTION:
+        return self.engine.get_reaction_window_title()
+    if self.engine.phase == PHASE_SPELL_TARGETING:
+        panel_label = get_pending_spell_panel_label(self)
+        if panel_label is not None:
+            return panel_label
+    return get_overview_phase_label(self.engine.phase)
+
+
+def get_action_panel_prompt(self) -> str:
+    if self.engine.phase == PHASE_REACTION and self.engine.reaction_window_is_combat_window():
+        return "Kampfzauber spielen."
+    if self.engine.phase == PHASE_SPELL_TARGETING:
+        pending = self.engine.pending_spell_cast
+        card = self.engine.get_card_from_pending_spell(pending) if pending is not None else None
+        if pending is not None and card is not None:
+            recycle_cost = card.template.recycle_cost
+            selected = len(pending.selected_recycle_resource_ids)
+            if recycle_cost > 0:
+                return f"Waehle Ressourcen zum Recyclen ({selected}/{recycle_cost})."
+            if card.template.sacrifice_own_creature_on_cast:
+                return "Waehle eine Opferkreatur."
+            if (
+                card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+                and card.template.template_id in {"air_spell_jagdwind", "air_spell_sturmjagd"}
+                and pending.selected_combat_bonus_mode is None
+            ):
+                return "Waehle den Effekt."
+            if pending.selected_keyword_ability is None and pending.selected_targets and card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
+                return "Waehle den Effekt."
+            return "Waehle Zauberziele."
+    return self.engine.current_prompt()
+
+
 def draw_side_panel(self) -> None:
     panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect = self.get_side_panel_layout()
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=6)
@@ -213,6 +260,16 @@ def get_pending_target_summary(self) -> str:
         )
     if pending.selected_keyword_ability is not None:
         chosen.append(f"Effekt: {pending.selected_keyword_ability.value}")
+    if pending.selected_combat_bonus_mode is not None:
+        card = self.engine.get_card_from_pending_spell(pending)
+        attack_bonus = card.template.combat_aw_bonus if card is not None else 0
+        damage_bonus = card.template.combat_sw_bonus if card is not None else 0
+        label = (
+            f"+{attack_bonus} Angriff"
+            if pending.selected_combat_bonus_mode == "attack"
+            else f"+{damage_bonus} Schaden"
+        )
+        chosen.append(f"Effekt: {label}")
     return " | ".join(chosen) if chosen else "Noch nichts ausgewaehlt"
 
 
@@ -260,6 +317,9 @@ def get_selected_spell_lines(self) -> list[str]:
 
 def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = []
+    pending = self.engine.pending_spell_cast
+    if self.engine.phase == PHASE_SPELL_TARGETING and pending is not None:
+        return sections
     if self.engine.phase == PHASE_SPELL_TARGETING:
         sections.append(("Zauberziele", [get_pending_target_summary(self)]))
     return sections
@@ -296,7 +356,7 @@ def draw_action_detail_sections(self, rect: pygame.Rect, start_y: int, max_botto
 
 def draw_side_actions(self, rect: pygame.Rect) -> None:
     action_specs = self.engine.get_button_specs()
-    phase_label = get_overview_phase_label(self.engine.phase)
+    phase_label = get_action_panel_title(self)
     self.blit_text(
         self.title_font,
         f"{self.engine.turn_number} | {self.engine.active_player.name} - {phase_label}",
@@ -305,7 +365,7 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
         rect.y + 12,
     )
     prompt_rect = pygame.Rect(rect.x + 12, rect.y + 52, rect.width - 24, 64)
-    self.blit_wrapped_text(self.font, self.engine.current_prompt(), MUTED_TEXT, prompt_rect, 22)
+    self.blit_wrapped_text(self.font, get_action_panel_prompt(self), MUTED_TEXT, prompt_rect, 22)
     detail_start_y = draw_action_detail_sections(self, rect, prompt_rect.bottom + 8)
     button_margin = 12
     width = rect.width - button_margin * 2

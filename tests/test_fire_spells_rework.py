@@ -53,6 +53,7 @@ class FireSpellReworkTests(EngineTestCase):
             "fire_spell_versengen": ("Versengen", 1, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 1),
             "fire_spell_verbrennen": ("Verbrennen", 2, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 2),
             "fire_spell_verkohlen": ("Verkohlen", 3, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 3),
+            "fire_spell_verzehren": ("Verzehren", 4, 0, SpellEffect.DEAL_DAMAGE_TO_CREATURE, 4),
         }
         for template_id, values in expected.items():
             template = self.engine.templates[template_id]
@@ -149,6 +150,7 @@ class FireSpellReworkTests(EngineTestCase):
             "fire_spell_versengen",
             "fire_spell_verbrennen",
             "fire_spell_verkohlen",
+            "fire_spell_verzehren",
         ):
             self.assertEqual(decklist.get(template_id), 2)
         self.assertEqual(sum(decklist.values()), 40)

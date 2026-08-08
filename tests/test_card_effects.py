@@ -12,16 +12,16 @@ from ui.render_helpers import get_ability_description, get_ability_names, get_ca
 class CardEffectsTests(EngineTestCase):
     def test_air_creatures_match_final_card_table(self) -> None:
         expected = {
-            "air_creature_windschwinge": ("Windschwinge", CardCost(resources=1, recycle=1), 1, 0, 1, 1, {Ability.FLYING}),
-            "air_creature_sturmschwinge": ("Sturmschwinge", CardCost(resources=2, recycle=2), 2, 0, 2, 2, {Ability.FLYING}),
-            "air_creature_orkanschwinge": ("Orkanschwinge", CardCost(resources=3, recycle=3), 3, 0, 3, 3, {Ability.FLYING}),
-            "air_creature_windgeist": ("Windgeist", CardCost(resources=1), 2, 0, 1, 1, {Ability.HASTE}),
-            "air_creature_sturmgeist": ("Sturmgeist", CardCost(resources=2), 3, 0, 2, 1, {Ability.HASTE}),
-            "air_creature_orkangeist": ("Orkangeist", CardCost(resources=3), 4, 0, 3, 1, {Ability.HASTE}),
-            "air_creature_windwesen": ("Windwesen", CardCost(resources=1), 1, 1, 1, 1, set()),
-            "air_creature_sturmwesen": ("Sturmwesen", CardCost(resources=2), 2, 2, 2, 1, set()),
-            "air_creature_orkanwesen": ("Orkanwesen", CardCost(resources=3), 3, 3, 3, 1, set()),
-            "air_creature_luftelementar": ("Luftelementar", CardCost(resources=4, recycle=3), 3, 0, 3, 3, {Ability.FLYING, Ability.HASTE}),
+            "air_creature_windgeist": ("Windgeist", CardCost(resources=1), 2, 0, 1, 1, set()),
+            "air_creature_sturmgeist": ("Sturmgeist", CardCost(resources=2), 3, 0, 1, 1, set()),
+            "air_creature_orkangeist": ("Orkangeist", CardCost(resources=3), 4, 0, 1, 1, set()),
+            "air_creature_windschwinge": ("Windschwinge", CardCost(resources=0, recycle=1), 1, 1, 1, 1, {Ability.FLYING}),
+            "air_creature_sturmschwinge": ("Sturmschwinge", CardCost(resources=0, recycle=2), 2, 1, 2, 2, {Ability.FLYING}),
+            "air_creature_orkanschwinge": ("Orkanschwinge", CardCost(resources=0, recycle=3), 3, 1, 3, 3, {Ability.FLYING}),
+            "air_creature_windwesen": ("Windwesen", CardCost(resources=1), 1, 1, 1, 1, {Ability.HASTE}),
+            "air_creature_sturmwesen": ("Sturmwesen", CardCost(resources=2), 2, 2, 1, 1, {Ability.HASTE}),
+            "air_creature_orkanwesen": ("Orkanwesen", CardCost(resources=3), 3, 3, 1, 1, {Ability.HASTE}),
+            "air_creature_luftelementar": ("Luftelementar", CardCost(resources=3, recycle=3), 3, 3, 3, 3, {Ability.FLYING, Ability.HASTE}),
         }
         for template_id, (name, cost, aw, vw, lw, sw, abilities) in expected.items():
             template = self.engine.templates[template_id]
@@ -72,14 +72,14 @@ class CardEffectsTests(EngineTestCase):
 
     def test_fire_creatures_match_final_card_table(self) -> None:
         expected = {
-            "fire_creature_glutwesen": ("Glutwesen", CardCost(resources=2), 2, 2, 2, 1, set()),
-            "fire_creature_flammenwesen": ("Flammenwesen", CardCost(resources=3), 3, 3, 3, 1, set()),
-            "fire_creature_glutbrecher": ("Glutbrecher", CardCost(resources=2), 2, 0, 2, 2, {Ability.TRAMPLE}),
-            "fire_creature_flammenbrecher": ("Flammenbrecher", CardCost(resources=4), 4, 2, 4, 2, {Ability.TRAMPLE}),
-            "fire_creature_gluthetzer": ("Gluthetzer", CardCost(resources=3), 3, 0, 3, 1, {Ability.ENRAGED}),
-            "fire_creature_flammenhetzer": ("Flammenhetzer", CardCost(resources=4), 4, 2, 4, 1, {Ability.ENRAGED}),
-            "fire_creature_infernobestie": ("Infernobestie", CardCost(resources=5, recycle=1), 5, 3, 5, 3, {Ability.ENRAGED, Ability.TRAMPLE}),
-            "fire_creature_hoellenbestie": ("Hoellenbestie", CardCost(resources=5, recycle=2), 6, 3, 6, 3, {Ability.ENRAGED, Ability.TRAMPLE}),
+            "fire_creature_glutwesen": ("Glutwesen", CardCost(resources=1), 1, 1, 1, 1, set()),
+            "fire_creature_flammenwesen": ("Flammenwesen", CardCost(resources=2), 2, 2, 1, 1, set()),
+            "fire_creature_glutbrecher": ("Glutbrecher", CardCost(resources=3), 3, 1, 1, 2, {Ability.TRAMPLE}),
+            "fire_creature_flammenbrecher": ("Flammenbrecher", CardCost(resources=4, recycle=1), 3, 2, 2, 3, {Ability.TRAMPLE}),
+            "fire_creature_gluthetzer": ("Gluthetzer", CardCost(resources=3), 3, 1, 1, 2, {Ability.ENRAGED}),
+            "fire_creature_flammenhetzer": ("Flammenhetzer", CardCost(resources=4, recycle=1), 3, 2, 2, 3, {Ability.ENRAGED}),
+            "fire_creature_infernobestie": ("Infernobestie", CardCost(resources=5, recycle=2), 4, 3, 3, 4, {Ability.ENRAGED, Ability.TRAMPLE}),
+            "fire_creature_hoellenbestie": ("Hoellenbestie", CardCost(resources=6, recycle=3), 5, 4, 4, 5, {Ability.ENRAGED, Ability.TRAMPLE}),
         }
         for template_id, (name, cost, aw, vw, lw, sw, abilities) in expected.items():
             template = self.engine.templates[template_id]
@@ -128,10 +128,10 @@ class CardEffectsTests(EngineTestCase):
         creature = self.make_creature("air_creature_sturmgeist", owner_id=0)
 
         self.assertEqual(creature.vw, 0)
-        self.assertEqual(creature.lw, 2)
-        self.assertEqual(creature.current_hp, 2)
-        self.assertEqual(self.engine.get_creature_max_lw(creature), 2)
-        self.assertEqual(self.engine.get_creature_current_lw(creature), 2)
+        self.assertEqual(creature.lw, 1)
+        self.assertEqual(creature.current_hp, 1)
+        self.assertEqual(self.engine.get_creature_max_lw(creature), 1)
+        self.assertEqual(self.engine.get_creature_current_lw(creature), 1)
 
     def test_healing_cap_uses_lw_even_when_vw_is_higher(self) -> None:
         template = CardTemplate(
@@ -161,26 +161,26 @@ class CardEffectsTests(EngineTestCase):
         self.assertEqual(get_display_creature_stats(ui_stub, creature), ("4", "0", "1", "1"))
         self.assertEqual(
             get_display_template_stats(ui_stub, self.engine.templates["fire_creature_flammenhetzer"]),
-            ("4", "2", "4", "1"),
+            ("3", "2", "2", "3"),
         )
 
     def test_air_vw_zero_and_blocking_split_match_final_roles(self) -> None:
         for template_id in (
-            "air_creature_windschwinge",
-            "air_creature_sturmschwinge",
-            "air_creature_orkanschwinge",
             "air_creature_windgeist",
             "air_creature_sturmgeist",
             "air_creature_orkangeist",
-            "air_creature_luftelementar",
         ):
             creature = self.make_creature(template_id, owner_id=0, ready=True)
             self.assertEqual(self.engine.get_creature_defense_value(creature), 0)
             self.assertNotIn(creature, self.engine.available_blockers(self.engine.human_player))
         for template_id in (
+            "air_creature_windschwinge",
+            "air_creature_sturmschwinge",
+            "air_creature_orkanschwinge",
             "air_creature_windwesen",
             "air_creature_sturmwesen",
             "air_creature_orkanwesen",
+            "air_creature_luftelementar",
         ):
             creature = self.make_creature(template_id, owner_id=0, ready=True)
             self.assertGreaterEqual(self.engine.get_creature_defense_value(creature), 1)
@@ -188,16 +188,19 @@ class CardEffectsTests(EngineTestCase):
 
     def test_air_haste_creatures_can_attack_immediately(self) -> None:
         for template_id in (
-            "air_creature_windgeist",
-            "air_creature_sturmgeist",
-            "air_creature_orkangeist",
+            "air_creature_windwesen",
+            "air_creature_sturmwesen",
+            "air_creature_orkanwesen",
             "air_creature_luftelementar",
         ):
             creature = self.make_creature(template_id, owner_id=0)
             self.assertTrue(creature.has_ability(Ability.HASTE))
             self.assertTrue(creature.is_ready())
         for template_id in (
-            "air_creature_windwesen",
+            "air_creature_windgeist",
+            "air_creature_sturmgeist",
+            "air_creature_orkangeist",
+            "air_creature_windschwinge",
             "air_creature_sturmschwinge",
             "air_creature_orkanschwinge",
         ):
@@ -236,7 +239,7 @@ class CardEffectsTests(EngineTestCase):
             if template_id.startswith("fire_creature_")
             for _ in range(copies)
         ]
-        self.assertEqual(len(fire_creature_ids), 18)
+        self.assertEqual(len(fire_creature_ids), 16)
         for template_id in (
             "fire_creature_glutwesen",
             "fire_creature_flammenwesen",
@@ -244,11 +247,11 @@ class CardEffectsTests(EngineTestCase):
             "fire_creature_gluthetzer",
             "fire_creature_flammenhetzer",
             "fire_creature_flammenbrecher",
-            "fire_creature_infernowesen",
             "fire_creature_infernobestie",
             "fire_creature_hoellenbestie",
         ):
             self.assertEqual(fire_creature_ids.count(template_id), 2)
+        self.assertEqual(len(set(fire_creature_ids)), 8)
 
     def test_fire_deck_builds_with_intermediate_size(self) -> None:
         deck = build_test_deck("fire", self.engine.templates, self.engine.make_instance_id)
@@ -275,7 +278,11 @@ class CardEffectsTests(EngineTestCase):
     def test_glutwesen_and_flammenwesen_are_vanilla(self) -> None:
         self.assertEqual(set(self.engine.templates["fire_creature_glutwesen"].abilities), set())
         self.assertEqual(set(self.engine.templates["fire_creature_flammenwesen"].abilities), set())
-        self.assertEqual(set(self.engine.templates["fire_creature_infernowesen"].abilities), set())
+
+    def test_infernowesen_is_removed_from_active_fire_pool(self) -> None:
+        self.assertNotIn("fire_creature_infernowesen", self.engine.templates)
+        self.assertNotIn("fire_creature_infernowesen", {template.template_id for template in __import__("cards.fire.creatures", fromlist=["FIRE_CREATURES"]).FIRE_CREATURES})
+        self.assertNotIn("fire_creature_infernowesen", {template_id for template_id, _ in DECK_DEFINITIONS["fire"]})
 
     def test_trample_only_creatures_have_only_trample(self) -> None:
         self.assertEqual(set(self.engine.templates["fire_creature_glutbrecher"].abilities), {Ability.TRAMPLE})
@@ -302,19 +309,19 @@ class CardEffectsTests(EngineTestCase):
         self.assertEqual(text, "Mische diese Kreatur am Ende deines Zuges zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck in dein Deck.")
 
     def test_air_haste_creatures_are_not_selected_as_mandatory_attackers(self) -> None:
-        windgeist = self.make_creature("air_creature_windgeist", owner_id=0)
+        windwesen = self.make_creature("air_creature_windwesen", owner_id=0)
 
         self.engine.phase = PHASE_MAIN_1
         self.engine.begin_attack_declaration()
 
         self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
-        self.assertNotIn(windgeist.unit_id, self.engine.selected_attackers)
+        self.assertNotIn(windwesen.unit_id, self.engine.selected_attackers)
 
     def test_preview_ability_details_use_full_haste_explanation(self) -> None:
         helper_stub = SimpleNamespace(get_ability_names=lambda abilities: get_ability_names(None, abilities))
         details = get_card_preview_ability_details(
             helper_stub,
-            self.engine.templates["air_creature_windgeist"],
+            self.engine.templates["air_creature_windwesen"],
         )
 
         self.assertIn(

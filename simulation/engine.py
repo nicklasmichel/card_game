@@ -298,6 +298,7 @@ class SimulationGameEngine(GameEngine):
         targets: list[SpellTargetRef],
         sacrifice_creature_id: int | None = None,
         selected_keyword_ability: Ability | None = None,
+        selected_combat_bonus_mode: str | None = None,
         recycle_resource_ids: list[int] | None = None,
     ) -> bool:
         controller_id = self.active_player.player_id if origin_phase in {PHASE_MAIN_1, PHASE_MAIN_2} else self.reaction_priority_player_id
@@ -314,6 +315,7 @@ class SimulationGameEngine(GameEngine):
             targets,
             sacrifice_creature_id=sacrifice_creature_id,
             selected_keyword_ability=selected_keyword_ability,
+            selected_combat_bonus_mode=selected_combat_bonus_mode,
             recycle_resource_ids=recycle_resource_ids,
         )
         if not result or self.telemetry is None or controller_id is None:

@@ -98,6 +98,13 @@ REACTION_WINDOW_PROFILES = {
     },
 }
 
+COMBAT_BONUS_MODE_ATTACK = "attack"
+COMBAT_BONUS_MODE_DAMAGE = "damage"
+MODAL_GLOBAL_ATTACK_BONUS_TEMPLATE_IDS = {
+    "air_spell_jagdwind",
+    "air_spell_sturmjagd",
+}
+
 
 def get_player_by_id(self, player_id: int):
     return self.players[player_id]
@@ -423,11 +430,17 @@ def describe_pending_spell_requirements(self) -> str:
             )
         return f"Bestaetige {card.template.name}."
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+        if uses_modal_global_attack_bonus(self, card):
+            if pending.selected_combat_bonus_mode is None:
+                return f"Waehle fuer {card.template.name} +1 Angriff oder +1 Schaden."
+            aw_bonus, sw_bonus = get_global_attack_bonus_values(self, card, pending.selected_combat_bonus_mode)
+        else:
+            aw_bonus, sw_bonus = get_global_attack_bonus_values(self, card, pending.selected_combat_bonus_mode)
         parts = []
-        if card.template.combat_aw_bonus:
-            parts.append(f"+{card.template.combat_aw_bonus} AW")
-        if card.template.combat_sw_bonus:
-            parts.append(f"+{card.template.combat_sw_bonus} SW")
+        if aw_bonus:
+            parts.append(f"+{aw_bonus} AW")
+        if sw_bonus:
+            parts.append(f"+{sw_bonus} SW")
         return f"Bestaetige {card.template.name}. Eigene Angreifer erhalten fuer diesen Kampf {' und '.join(parts)}."
     if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN:
         parts = []
@@ -483,6 +496,19 @@ def select_pending_spell_keyword(self, ability: Ability) -> None:
         self.log("Waehle zuerst eine Kreatur als Ziel.")
         return
     pending.selected_keyword_ability = ability
+    self.log(self.describe_pending_spell_requirements())
+
+
+def select_pending_spell_combat_bonus_mode(self, mode: str) -> None:
+    pending = self.pending_spell_cast
+    if pending is None or self.phase != PHASE_SPELL_TARGETING:
+        return
+    card = self.get_card_from_pending_spell(pending)
+    if card is None or not uses_modal_global_attack_bonus(self, card):
+        return
+    if mode not in {COMBAT_BONUS_MODE_ATTACK, COMBAT_BONUS_MODE_DAMAGE}:
+        return
+    pending.selected_combat_bonus_mode = mode
     self.log(self.describe_pending_spell_requirements())
 
 
@@ -657,6 +683,10 @@ def pending_spell_ready(self) -> bool:
         return False
     if card.template.spell_effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
         return len(pending.selected_targets) == 1 and pending.selected_keyword_ability is not None
+    if card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
+        if uses_modal_global_attack_bonus(self, card):
+            return pending.selected_combat_bonus_mode in {COMBAT_BONUS_MODE_ATTACK, COMBAT_BONUS_MODE_DAMAGE}
+        return True
     if card.template.spell_effect in {
         SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
     }:
@@ -692,6 +722,7 @@ def confirm_pending_spell_cast(self) -> bool:
     targets = list(pending.selected_targets)
     sacrifice_creature_id = pending.selected_sacrifice_creature_id
     selected_keyword_ability = pending.selected_keyword_ability
+    selected_combat_bonus_mode = pending.selected_combat_bonus_mode
     recycle_resource_ids = list(pending.selected_recycle_resource_ids)
     self.pending_spell_cast = None
     self.selected_hand_ids.clear()
@@ -701,6 +732,7 @@ def confirm_pending_spell_cast(self) -> bool:
         targets,
         sacrifice_creature_id,
         selected_keyword_ability,
+        selected_combat_bonus_mode,
         recycle_resource_ids,
     )
 
@@ -722,6 +754,7 @@ def commit_spell_cast(
     targets: list[SpellTargetRef],
     sacrifice_creature_id: int | None = None,
     selected_keyword_ability: Ability | None = None,
+    selected_combat_bonus_mode: str | None = None,
     recycle_resource_ids: list[int] | None = None,
 ) -> bool:
     controller = self.active_player if origin_phase in MAIN_PHASES else self.get_player_by_id(self.reaction_priority_player_id)
@@ -783,6 +816,7 @@ def commit_spell_cast(
         draw_count=card.template.spell_draw_count,
         sacrificed_creature_power=sacrificed_power,
         selected_keyword_ability=selected_keyword_ability,
+        selected_combat_bonus_mode=selected_combat_bonus_mode,
     )
     self.spell_stack.append(stack_item)
     self.log(f"{controller.name} spielt {card.template.name}.")
@@ -947,13 +981,14 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         if creature is None or not is_valid_turn_attack_bonus_target(self, item.controller, creature, item.context):
             self.log(f"{item.source_card.template.name} verpufft, das Ziel ist ungueltig.")
             return False
-        creature.temporary_combat_aw_bonus += item.source_card.template.combat_aw_bonus
-        creature.temporary_combat_sw_bonus += item.source_card.template.combat_sw_bonus
+        aw_bonus, sw_bonus = get_global_attack_bonus_values(self, item.source_card, None)
+        creature.temporary_combat_aw_bonus += aw_bonus
+        creature.temporary_combat_sw_bonus += sw_bonus
         parts = []
-        if item.source_card.template.combat_aw_bonus:
-            parts.append(f"+{item.source_card.template.combat_aw_bonus} AW")
-        if item.source_card.template.combat_sw_bonus:
-            parts.append(f"+{item.source_card.template.combat_sw_bonus} SW")
+        if aw_bonus:
+            parts.append(f"+{aw_bonus} AW")
+        if sw_bonus:
+            parts.append(f"+{sw_bonus} SW")
         self.log(f"{creature.name} erhaelt fuer diesen Kampf {' und '.join(parts)}.")
         return False
     if effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT:
@@ -961,14 +996,15 @@ def resolve_stack_item(self, item: StackItem) -> bool:
         if not attackers:
             self.log(f"{item.source_card.template.name} verpufft, es gibt keine eigenen Angreifer mehr.")
             return False
+        aw_bonus, sw_bonus = get_global_attack_bonus_values(self, item.source_card, item.selected_combat_bonus_mode)
         for creature in attackers:
-            creature.temporary_combat_aw_bonus += item.source_card.template.combat_aw_bonus
-            creature.temporary_combat_sw_bonus += item.source_card.template.combat_sw_bonus
+            creature.temporary_combat_aw_bonus += aw_bonus
+            creature.temporary_combat_sw_bonus += sw_bonus
         parts = []
-        if item.source_card.template.combat_aw_bonus:
-            parts.append(f"+{item.source_card.template.combat_aw_bonus} AW")
-        if item.source_card.template.combat_sw_bonus:
-            parts.append(f"+{item.source_card.template.combat_sw_bonus} SW")
+        if aw_bonus:
+            parts.append(f"+{aw_bonus} AW")
+        if sw_bonus:
+            parts.append(f"+{sw_bonus} SW")
         self.log(f"Eigene Angreifer erhalten fuer diesen Kampf {' und '.join(parts)}.")
         return False
     if effect == SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN:
@@ -1368,6 +1404,8 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
         return True
     if card.template.sacrifice_own_creature_on_cast:
         return True
+    if uses_modal_global_attack_bonus(self, card):
+        return True
     if card.template.spell_effect in {
         SpellEffect.GRANT_ATTACK_BONUS_UNTIL_END_OF_TURN,
         SpellEffect.GRANT_HASTE_OR_FLYING_UNTIL_END_OF_TURN,
@@ -1377,6 +1415,20 @@ def spell_cast_needs_interaction(self, card: CardInstance) -> bool:
     }:
         return True
     return card.template.target_mode != SpellTargetMode.NONE
+
+
+def uses_modal_global_attack_bonus(self, card: CardInstance | None) -> bool:
+    return card is not None and card.template.template_id in MODAL_GLOBAL_ATTACK_BONUS_TEMPLATE_IDS
+
+
+def get_global_attack_bonus_values(self, card: CardInstance, selected_mode: str | None) -> tuple[int, int]:
+    if uses_modal_global_attack_bonus(self, card):
+        if selected_mode == COMBAT_BONUS_MODE_ATTACK:
+            return card.template.combat_aw_bonus, 0
+        if selected_mode == COMBAT_BONUS_MODE_DAMAGE:
+            return 0, card.template.combat_sw_bonus
+        return 0, 0
+    return card.template.combat_aw_bonus, card.template.combat_sw_bonus
 
 
 def is_valid_verwehung_target(self, controller, creature) -> bool:

@@ -190,6 +190,7 @@ class GameEngine:
         resolve_target_discard_card_for_controller,
         resolve_target_creature,
         resume_stack_resolution,
+        select_pending_spell_combat_bonus_mode,
         select_pending_spell_keyword,
         select_spell_target_ref,
         toggle_pending_spell_recycle_resource,

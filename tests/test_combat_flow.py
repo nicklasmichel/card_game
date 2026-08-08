@@ -34,14 +34,14 @@ class CombatFlowTests(EngineTestCase):
         return attacker, blocker
 
     def test_unblocked_attack_uses_sw_not_aw(self) -> None:
-        attacker = self.make_creature("fire_creature_hoellenbestie", owner_id=0)
+        attacker = self.make_creature("air_creature_orkangeist", owner_id=0)
         self.engine.active_player_index = 0
         self.engine.block_assignments = {attacker.unit_id: None}
         self.engine.begin_combat_resolution()
 
         self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - attacker.sw)
-        self.assertEqual(attacker.sw, 3)
-        self.assertEqual(attacker.aw, 6)
+        self.assertEqual(attacker.sw, 1)
+        self.assertEqual(attacker.aw, 4)
 
     def test_unblocked_attacker_is_no_longer_marked_selected_after_combat(self) -> None:
         attacker = self.make_creature("fire_creature_glutbrecher", owner_id=0)
@@ -72,6 +72,12 @@ class CombatFlowTests(EngineTestCase):
 
     def test_no_attackers_advances_to_second_main_or_ends_turn(self) -> None:
         attacker = self.make_creature("fire_creature_gluthetzer", owner_id=0, ready=True)
+        self.engine.human_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["fire_creature_glutwesen"]),
+        ]
+        self.engine.ai_player.deck = [
+            CardInstance(self.engine.make_instance_id(), self.engine.templates["air_creature_windgeist"]),
+        ]
         self.engine.phase = PHASE_MAIN_1
 
         self.engine.begin_attack_declaration()
@@ -81,13 +87,24 @@ class CombatFlowTests(EngineTestCase):
         self.engine.confirm_attackers()
 
         self.assertIn("Keine Angreifer gewaehlt.", self.engine.log_messages)
-        self.assertIn(
-            self.engine.phase,
-            {PHASE_MAIN_2, PHASE_MAIN_1},
-        )
+        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
+        self.assertIn("Zweite Hauptphase wird uebersprungen. Es gab keinen Angriff.", self.engine.log_messages)
+
+    def test_blocked_combat_logs_rolls_damage_and_remaining_life(self) -> None:
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        blocker = self.make_creature("fire_creature_glutwesen", owner_id=1)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertEqual(blocker.current_hp, blocker.lw - attacker.sw)
         self.assertTrue(
-            "Zweite Hauptphase begonnen." in self.engine.log_messages
-            or "Zweite Hauptphase wird uebersprungen. Es sind keine weiteren Aktionen moeglich." in self.engine.log_messages
+            any(
+                "Windgeist wuerfelt [6, 6] = 12, Glutwesen wuerfelt [1] = 1." in message
+                and "Windgeist gewinnt und fuegt Glutwesen 1 Schaden zu." in message
+                and "Glutwesen wird zerstoert." in message
+                for message in self.engine.log_messages
+            )
         )
 
     def test_multiple_blocked_combats_share_one_dice_phase(self) -> None:
@@ -104,7 +121,7 @@ class CombatFlowTests(EngineTestCase):
             attacker_two.unit_id: blocker_two.unit_id,
         }
 
-        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 1, 1, 1, 6, 6, 1, 1]):
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 1, 1, 1, 6, 6, 6, 1, 1]):
             self.engine.begin_combat_resolution()
 
         self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
@@ -223,14 +240,14 @@ class CombatFlowTests(EngineTestCase):
             self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
 
         battle = self.engine.pending_dice_battle
-        self.assertEqual(battle.trample_damage, 2)
-        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - 2)
+        self.assertEqual(battle.trample_damage, 3)
+        self.assertEqual(self.engine.ai_player.life, STARTING_LIFE - 3)
         self.assertEqual(battle.creature_damage, attacker.sw)
 
     def test_trample_overflow_is_zero_when_blocker_has_equal_or_higher_current_hp(self) -> None:
         attacker = self.make_creature("fire_creature_infernobestie", owner_id=0)
         blocker = self.make_creature("earth_creature_felswesen", owner_id=1)
-        blocker.current_hp = 3
+        blocker.current_hp = 4
 
         with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 6, 6, 6, 3, 1, 1]):
             self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)

@@ -53,6 +53,7 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
     selected_targets = list(pending.selected_targets)
     sacrifice_creature_id = pending.selected_sacrifice_creature_id
     selected_keyword_ability = pending.selected_keyword_ability
+    selected_combat_bonus_mode = pending.selected_combat_bonus_mode
     shadow_pending = type("ShadowPending", (), {})()
     shadow_pending.selected_targets = selected_targets
     shadow_pending.selected_sacrifice_creature_id = sacrifice_creature_id
@@ -77,6 +78,15 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
         ):
             creature = self.resolve_target_creature(selected_targets[0])
             selected_keyword_ability = self.ai.choose_tailwind_ability(creature)
+            continue
+        if (
+            card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+            and card.template.template_id in {"air_spell_jagdwind", "air_spell_sturmjagd"}
+            and selected_combat_bonus_mode is None
+        ):
+            selected_combat_bonus_mode = self.ai.choose_global_attack_bonus_mode(controller, self, card)
+            if selected_combat_bonus_mode is None:
+                return None
             continue
         target = self.ai.choose_spell_target_ref(controller, self, card, shadow_pending)
         if target is None:
@@ -106,6 +116,7 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
     shadow_pending.origin_phase = pending.origin_phase
     shadow_pending.selected_recycle_resource_ids = recycle_ids
     shadow_pending.selected_keyword_ability = selected_keyword_ability
+    shadow_pending.selected_combat_bonus_mode = selected_combat_bonus_mode
     original_pending = self.pending_spell_cast
     try:
         self.pending_spell_cast = shadow_pending
@@ -122,6 +133,7 @@ def _build_ai_spell_targeting_action(self) -> dict | None:
         "selected_targets": selected_targets,
         "selected_sacrifice_creature_id": sacrifice_creature_id,
         "selected_keyword_ability": selected_keyword_ability,
+        "selected_combat_bonus_mode": selected_combat_bonus_mode,
     }
 
 
@@ -286,6 +298,7 @@ def execute_prepared_ai_action(self) -> None:
         pending.selected_targets = list(action.get("selected_targets", []))
         pending.selected_sacrifice_creature_id = action.get("selected_sacrifice_creature_id")
         pending.selected_keyword_ability = action.get("selected_keyword_ability")
+        pending.selected_combat_bonus_mode = action.get("selected_combat_bonus_mode")
         if self.pending_spell_ready():
             self.confirm_pending_spell_cast()
         return
@@ -601,6 +614,15 @@ def get_button_specs(self) -> List[ButtonSpec]:
         ):
             buttons.append(ButtonSpec("Schnell", True, "choose_tailwind_haste"))
             buttons.append(ButtonSpec("Fliegend", True, "choose_tailwind_flying"))
+        if (
+            pending_card is not None
+            and pending_card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
+            and pending_card.template.template_id in {"air_spell_jagdwind", "air_spell_sturmjagd"}
+            and pending is not None
+            and pending.selected_combat_bonus_mode is None
+        ):
+            buttons.append(ButtonSpec(f"+{pending_card.template.combat_aw_bonus} Angriff", True, "choose_global_bonus_attack"))
+            buttons.append(ButtonSpec(f"+{pending_card.template.combat_sw_bonus} Schaden", True, "choose_global_bonus_damage"))
         buttons.append(ButtonSpec("Weiter", self.pending_spell_ready(), "confirm_spell_target"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_spell_target"))
     elif self.phase == PHASE_RECYCLE_PAYMENT:

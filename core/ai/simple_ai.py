@@ -319,6 +319,13 @@ class HeuristicStrategicAI(CommonAIMixin):
             return Ability.FLYING
         return Ability.HASTE
 
+    def choose_global_attack_bonus_mode(self, player: PlayerState, engine, card: CardInstance):
+        if card.template.template_id == "air_spell_sturmjagd":
+            comparison = self._evaluate_air_sturmjagd_reaction_plan(player, engine, card)
+        else:
+            comparison = self._evaluate_air_jagdwind_reaction_plan(player, engine, card)
+        return comparison.get("selected_mode")
+
     def choose_spell(self, hand, engine):
         if getattr(engine.ai_player, "summoner_key", "") == "fire":
             return choose_fire_reaction_spell(self, hand, engine)

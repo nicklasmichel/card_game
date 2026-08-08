@@ -379,7 +379,7 @@ class AssessmentComponent:
         for card in hand:
             if (
                 card.template.spell_effect == SpellEffect.GRANT_ATTACK_BONUS_TO_OWN_ATTACKERS_THIS_COMBAT
-                and probable_unblocked_damage + card.template.combat_sw_bonus >= enemy.life
+                and probable_unblocked_damage + max(1, card.template.combat_sw_bonus) >= enemy.life
             ):
                 return card
         return None

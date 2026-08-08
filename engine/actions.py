@@ -179,6 +179,10 @@ def handle_action(self, action: str) -> None:
         self.select_pending_spell_keyword(Ability.HASTE)
     elif action == "choose_tailwind_flying":
         self.select_pending_spell_keyword(Ability.FLYING)
+    elif action == "choose_global_bonus_attack":
+        self.select_pending_spell_combat_bonus_mode("attack")
+    elif action == "choose_global_bonus_damage":
+        self.select_pending_spell_combat_bonus_mode("damage")
     elif action == "cancel_spell_target":
         self.cancel_pending_spell_cast()
     elif action == "confirm_forced_discard":

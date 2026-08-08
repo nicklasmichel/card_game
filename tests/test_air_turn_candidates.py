@@ -31,7 +31,7 @@ class AirTurnCandidateTests(EngineTestCase):
         counts = {(len(main_1), len(main_2)) for main_1, main_2 in variants}
         self.assertIn((0, 0), counts)
         self.assertTrue(any(total == 1 for total, _ignored in {(len(main_1) + len(main_2), 0) for main_1, main_2 in variants}))
-        self.assertTrue(any(len(main_1) + len(main_2) == 2 for main_1, main_2 in variants))
+        self.assertFalse(any(len(main_1) + len(main_2) == 2 for main_1, main_2 in variants))
 
     def test_turn_candidates_include_combat_and_second_main_when_attack_is_possible(self) -> None:
         attacker = self.make_creature("air_creature_windgeist", owner_id=1, ready=True)

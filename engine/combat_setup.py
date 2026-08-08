@@ -140,8 +140,10 @@ def confirm_attackers(self) -> None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
         self.log("Keine Angreifer gewaehlt.")
+        self.attack_declared_this_turn = False
         self.enter_second_main_phase()
         return
+    self.attack_declared_this_turn = True
     if getattr(self.active_player, "summoner_key", "") == "air" and not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
         self.active_player.summoner_passive_draw_used_this_turn = True
         drawn = self.draw_card_for_player(self.active_player, "Beschwoerer-Passiv")
@@ -347,6 +349,8 @@ def begin_combat_resolution(self) -> None:
         for creature in self.active_player.battlefield
         if creature.unit_id in attacker_ids
     ]
+    if ordered_attackers:
+        self.attack_declared_this_turn = True
     self.combat_happened_this_sequence = bool(ordered_attackers)
     self.combat_queue = ordered_attackers
     self.blocked_attackers = {
