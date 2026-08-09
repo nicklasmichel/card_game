@@ -43,8 +43,11 @@ def run(self) -> None:
                 self.handle_log_scroll(direction)
 
         self.consume_visual_events()
-        if not self.paused and not self.engine.has_pending_ai_action():
-            self.engine.prepare_ai_turn_action()
+        if not self.paused:
+            if self.engine.has_pending_ai_action():
+                self.engine.execute_prepared_ai_action()
+            else:
+                self.engine.prepare_ai_turn_action()
         self.engine.auto_resolve_human_no_blockers_if_needed()
         self.engine.resolve_stalled_dice_battle_if_needed()
         if self.engine.exit_requested:

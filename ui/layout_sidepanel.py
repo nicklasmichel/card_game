@@ -4,10 +4,12 @@ from typing import List
 
 import pygame
 
+from core.game_mode import is_builder_mode
 from core.models import (
     ButtonSpec,
     CardType,
     Element,
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -31,7 +33,11 @@ from ui.style import (
 
 
 def get_overview_phase_label(phase: str) -> str:
+    if phase == PHASE_BUILDER_CREATURE:
+        return "Kreatur bauen"
     if phase == PHASE_MAIN_1:
+        if is_builder_mode():
+            return "Aufbau"
         return "Hauptphase 1"
     if phase == PHASE_MAIN_2:
         return "Hauptphase 2"
@@ -55,6 +61,8 @@ def get_pending_spell_panel_label(self) -> str | None:
 
 
 def get_action_panel_title(self) -> str:
+    if self.engine.phase == PHASE_BUILDER_CREATURE:
+        return "Kreatur bauen"
     if self.engine.phase == PHASE_REACTION:
         return self.engine.get_reaction_window_title()
     if self.engine.phase == PHASE_SPELL_TARGETING:
@@ -65,6 +73,12 @@ def get_action_panel_title(self) -> str:
 
 
 def get_action_panel_prompt(self) -> str:
+    if is_builder_mode() and self.engine.phase == PHASE_MAIN_1:
+        if not self.engine.active_player.main_action_used_this_turn:
+            return ""
+        return "Greife an oder beende den Zug."
+    if self.engine.phase == PHASE_BUILDER_CREATURE:
+        return "Verteile bereite Ressourcen auf die neue Kreatur."
     if self.engine.phase == PHASE_REACTION and self.engine.reaction_window_is_combat_window():
         return "Kampfzauber spielen."
     if self.engine.phase == PHASE_SPELL_TARGETING:
@@ -129,14 +143,24 @@ def draw_buttons(self) -> None:
 
 def draw_side_overview(self, rect: pygame.Rect) -> None:
     phase_label = get_overview_phase_label(self.engine.phase)
-    lines = [
-        f"Zug: {self.engine.turn_number}",
-        f"Am Zug: {self.engine.active_player.name} - {phase_label}",
-        f"Spieler LP: {self.engine.human_player.life}",
-        f"Gegner LP: {self.engine.ai_player.life}",
-        f"Spieler Hand/Deck: {len(self.engine.human_player.hand)}/{len(self.engine.human_player.deck)}",
-        f"Gegner Hand/Deck: {len(self.engine.ai_player.hand)}/{len(self.engine.ai_player.deck)}",
-    ]
+    if is_builder_mode():
+        lines = [
+            f"Zug: {self.engine.turn_number}",
+            f"Am Zug: {self.engine.active_player.name} - {phase_label}",
+            f"Spieler LP: {self.engine.human_player.life}",
+            f"Gegner LP: {self.engine.ai_player.life}",
+            f"Spieler Ressourcen: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
+            f"Gegner Ressourcen: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
+        ]
+    else:
+        lines = [
+            f"Zug: {self.engine.turn_number}",
+            f"Am Zug: {self.engine.active_player.name} - {phase_label}",
+            f"Spieler LP: {self.engine.human_player.life}",
+            f"Gegner LP: {self.engine.ai_player.life}",
+            f"Spieler Hand/Deck: {len(self.engine.human_player.hand)}/{len(self.engine.human_player.deck)}",
+            f"Gegner Hand/Deck: {len(self.engine.ai_player.hand)}/{len(self.engine.ai_player.deck)}",
+        ]
     if self.paused:
         lines.append("Status: Pausiert (Enter)")
     y = rect.y + 28
@@ -318,6 +342,22 @@ def get_selected_spell_lines(self) -> list[str]:
 def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = []
     pending = self.engine.pending_spell_cast
+    if self.engine.phase == PHASE_BUILDER_CREATURE and self.engine.pending_builder_creature is not None:
+        build = self.engine.pending_builder_creature
+        sections.append(
+            (
+                "Neue Kreatur",
+                [
+                    f"Angriff: {build.aw}",
+                    f"Verteidigung: {build.vw}",
+                    f"Schaden: {build.sw}",
+                    f"Leben: {build.lw}",
+                    f"Kosten: {self.engine.builder_creature_build_cost()} / {build.available_resources} verfuegbar",
+                    f"Bereit danach: {self.engine.builder_remaining_ready_resources()}",
+                ],
+            )
+        )
+        return sections
     if self.engine.phase == PHASE_SPELL_TARGETING and pending is not None:
         return sections
     if self.engine.phase == PHASE_SPELL_TARGETING:
@@ -372,10 +412,43 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     height = 36
     gap = 10
     start_x = rect.x + button_margin
-    button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
+    if self.engine.phase == PHASE_BUILDER_CREATURE:
+        stat_rows = min(4, len(action_specs) // 2)
+        trailing_buttons = max(0, len(action_specs) - stat_rows * 2)
+        button_total_height = stat_rows * height + max(0, stat_rows - 1) * gap
+        if trailing_buttons:
+            button_total_height += gap + trailing_buttons * height + max(0, trailing_buttons - 1) * gap
+    else:
+        button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
     button_start_y = rect.bottom - 12 - button_total_height
     detail_start_y = draw_action_detail_sections(self, rect, prompt_rect.bottom + 8, button_start_y - 8)
     start_y = button_start_y
+    if self.engine.phase == PHASE_BUILDER_CREATURE:
+        half_gap = 8
+        half_width = (width - half_gap) // 2
+        current_y = start_y
+        stat_rows = min(4, len(action_specs) // 2)
+        for row_index in range(stat_rows):
+            left_spec = action_specs[row_index * 2]
+            right_spec = action_specs[row_index * 2 + 1]
+            left_rect = pygame.Rect(start_x, current_y, half_width, height)
+            right_rect = pygame.Rect(start_x + half_width + half_gap, current_y, half_width, height)
+            for button_rect, spec in ((left_rect, left_spec), (right_rect, right_spec)):
+                pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
+                pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+                self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
+                self.buttons.append((button_rect, spec))
+            current_y += height + gap
+        if stat_rows and len(action_specs) > stat_rows * 2:
+            current_y += 0
+        for spec in action_specs[stat_rows * 2:]:
+            button_rect = pygame.Rect(start_x, current_y, width, height)
+            pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
+            self.buttons.append((button_rect, spec))
+            current_y += height + gap
+        return
     for index, spec in enumerate(action_specs):
         button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)
         pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
@@ -385,6 +458,8 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
 
 
 def draw_side_piles(self, rect: pygame.Rect, player, card_y: int) -> None:
+    if is_builder_mode():
+        return
     card_width = self.card_width
     card_height = self.card_height
     available_width = max(0, rect.width - card_width * 2)

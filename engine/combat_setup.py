@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from engine.combat_dice import apply_prepared_dice_battle
+
 from core.models import (
     Ability,
     PendingDirectAttack,
@@ -396,6 +398,12 @@ def begin_combat_resolution(self) -> None:
     self.current_attack_index = len(self.combat_queue)
     if self.pending_dice_battles:
         self.pending_dice_battle = self.pending_dice_battles[0]
+        if len(self.pending_dice_battles) == 1:
+            apply_prepared_dice_battle(self, self.pending_dice_battle)
+        else:
+            for battle in self.pending_dice_battles:
+                apply_prepared_dice_battle(self, battle, batched=True)
+            self.cleanup_destroyed_units()
         self.phase = PHASE_DICE_BATTLE
         return
     self.advance_combat_resolution()

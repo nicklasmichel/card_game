@@ -90,6 +90,20 @@ class CombatFlowTests(EngineTestCase):
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertIn("Zweite Hauptphase wird uebersprungen. Es gab keinen Angriff.", self.engine.log_messages)
 
+    def test_combat_phase_is_auto_skipped_when_active_player_has_no_creatures(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.active_player_index = 0
+        self.engine.turn_number = 5
+        self.engine.human_player.battlefield.clear()
+        self.engine.ai_player.battlefield.clear()
+        self.engine.log_messages.clear()
+
+        self.engine.request_combat_transition()
+
+        self.assertIn("Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel.", self.engine.log_messages)
+        self.assertEqual(self.engine.active_player, self.engine.ai_player)
+        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
+
     def test_blocked_combat_logs_rolls_damage_and_remaining_life(self) -> None:
         attacker = self.make_creature("air_creature_windgeist", owner_id=0)
         blocker = self.make_creature("fire_creature_glutwesen", owner_id=1)
@@ -106,6 +120,19 @@ class CombatFlowTests(EngineTestCase):
                 for message in self.engine.log_messages
             )
         )
+
+    def test_blocked_combat_applies_lethal_damage_immediately_when_dice_phase_starts(self) -> None:
+        attacker = self.make_creature("air_creature_windgeist", owner_id=0)
+        blocker = self.make_creature("fire_creature_glutwesen", owner_id=1)
+        self.engine.active_player_index = 0
+        self.engine.block_assignments = {attacker.unit_id: blocker.unit_id}
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.assertEqual(self.engine.phase, PHASE_DICE_BATTLE)
+        self.assertEqual(blocker.current_hp, 0)
+        self.assertIsNone(self.engine.get_unit_by_id(blocker.unit_id))
 
     def test_multiple_blocked_combats_share_one_dice_phase(self) -> None:
         attacker_one = self.make_creature("fire_creature_gluthetzer", owner_id=0)

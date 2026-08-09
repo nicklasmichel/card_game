@@ -110,6 +110,7 @@ class PlayerState:
     battlefield: List[BattlefieldCreature] = field(default_factory=list)
     resources: List[ResourceCard] = field(default_factory=list)
     resources_played_this_turn: int = 0
+    main_action_used_this_turn: bool = False
     summoner_passive_draw_used_this_turn: bool = False
     creature_cost_reduction_this_turn: int = 0
     summoner_tapped: bool = False
@@ -123,6 +124,7 @@ class PlayerState:
             creature.tapped = False
             creature.summoning_sick = False
         self.resources_played_this_turn = 0
+        self.main_action_used_this_turn = False
         self.summoner_passive_draw_used_this_turn = False
         self.summoner_tapped = False
 

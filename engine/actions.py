@@ -6,6 +6,7 @@ from core.models import (
     Ability,
     CardInstance,
     CardType,
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
     PHASE_FORCED_DISCARD,
@@ -157,7 +158,31 @@ def handle_action(self, action: str) -> None:
     if self.phase == PHASE_GAME_OVER or (not self.active_player.is_human and self.phase not in human_response_phases):
         return
 
-    if action == "play_resource":
+    if action == "builder_add_resource":
+        self.builder_add_resource(self.active_player)
+    elif action == "builder_open_creature":
+        self.begin_builder_creature_build()
+    elif action == "builder_aw_down":
+        self.adjust_builder_creature_stat("aw", -1)
+    elif action == "builder_aw_up":
+        self.adjust_builder_creature_stat("aw", 1)
+    elif action == "builder_vw_down":
+        self.adjust_builder_creature_stat("vw", -1)
+    elif action == "builder_vw_up":
+        self.adjust_builder_creature_stat("vw", 1)
+    elif action == "builder_sw_down":
+        self.adjust_builder_creature_stat("sw", -1)
+    elif action == "builder_sw_up":
+        self.adjust_builder_creature_stat("sw", 1)
+    elif action == "builder_lw_down":
+        self.adjust_builder_creature_stat("lw", -1)
+    elif action == "builder_lw_up":
+        self.adjust_builder_creature_stat("lw", 1)
+    elif action == "builder_confirm_creature":
+        self.confirm_builder_creature_build()
+    elif action == "builder_cancel_creature":
+        self.cancel_builder_creature_build()
+    elif action == "play_resource":
         self.play_selected_card_as_resource()
     elif action == "play_creature":
         self.play_selected_creature_card()

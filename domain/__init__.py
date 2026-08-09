@@ -10,9 +10,11 @@ from .cards import (
     SpellTargetRef,
     StackItem,
 )
+from .builder import PendingBuilderCreatureBuild
 from .combat import CombatUnitSnapshot, DiceRoundRecord, PendingDiceBattle, PendingDirectAttack
 from .enums import Ability, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode, SpellTiming
 from .phases import (
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -40,11 +42,13 @@ __all__ = [
     "CombatUnitSnapshot",
     "DiceRoundRecord",
     "Element",
+    "PendingBuilderCreatureBuild",
     "PendingDiceBattle",
     "PendingDirectAttack",
     "PendingForcedDiscard",
     "PendingRecyclePayment",
     "PendingSpellCast",
+    "PHASE_BUILDER_CREATURE",
     "PHASE_DECLARE_ATTACKERS",
     "PHASE_DECLARE_BLOCKERS",
     "PHASE_DICE_BATTLE",

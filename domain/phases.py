@@ -1,6 +1,7 @@
 PHASE_MULLIGAN = "Mulligan"
 PHASE_MAIN_1 = "Erste Hauptphase"
 PHASE_MAIN_2 = "Zweite Hauptphase"
+PHASE_BUILDER_CREATURE = "Builder Kreatur"
 PHASE_RECYCLE_PAYMENT = "Recycle auswaehlen"
 PHASE_FORCED_DISCARD = "Handkarte abwerfen"
 PHASE_DECLARE_ATTACKERS = "Angreifer waehlen"

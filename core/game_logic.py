@@ -7,7 +7,8 @@ from typing import Dict, List, Optional
 from core.ai_logic import SimpleAI
 from cards import build_card_templates, build_test_deck, validate_deck_definitions
 from cards.registry import get_deck_templates
-from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, GAME_MODE, HUMAN_DECK_NAME, STARTING_HAND_SIZE, STARTING_LIFE
+from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, HUMAN_DECK_NAME, STARTING_HAND_SIZE, STARTING_LIFE
+from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -17,8 +18,10 @@ from core.models import (
     CardType,
     DiceRoundRecord,
     Element,
+    PendingBuilderCreatureBuild,
     PendingDirectAttack,
     PendingForcedDiscard,
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -42,6 +45,28 @@ from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatis
 
 
 class GameEngine:
+    from engine.builder import (
+        BUILDER_MAX_RESOURCES,
+        adjust_builder_creature_stat,
+        begin_builder_creature_build,
+        builder_add_resource,
+        builder_creature_build_cost,
+        builder_creature_build_is_valid,
+        get_builder_preview_creature,
+        builder_mode_active,
+        builder_remaining_ready_resources,
+        builder_resource_template,
+        builder_spend_ready_resources,
+        cancel_builder_creature_build,
+        can_builder_add_resource,
+        can_builder_open_creature_build,
+        can_take_builder_main_action,
+        confirm_builder_creature_build,
+        create_builder_creature,
+        finish_builder_main_action,
+        initialize_builder_game,
+        start_builder_turn,
+    )
     from engine.combat import (
         advance_combat_resolution,
         advance_after_attackers_declared,
@@ -253,6 +278,8 @@ class GameEngine:
         self.combat_id_counter = 0
         self.ai_turn_initialized = False
         self.pending_ai_action: Optional[dict] = None
+        self.pending_builder_creature: Optional[PendingBuilderCreatureBuild] = None
+        self.builder_creature_counter = 0
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
@@ -402,8 +429,8 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events.clear()
         self.reset_combat_state()
-        if GAME_MODE == "test_combat":
-            self.start_test_combat()
+        if is_builder_mode():
+            self.initialize_builder_game()
             return
 
         for player in self.players:

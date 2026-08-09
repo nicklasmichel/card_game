@@ -187,6 +187,9 @@ def apply_prepared_dice_battle(self, battle: PendingDiceBattle, *, batched: bool
 
 
 def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldCreature, blocker: BattlefieldCreature, *, batched: bool = False) -> None:
+    if battle.result_applied:
+        return
+    battle.result_applied = True
     if battle.winner == "attacker":
         winner = attacker
         loser = blocker

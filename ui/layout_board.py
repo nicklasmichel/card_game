@@ -4,6 +4,8 @@ from typing import Dict
 
 import pygame
 
+from core.game_mode import is_builder_mode
+from core.models import PHASE_BUILDER_CREATURE
 from ui.style import CARD_BORDER, HIGHLIGHT, TEXT_COLOR
 
 
@@ -53,8 +55,13 @@ def draw_player_area(self) -> None:
         player=self.engine.human_player,
         target_key="player_resources",
     )
+    display_creatures = list(self.engine.human_player.battlefield)
+    if is_builder_mode() and self.engine.phase == PHASE_BUILDER_CREATURE:
+        preview_creature = self.engine.get_builder_preview_creature(self.engine.human_player)
+        if preview_creature is not None:
+            display_creatures.append(preview_creature)
     self.draw_creatures(
-        self.engine.human_player.battlefield,
+        display_creatures,
         True,
         "player_creatures",
         creatures_rect.x + 10,
@@ -370,10 +377,13 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
 
     for creature, is_human, draw_x, draw_y, selected, extra_line, attacking, target_key in render_queue:
         rect = self.draw_creature_card(creature, is_human, draw_x, draw_y, selected, extra_line, attacking)
-        self.creature_rects[creature.unit_id] = rect.copy()
+        is_preview = bool(getattr(creature, "is_builder_preview", False))
+        if not is_preview:
+            self.creature_rects[creature.unit_id] = rect.copy()
         if self.last_preview_builder is not None:
             self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
-        self.click_targets[target_key].append((rect, creature.unit_id))
+        if not is_preview:
+            self.click_targets[target_key].append((rect, creature.unit_id))
     self.creature_overlay_draws.extend(overlay_queue)
 
 

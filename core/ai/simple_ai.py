@@ -14,6 +14,7 @@ from core.ai.plan_manager import PlanManager
 from core.ai.reaction_planner import ReactionPlanner
 from core.ai.strategy_registry import StrategyRegistry
 from core.ai.turn_planner import TurnPlanner
+from core.game_mode import is_builder_mode
 from core.models import Ability, BattlefieldCreature, CardInstance, CardType, PHASE_MAIN_1, PlayerState, SpellEffect
 
 
@@ -325,6 +326,48 @@ class HeuristicStrategicAI(CommonAIMixin):
         else:
             comparison = self._evaluate_air_jagdwind_reaction_plan(player, engine, card)
         return comparison.get("selected_mode")
+
+    def choose_builder_main_action(self, player: PlayerState, engine) -> str:
+        available = player.available_resources()
+        total = player.total_resources()
+        own_creatures = len(player.battlefield)
+        enemy_creatures = len(engine.players[1 - player.player_id].battlefield)
+        if total >= engine.BUILDER_MAX_RESOURCES:
+            return "creature"
+        if own_creatures == 0 and available >= 1:
+            return "creature" if total >= 2 else "resource"
+        if total <= 2:
+            return "resource" if self.rng.random() < 0.6 else "creature"
+        if own_creatures < enemy_creatures:
+            return "creature"
+        if own_creatures >= enemy_creatures + 2 and total < 6:
+            return "resource"
+        return "creature" if self.rng.random() < 0.65 else "resource"
+
+    def choose_builder_creature_plan(self, player: PlayerState, engine) -> dict | None:
+        available = player.available_resources()
+        if available <= 0:
+            return {"aw": 0, "vw": 0, "sw": 0, "lw": 1, "cost": 0, "profile": "empty"}
+        profile = self.rng.choice(["offensive", "defensive", "balanced"])
+        reserve = self.rng.randint(0, 2) if available >= 3 else 0
+        spend = max(1, available - reserve)
+        stats = {"aw": 0, "vw": 0, "sw": 0, "lw": 1}
+        priorities = {
+            "offensive": ["aw", "sw", "aw", "lw", "vw"],
+            "defensive": ["vw", "lw", "sw", "aw", "lw"],
+            "balanced": ["aw", "vw", "sw", "lw"],
+        }[profile]
+        for index in range(spend):
+            stat_name = priorities[index % len(priorities)]
+            stats[stat_name] += 1
+        return {
+            "aw": stats["aw"],
+            "vw": stats["vw"],
+            "sw": stats["sw"],
+            "lw": stats["lw"],
+            "cost": spend,
+            "profile": profile,
+        }
 
     def choose_spell(self, hand, engine):
         if getattr(engine.ai_player, "summoner_key", "") == "fire":

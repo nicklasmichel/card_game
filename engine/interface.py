@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import List
 
+from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     ButtonSpec,
     CardType,
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -146,6 +148,7 @@ def prepare_ai_turn_action(self) -> bool:
         PHASE_DICE_BATTLE,
         PHASE_RECYCLE_PAYMENT,
         PHASE_FORCED_DISCARD,
+        PHASE_BUILDER_CREATURE,
     }:
         return False
     ai_block_decision = self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human
@@ -159,6 +162,32 @@ def prepare_ai_turn_action(self) -> bool:
         return False
     if not self.ai_turn_initialized:
         self.ai_turn_initialized = True
+
+    if is_builder_mode() and self.phase == PHASE_MAIN_1:
+        if not self.active_player.main_action_used_this_turn:
+            main_action = self.ai.choose_builder_main_action(self.active_player, self)
+            if main_action == "resource" and self.can_builder_add_resource(self.active_player):
+                self.pending_ai_action = {
+                    "kind": "builder_add_resource",
+                    "description": "Gegner erhoeht seine Ressourcen.",
+                }
+                return True
+            if main_action == "creature":
+                plan = self.ai.choose_builder_creature_plan(self.active_player, self)
+                if plan is not None:
+                    self.pending_ai_action = {
+                        "kind": "builder_create_creature",
+                        "description": "Gegner baut eine Kreatur.",
+                        "plan": plan,
+                    }
+                    return True
+        self.pending_ai_action = (
+            {
+                "kind": "to_combat" if self.available_attackers(self.active_player) else "end_turn",
+                "description": "Gegner wechselt in die Kampfphase." if self.available_attackers(self.active_player) else "Gegner beendet seinen Zug.",
+            }
+        )
+        return True
 
     if self.phase in {PHASE_MAIN_1, PHASE_MAIN_2}:
         resource_card = self.ai.choose_resource_card_for_main_phase(self.active_player, self, self.phase)
@@ -265,6 +294,32 @@ def execute_prepared_ai_action(self) -> None:
             self.ai_play_resource(chosen)
             if hasattr(self.ai, "_mark_turn_plan_step_completed"):
                 self.ai._mark_turn_plan_step_completed("play_resource", card_instance_id=chosen.instance_id)
+        return
+    if kind == "builder_add_resource":
+        self.builder_add_resource(self.active_player)
+        if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+            self.ai._mark_turn_plan_step_completed("builder_add_resource")
+        return
+    if kind == "builder_create_creature":
+        plan = action.get("plan", {})
+        creature = self.create_builder_creature(
+            self.active_player,
+            aw=int(plan.get("aw", 0)),
+            vw=int(plan.get("vw", 0)),
+            sw=int(plan.get("sw", 0)),
+            lw=int(plan.get("lw", 1)),
+        ) if self.builder_spend_ready_resources(self.active_player, int(plan.get("cost", 0))) else None
+        if creature is not None:
+            self.active_player.main_action_used_this_turn = True
+            if self.statistics is not None:
+                self.statistics.register_creature_played(self.active_player.player_id, 0)
+            self.log(
+                f"{self.active_player.name} baut {creature.name} "
+                f"(A {creature.aw} / V {creature.vw} / S {creature.sw} / L {creature.lw}) "
+                f"fuer {int(plan.get('cost', 0))} Ressource(n)."
+            )
+        if hasattr(self.ai, "_mark_turn_plan_step_completed"):
+            self.ai._mark_turn_plan_step_completed("builder_create_creature")
         return
     if kind == "cast_spell":
         card = next((card for card in self.ai_player.hand if card.instance_id == action["card_id"]), None)
@@ -510,8 +565,14 @@ def persist_game_results_once(self) -> None:
 def current_prompt(self) -> str:
     if self.pending_ai_action is not None:
         return self.pending_ai_action.get("description", "Gegnerische Aktion wartet auf Bestaetigung.")
+    if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE:
+        return "Verteile bereite Ressourcen auf Angriff, Verteidigung, Schaden und Leben."
     if self.phase == PHASE_MULLIGAN:
         return "Waehle Karten fuer den Mulligan oder behalte die Starthand."
+    if is_builder_mode() and self.phase == PHASE_MAIN_1:
+        if not self.active_player.main_action_used_this_turn:
+            return "Waehle deine Hauptaktion."
+        return "Waehle Angriff oder beende den Zug."
     if self.phase == PHASE_MAIN_1:
         return f"Ressourcen: {self.active_player.resources_played_this_turn}/2"
     if self.phase == PHASE_MAIN_2:
@@ -572,7 +633,26 @@ def get_button_specs(self) -> List[ButtonSpec]:
             ButtonSpec("Neue Partie", True, "new_game"),
         ]
     if self.pending_ai_action is not None:
-        return [ButtonSpec("Weiter", True, "confirm_ai_action")]
+        return []
+
+    if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE and self.active_player.is_human:
+        pending = self.pending_builder_creature
+        if pending is None:
+            return []
+        spent = self.builder_creature_build_cost()
+        plus_enabled = spent < pending.available_resources
+        return [
+            ButtonSpec("Angriff -", pending.aw > pending.base_aw, "builder_aw_down"),
+            ButtonSpec("Angriff +", plus_enabled, "builder_aw_up"),
+            ButtonSpec("Verteidigung -", pending.vw > pending.base_vw, "builder_vw_down"),
+            ButtonSpec("Verteidigung +", plus_enabled, "builder_vw_up"),
+            ButtonSpec("Schaden -", pending.sw > pending.base_sw, "builder_sw_down"),
+            ButtonSpec("Schaden +", plus_enabled, "builder_sw_up"),
+            ButtonSpec("Leben -", pending.lw > pending.base_lw, "builder_lw_down"),
+            ButtonSpec("Leben +", plus_enabled, "builder_lw_up"),
+            ButtonSpec("Kreatur erstellen", self.builder_creature_build_is_valid(), "builder_confirm_creature"),
+            ButtonSpec("Abbrechen", True, "builder_cancel_creature"),
+        ]
 
     human_response_phases = {
         PHASE_DECLARE_BLOCKERS,
@@ -595,6 +675,15 @@ def get_button_specs(self) -> List[ButtonSpec]:
         return []
 
     buttons: List[ButtonSpec] = []
+    if is_builder_mode() and self.phase == PHASE_MAIN_1:
+        if not self.active_player.main_action_used_this_turn:
+            buttons.append(ButtonSpec("Ressource", self.can_builder_add_resource(self.active_player), "builder_add_resource"))
+            buttons.append(ButtonSpec("Kreatur", self.can_builder_open_creature_build(self.active_player), "builder_open_creature"))
+            return buttons
+        if self.available_attackers(self.active_player):
+            buttons.append(ButtonSpec("Zum Kampf", True, "to_combat"))
+            buttons.append(ButtonSpec("Zug beenden", True, "end_turn"))
+        return buttons
     if self.phase == PHASE_MAIN_1:
         if self.available_attackers(self.active_player):
             buttons.append(ButtonSpec("Zum Kampf", True, "to_combat"))

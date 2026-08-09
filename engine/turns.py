@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import List, Optional
 
 from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
+from core.game_mode import is_builder_mode
 from core.models import (
     BattlefieldCreature,
     CardInstance,
+    PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -89,6 +91,9 @@ def begin_first_turn(self) -> None:
 
 
 def start_turn(self) -> None:
+    if is_builder_mode():
+        self.start_builder_turn()
+        return
     if hasattr(self.ai, "clear_active_turn_plan"):
         self.ai.clear_active_turn_plan()
     player = self.active_player
@@ -158,6 +163,8 @@ def has_playable_creature_in_hand(self, player: PlayerState) -> bool:
 
 
 def can_take_second_main_actions(self, player: PlayerState) -> bool:
+    if is_builder_mode():
+        return False
     if player != self.active_player:
         return False
     if player.resources_played_this_turn < 2 and bool(player.hand):
@@ -172,6 +179,9 @@ def can_take_second_main_actions(self, player: PlayerState) -> bool:
 
 def enter_second_main_phase(self) -> None:
     self.clear_combat_temporary_effects()
+    if is_builder_mode():
+        self.end_turn()
+        return
     if not getattr(self, "attack_declared_this_turn", False):
         self.log("Zweite Hauptphase wird uebersprungen. Es gab keinen Angriff.")
         self.end_turn()
@@ -197,6 +207,10 @@ def begin_main_phase_priority_window(self, phase: str, continuation) -> None:
 def request_combat_transition(self) -> None:
     if self.phase != PHASE_MAIN_1:
         return
+    if not self.active_player.battlefield:
+        self.log("Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel.")
+        self.enter_second_main_phase()
+        return
     if self.available_attackers(self.active_player):
         self.begin_main_phase_priority_window(PHASE_MAIN_1, self.begin_attack_declaration)
         return
@@ -205,6 +219,10 @@ def request_combat_transition(self) -> None:
 
 def enter_combat_or_second_main(self) -> None:
     if self.phase != PHASE_MAIN_1:
+        return
+    if not self.active_player.battlefield:
+        self.log("Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel.")
+        self.enter_second_main_phase()
         return
     if self.available_attackers(self.active_player):
         self.begin_attack_declaration()
@@ -230,6 +248,10 @@ def resolve_stalled_dice_battle_if_needed(self) -> None:
 
 
 def handle_human_timeout(self) -> None:
+    if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE and self.active_player.is_human:
+        self.log("Zeit abgelaufen. Spieler bricht den Kreaturenbau ab.")
+        self.cancel_builder_creature_build()
+        return
     if self.phase == PHASE_MULLIGAN:
         self.log("Zeit abgelaufen. Spieler behaelt seine Starthand.")
         self.apply_human_mulligan()

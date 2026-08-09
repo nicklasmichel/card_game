@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import core.config as config
+
 from core.ai.plans import TurnPlan
 from core.models import CardInstance, PendingDiceBattle, PHASE_DECLARE_ATTACKERS, PHASE_DICE_BATTLE, PHASE_REACTION, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_SPELL_TARGETING, ReactionContext, ReactionTrigger
 from tests.helpers import EngineTestCase
@@ -9,11 +11,14 @@ from tests.helpers import EngineTestCase
 
 class AiConfirmationTests(EngineTestCase):
     def setUp(self) -> None:
+        patcher = patch.object(config, "GAME_MODE", "normal")
+        patcher.start()
+        self.addCleanup(patcher.stop)
         super().setUp()
         self.engine.active_player_index = self.engine.ai_player.player_id
 
 
-    def test_ai_resource_phase_waits_for_confirmation(self) -> None:
+    def test_ai_resource_phase_prepares_without_confirmation_button(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
@@ -30,7 +35,7 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(self.engine.has_pending_ai_action())
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(len(self.engine.ai_player.resources), 0)
-        self.assertEqual(self.engine.get_button_specs()[0].action, "confirm_ai_action")
+        self.assertEqual(self.engine.get_button_specs(), [])
 
         self.engine.execute_prepared_ai_action()
 

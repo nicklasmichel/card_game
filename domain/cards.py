@@ -54,6 +54,7 @@ class CardTemplate:
     combat_sw_bonus: int = 0
     spell_draw_count: int = 0
     sacrifice_own_creature_on_cast: bool = False
+    allow_zero_stats: bool = False
     draw_on_play: int = 0
     draw_on_attack: int = 0
     draw_on_death: int = 0
@@ -64,12 +65,15 @@ class CardTemplate:
 
     def __post_init__(self) -> None:
         if self.card_type == CardType.CREATURE:
-            if self.aw <= 0 or self.vw < 0:
+            if self.allow_zero_stats:
+                if self.aw < 0 or self.vw < 0:
+                    raise ValueError(f"{self.template_id} muss nichtnegative AW-/VW-Werte besitzen.")
+            elif self.aw <= 0 or self.vw < 0:
                 raise ValueError(f"{self.template_id} muss positiven AW und nichtnegativen VW besitzen.")
             if self.element in {Element.AIR, Element.FIRE, Element.EARTH} and (self.lw is None or self.sw is None):
                 raise ValueError(f"{self.template_id} muss explizite LW- und SW-Werte besitzen.")
-            if self.effective_lw <= 0 or self.effective_sw <= 0:
-                raise ValueError(f"{self.template_id} muss positive LW- und SW-Werte besitzen.")
+            if self.effective_lw <= 0 or (self.effective_sw < 0 if self.allow_zero_stats else self.effective_sw <= 0):
+                raise ValueError(f"{self.template_id} muss gueltige LW- und SW-Werte besitzen.")
             return
         if self.lw is not None or self.sw is not None:
             raise ValueError(f"{self.template_id} ist keine Kreatur und darf keine LW-/SW-Werte besitzen.")

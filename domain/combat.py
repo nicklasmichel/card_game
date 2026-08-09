@@ -56,6 +56,7 @@ class PendingDiceBattle:
     trample_damage: int = 0
     history: List[DiceRoundRecord] = field(default_factory=list)
     resolution_complete: bool = False
+    result_applied: bool = False
 
 
 @dataclass
