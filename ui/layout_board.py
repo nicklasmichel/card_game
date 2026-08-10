@@ -4,6 +4,7 @@ from typing import Dict
 
 import pygame
 
+from core.config import STARTING_LIFE
 from core.game_mode import is_builder_mode
 from core.models import PHASE_BUILDER_CREATURE
 from ui.style import CARD_BORDER, HIGHLIGHT, TEXT_COLOR
@@ -18,6 +19,19 @@ def draw_enemy_area(self) -> None:
     self.draw_playfield_section_box(resource_rect, "enemy_resources")
     self.draw_playfield_section_box(creatures_rect, "enemy_creatures")
     self.draw_hand(self.engine.ai_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20, interactive=False)
+    if is_builder_mode():
+        life_text = f"Life {self.engine.ai_player.life}/{STARTING_LIFE}"
+        resources_text = f"Ressources {self.engine.ai_player.total_resources()}/10"
+        life_surface = self.title_font.render(life_text, True, TEXT_COLOR)
+        resources_surface = self.font.render(resources_text, True, TEXT_COLOR)
+        text_x = hand_rect.right - 14 - max(life_surface.get_width(), resources_surface.get_width())
+        life_y = hand_rect.y + 10
+        resources_y = life_y + life_surface.get_height() + 4
+        self.screen.blit(life_surface, (text_x, life_y))
+        self.screen.blit(resources_surface, (text_x, resources_y))
+        total_width = max(life_surface.get_width(), resources_surface.get_width())
+        total_height = resources_y + resources_surface.get_height() - life_y
+        self.summoner_rects[self.engine.ai_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, total_width + 16, total_height + 8)
     self.draw_resources(
         self.engine.ai_player.resources,
         resource_rect.x + 10,
@@ -70,6 +84,19 @@ def draw_player_area(self) -> None:
         creatures_rect.height - 20,
     )
     self.draw_hand(self.engine.human_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20)
+    if is_builder_mode():
+        life_text = f"Life {self.engine.human_player.life}/{STARTING_LIFE}"
+        resources_text = f"Ressources {self.engine.human_player.total_resources()}/10"
+        life_surface = self.title_font.render(life_text, True, TEXT_COLOR)
+        resources_surface = self.font.render(resources_text, True, TEXT_COLOR)
+        text_x = hand_rect.right - 14 - max(life_surface.get_width(), resources_surface.get_width())
+        life_y = hand_rect.y + 10
+        resources_y = life_y + life_surface.get_height() + 4
+        self.screen.blit(life_surface, (text_x, life_y))
+        self.screen.blit(resources_surface, (text_x, resources_y))
+        total_width = max(life_surface.get_width(), resources_surface.get_width())
+        total_height = resources_y + resources_surface.get_height() - life_y
+        self.summoner_rects[self.engine.human_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, total_width + 16, total_height + 8)
 
 
 def draw_combat_links(self) -> None:
@@ -245,7 +272,7 @@ def draw_link_marker(self, center: tuple[int, int], color, width: int) -> None:
 def draw_resources(self, resources, start_x: int, start_y: int, available_width: int, player=None, target_key: str | None = None) -> None:
     summoner_rect = None
     center_padding = max(28, self.card_gap * 2)
-    if player is not None:
+    if player is not None and not is_builder_mode():
         summoner_width = self.card_height if player.summoner_tapped else self.card_width
         summoner_height = self.card_width if player.summoner_tapped else self.card_height
         summoner_x = start_x + max(0, (available_width - summoner_width) // 2)

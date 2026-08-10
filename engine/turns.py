@@ -7,6 +7,7 @@ from core.game_mode import is_builder_mode
 from core.models import (
     BattlefieldCreature,
     CardInstance,
+    PHASE_BUILDER_ABILITY,
     PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
@@ -148,7 +149,7 @@ def available_blockers(self, player: PlayerState) -> List[BattlefieldCreature]:
     return [
         creature
         for creature in player.battlefield
-        if creature.is_ready()
+        if ((not creature.tapped) if is_builder_mode() else creature.is_ready())
         and not getattr(creature, "cannot_block", False)
         and self.get_creature_defense_value(creature) > 0
     ]
@@ -180,6 +181,7 @@ def can_take_second_main_actions(self, player: PlayerState) -> bool:
 def enter_second_main_phase(self) -> None:
     self.clear_combat_temporary_effects()
     if is_builder_mode():
+        self.finish_builder_turn_after_combat()
         self.end_turn()
         return
     if not getattr(self, "attack_declared_this_turn", False):
@@ -195,6 +197,9 @@ def enter_second_main_phase(self) -> None:
 
 
 def begin_main_phase_priority_window(self, phase: str, continuation) -> None:
+    if is_builder_mode():
+        continuation()
+        return
     trigger = ReactionTrigger.MAIN_1_PRIORITY if phase == PHASE_MAIN_1 else ReactionTrigger.MAIN_2_PRIORITY
     self.begin_general_spell_window(
         trigger=trigger,
@@ -205,29 +210,29 @@ def begin_main_phase_priority_window(self, phase: str, continuation) -> None:
 
 
 def request_combat_transition(self) -> None:
-    if self.phase != PHASE_MAIN_1:
+    if self.phase not in {PHASE_MAIN_1, PHASE_BUILDER_ABILITY}:
         return
     if not self.active_player.battlefield:
-        self.log("Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel.")
+        self.log("Combat is skipped automatically. No friendly creatures are in play.")
         self.enter_second_main_phase()
         return
     if self.available_attackers(self.active_player):
         self.begin_main_phase_priority_window(PHASE_MAIN_1, self.begin_attack_declaration)
         return
-    self.log("Keine Kreaturen koennen angreifen. Die Kampfphase kann nicht begonnen werden.")
+    self.log("No creatures can attack. Combat cannot begin.")
 
 
 def enter_combat_or_second_main(self) -> None:
-    if self.phase != PHASE_MAIN_1:
+    if self.phase not in {PHASE_MAIN_1, PHASE_BUILDER_ABILITY}:
         return
     if not self.active_player.battlefield:
-        self.log("Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel.")
+        self.log("Combat is skipped automatically. No friendly creatures are in play.")
         self.enter_second_main_phase()
         return
     if self.available_attackers(self.active_player):
         self.begin_attack_declaration()
         return
-    self.log("Keine Kreaturen koennen angreifen. Die Kampfphase kann nicht begonnen werden.")
+    self.log("No creatures can attack. Combat cannot begin.")
 
 
 def auto_resolve_human_no_blockers_if_needed(self) -> None:
@@ -237,7 +242,7 @@ def auto_resolve_human_no_blockers_if_needed(self) -> None:
         return
     if self.available_blockers(self.defending_player):
         return
-    self.log("Keine Kreaturen koennen blocken. Schaden geht automatisch durch.")
+    self.log("No creatures can block. Damage goes through automatically.")
     self.finish_block_assignment()
 
 
@@ -249,8 +254,12 @@ def resolve_stalled_dice_battle_if_needed(self) -> None:
 
 def handle_human_timeout(self) -> None:
     if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE and self.active_player.is_human:
-        self.log("Zeit abgelaufen. Spieler bricht den Kreaturenbau ab.")
+        self.log("Time expired. Player cancels creature building.")
         self.cancel_builder_creature_build()
+        return
+    if is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY and self.active_player.is_human:
+        self.log("Time expired. Player skips the ability phase.")
+        self.skip_builder_ability_phase()
         return
     if self.phase == PHASE_MULLIGAN:
         self.log("Zeit abgelaufen. Spieler behaelt seine Starthand.")

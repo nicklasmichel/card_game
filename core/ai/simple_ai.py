@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 from random import Random
 
+from core.ai.builder import choose_builder_attackers as choose_builder_attackers_v2
+from core.ai.builder import choose_builder_creature_plan as choose_builder_creature_plan_v2
+from core.ai.builder import choose_builder_main_action as choose_builder_main_action_v2
+from core.ai.builder.turn_policy import choose_builder_turn_plan as choose_builder_turn_plan_v2
 from core.ai.air.registry import get_air_card_handler, get_air_creature_handler
 from core.ai.fire.assessment import build_fire_snapshot
 from core.ai.fire.planning import build_fire_turn_candidates, build_fire_turn_plan_payload
@@ -28,6 +32,8 @@ class HeuristicStrategicAI(CommonAIMixin):
         self.assessment = AssessmentComponent()
         self.effect_evaluator = EffectEvaluatorComponent()
         self._last_air_candidate_stats: dict[str, int] = {}
+        self._last_builder_attack_candidate = None
+        self._last_builder_enraged_targets: dict[int, int] = {}
 
     @property
     def _last_turn_plan(self):
@@ -77,13 +83,26 @@ class HeuristicStrategicAI(CommonAIMixin):
 
     def reset_for_turn(self) -> None:
         self.turn_planner.clear_active_turn_plan(self)
+        self._last_builder_attack_candidate = None
+        self._last_builder_enraged_targets = {}
 
     def choose_attackers_for_player(self, player, engine, creatures):
+        if is_builder_mode():
+            return choose_builder_attackers_v2(player, engine)
         if getattr(player, "summoner_key", "") == "air":
             return self.turn_planner.choose_attackers_for_player(self, player, engine, creatures)
         if getattr(player, "summoner_key", "") == "fire":
             return self.turn_planner.choose_attackers_for_player(self, player, engine, creatures)
         return CommonAIMixin.choose_attackers_for_player(self, player, engine, creatures)
+
+    def choose_enraged_block_target(self, attacker: BattlefieldCreature, legal_targets, engine):
+        if is_builder_mode():
+            planned_blocker_id = self._last_builder_enraged_targets.get(attacker.unit_id)
+            if planned_blocker_id is not None:
+                planned = next((blocker for blocker in legal_targets if blocker.unit_id == planned_blocker_id), None)
+                if planned is not None:
+                    return planned
+        return CommonAIMixin.choose_enraged_block_target(self, attacker, legal_targets, engine)
 
     def choose_resource_card_for_main_phase(self, player, engine, phase):
         if getattr(player, "summoner_key", "") == "air":
@@ -328,46 +347,98 @@ class HeuristicStrategicAI(CommonAIMixin):
         return comparison.get("selected_mode")
 
     def choose_builder_main_action(self, player: PlayerState, engine) -> str:
-        available = player.available_resources()
-        total = player.total_resources()
-        own_creatures = len(player.battlefield)
-        enemy_creatures = len(engine.players[1 - player.player_id].battlefield)
-        if total >= engine.BUILDER_MAX_RESOURCES:
-            return "creature"
-        if own_creatures == 0 and available >= 1:
-            return "creature" if total >= 2 else "resource"
-        if total <= 2:
-            return "resource" if self.rng.random() < 0.6 else "creature"
-        if own_creatures < enemy_creatures:
-            return "creature"
-        if own_creatures >= enemy_creatures + 2 and total < 6:
-            return "resource"
-        return "creature" if self.rng.random() < 0.65 else "resource"
+        return choose_builder_main_action_v2(player, engine)
+
+    def choose_builder_turn_plan(self, player: PlayerState, engine):
+        return choose_builder_turn_plan_v2(player, engine)
 
     def choose_builder_creature_plan(self, player: PlayerState, engine) -> dict | None:
-        available = player.available_resources()
-        if available <= 0:
-            return {"aw": 0, "vw": 0, "sw": 0, "lw": 1, "cost": 0, "profile": "empty"}
-        profile = self.rng.choice(["offensive", "defensive", "balanced"])
-        reserve = self.rng.randint(0, 2) if available >= 3 else 0
-        spend = max(1, available - reserve)
-        stats = {"aw": 0, "vw": 0, "sw": 0, "lw": 1}
-        priorities = {
-            "offensive": ["aw", "sw", "aw", "lw", "vw"],
-            "defensive": ["vw", "lw", "sw", "aw", "lw"],
-            "balanced": ["aw", "vw", "sw", "lw"],
-        }[profile]
-        for index in range(spend):
-            stat_name = priorities[index % len(priorities)]
-            stats[stat_name] += 1
-        return {
-            "aw": stats["aw"],
-            "vw": stats["vw"],
-            "sw": stats["sw"],
-            "lw": stats["lw"],
-            "cost": spend,
-            "profile": profile,
-        }
+        return choose_builder_creature_plan_v2(player, engine)
+
+    def choose_builder_runtime_main_action(self, player: PlayerState, engine) -> str:
+        enemy = engine.players[1 - player.player_id]
+        if player.total_resources() < 3 and player.total_resources() < engine.BUILDER_MAX_RESOURCES:
+            return "resource" if engine.can_builder_add_resource(player) else "creature"
+        if not player.battlefield and enemy.battlefield and player.available_resources() >= 1:
+            return "creature"
+        if player.life <= enemy.life and player.available_resources() >= 1:
+            return "creature"
+        if player.total_resources() < 5 and len(player.battlefield) >= len(enemy.battlefield) and engine.can_builder_add_resource(player):
+            return "resource"
+        if player.available_resources() >= 1:
+            return "creature"
+        return "resource" if engine.can_builder_add_resource(player) else "pass"
+
+    def choose_builder_runtime_creature_plan(self, player: PlayerState, engine) -> dict | None:
+        budget = max(1, player.available_resources())
+        enemy = engine.players[1 - player.player_id]
+        aw = vw = sw = 0
+        lw = 1
+        if player.life <= 4 or len(player.battlefield) < len(enemy.battlefield):
+            for index in range(budget):
+                if index % 3 == 0:
+                    vw += 1
+                elif index % 3 == 1:
+                    lw += 1
+                else:
+                    sw += 1
+            aw = max(1, budget // 3)
+            if aw + vw + sw + (lw - 1) > budget:
+                vw = max(0, vw - 1)
+        else:
+            aw = max(1, budget // 3)
+            sw = max(1, budget // 3)
+            remaining = budget - aw - sw
+            while remaining > 0:
+                if vw <= lw - 1:
+                    vw += 1
+                else:
+                    lw += 1
+                remaining -= 1
+        cost = aw + vw + sw + max(0, lw - 1)
+        while cost > budget and lw > 1:
+            lw -= 1
+            cost = aw + vw + sw + max(0, lw - 1)
+        while cost > budget and vw > 0:
+            vw -= 1
+            cost = aw + vw + sw + max(0, lw - 1)
+        while cost > budget and aw > 1:
+            aw -= 1
+            cost = aw + vw + sw + max(0, lw - 1)
+        while cost > budget and sw > 0:
+            sw -= 1
+            cost = aw + vw + sw + max(0, lw - 1)
+        if cost <= 0:
+            return None
+        return {"aw": aw, "vw": vw, "sw": sw, "lw": lw, "cost": cost}
+
+    def choose_builder_runtime_ability_action(self, player: PlayerState, engine) -> dict | None:
+        if not player.hand:
+            return None
+        enemy = engine.players[1 - player.player_id]
+        for card in list(player.hand):
+            granted = engine.get_builder_card_ability(card)
+            if granted is None:
+                continue
+            if granted == Ability.HASTE:
+                candidates = [creature for creature in player.battlefield if creature.unit_id in engine.builder_created_this_turn_ids and engine._can_grant_builder_ability_to_creature(creature, granted)]
+                if candidates:
+                    target = max(candidates, key=lambda creature: (creature.aw + creature.sw, creature.current_hp))
+                    return {"card_id": card.instance_id, "mode": "grant_ability", "target_id": target.unit_id}
+            candidates = [creature for creature in player.battlefield if engine._can_grant_builder_ability_to_creature(creature, granted)]
+            if candidates and granted != Ability.HASTE:
+                target = max(candidates, key=lambda creature: (creature.sw + creature.aw + creature.current_hp, len(creature.abilities)))
+                return {"card_id": card.instance_id, "mode": "grant_ability", "target_id": target.unit_id}
+            kill_target = next((creature for creature in enemy.battlefield if creature.current_hp <= 1), None)
+            if kill_target is not None:
+                return {"card_id": card.instance_id, "mode": "deal_damage", "target_id": kill_target.unit_id}
+            if player.battlefield:
+                target = max(player.battlefield, key=lambda creature: (creature.sw + creature.aw + creature.current_hp, len(creature.abilities)))
+                stat = "sw" if target.sw <= target.aw else "aw"
+                if player.life <= enemy.life and target.current_hp <= 2:
+                    stat = "lw"
+                return {"card_id": card.instance_id, "mode": "add_stat", "stat": stat, "target_id": target.unit_id}
+        return None
 
     def choose_spell(self, hand, engine):
         if getattr(engine.ai_player, "summoner_key", "") == "fire":

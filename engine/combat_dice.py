@@ -30,6 +30,17 @@ def make_combat_unit_snapshot(self, creature: BattlefieldCreature) -> CombatUnit
     )
 
 
+def apply_life_steal_healing(self, creature: BattlefieldCreature, actual_damage: int) -> int:
+    if actual_damage <= 0 or creature is None or not creature.has_ability(Ability.LIFE_STEAL):
+        return 0
+    hp_before = creature.current_hp
+    creature.current_hp = min(creature.lw, creature.current_hp + actual_damage)
+    healed = creature.current_hp - hp_before
+    if healed > 0:
+        self.log(f"{creature.name} heilt sich durch Lebensraub um {healed} Leben.")
+    return healed
+
+
 def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
     battle = create_pending_dice_battle(self, attacker_id, blocker_id)
     if battle is None:
@@ -84,6 +95,27 @@ def _resolve_battle_rounds(
     apply_result: bool,
 ) -> None:
     max_rounds = 1000
+    if self.get_creature_attack_value(attacker) <= 0 and self.get_creature_defense_value(blocker) <= 0:
+        battle.attacker_rolls = []
+        battle.blocker_rolls = []
+        battle.attack_sum = 0
+        battle.defense_sum = 0
+        battle.winner = "blocker"
+        battle.creature_damage = 0
+        battle.history.append(
+            DiceRoundRecord(
+                round_number=1,
+                attacker_rolls=[],
+                blocker_rolls=[],
+                attack_sum=0,
+                defense_sum=0,
+                outcome_text="Beide Seiten haben 0 Wuerfel. Kein Kampfschaden.",
+            )
+        )
+        battle.resolution_complete = True
+        if apply_result:
+            _apply_battle_result(self, battle, attacker, blocker)
+        return
     while battle.reroll_count < max_rounds:
         battle.attacker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
         battle.blocker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_defense_value(blocker)))]
@@ -199,7 +231,11 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
         loser = attacker
         target_role = "attacker"
     damage = battle.creature_damage or self.get_creature_damage_value(winner)
+    loser_hp_before = loser.current_hp
+    actual_creature_damage = min(damage, max(0, loser_hp_before))
     loser.current_hp -= damage
+    if actual_creature_damage > 0 and winner.has_ability(Ability.DEATHTOUCH):
+        loser.current_hp = 0
     attacker.tapped = attacker.tapped or not attacker.has_ability(Ability.VIGILANT)
     blocker.tapped = True
     self.queue_creature_damage_event(target_role, damage, winner.element)
@@ -213,6 +249,7 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
         )
         if self.statistics is not None:
             self.statistics.register_player_damage(self.active_player.player_id, battle.trample_damage)
+    apply_life_steal_healing(self, winner, actual_creature_damage + (battle.trample_damage if battle.winner == "attacker" else 0))
     if self.statistics is not None:
         if battle.winner == "attacker":
             self.statistics.register_dice_comparison(attacker_damage=damage, blocker_damage=0)

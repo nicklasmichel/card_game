@@ -14,7 +14,12 @@ class Ability(Enum):
     HASTE = "Schnell"
     FLYING = "Fliegend"
     VIGILANT = "Wachsam"
+    LIFE_STEAL = "Lebensraub"
     MAGIC_RESISTANT = "Magieresistent"
+    DEATHTOUCH = "Deathtouch"
+    LIFELINK = "Lifelink"
+    VIGILANCE = "Vigilance"
+    PROVOKE = "Provoke"
 
 
 class CardType(Enum):

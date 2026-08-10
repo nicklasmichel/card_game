@@ -6,6 +6,7 @@ from core.models import (
     Ability,
     CardInstance,
     CardType,
+    PHASE_BUILDER_ABILITY,
     PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -19,8 +20,6 @@ from core.models import (
     PHASE_SPELL_TARGETING,
     PlayerState,
 )
-
-
 def choose_cards_to_discard_for_ai(self, player: PlayerState, count: int) -> List[CardInstance]:
     if count <= 0 or not player.hand:
         return []
@@ -125,6 +124,12 @@ def toggle_hand_card(self, card_id: int) -> None:
         else:
             self.selected_hand_ids.append(card_id)
         return
+    if self.phase == PHASE_BUILDER_ABILITY and self.active_player.is_human:
+        if card_id in self.selected_hand_ids:
+            self.cancel_builder_ability_use()
+        else:
+            self.begin_builder_ability_use(card_id)
+        return
     if self.active_player.is_human and self.phase in {PHASE_MAIN_1, PHASE_MAIN_2, PHASE_REACTION}:
         if card_id in self.selected_hand_ids:
             self.selected_hand_ids.clear()
@@ -160,6 +165,8 @@ def handle_action(self, action: str) -> None:
 
     if action == "builder_add_resource":
         self.builder_add_resource(self.active_player)
+    elif action == "builder_pass_main_action":
+        self.builder_pass_main_action(self.active_player)
     elif action == "builder_open_creature":
         self.begin_builder_creature_build()
     elif action == "builder_aw_down":
@@ -182,6 +189,26 @@ def handle_action(self, action: str) -> None:
         self.confirm_builder_creature_build()
     elif action == "builder_cancel_creature":
         self.cancel_builder_creature_build()
+    elif action.startswith("builder_use_card_"):
+        self.begin_builder_ability_use(int(action.removeprefix("builder_use_card_")))
+    elif action == "builder_mode_grant_ability":
+        self.choose_builder_ability_mode("grant_ability")
+    elif action == "builder_mode_damage":
+        self.choose_builder_ability_mode("deal_damage")
+    elif action == "builder_stat_aw":
+        self.choose_builder_ability_mode("add_stat", "aw")
+    elif action == "builder_stat_vw":
+        self.choose_builder_ability_mode("add_stat", "vw")
+    elif action == "builder_stat_sw":
+        self.choose_builder_ability_mode("add_stat", "sw")
+    elif action == "builder_stat_lw":
+        self.choose_builder_ability_mode("add_stat", "lw")
+    elif action == "builder_confirm_ability":
+        self.resolve_builder_ability_use()
+    elif action == "builder_cancel_ability":
+        self.cancel_builder_ability_use()
+    elif action == "builder_skip_ability":
+        self.skip_builder_ability_phase()
     elif action == "play_resource":
         self.play_selected_card_as_resource()
     elif action == "play_creature":

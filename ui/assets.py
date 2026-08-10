@@ -117,6 +117,10 @@ def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surfac
     line_one, line_two = self.get_card_ability_lines(card.template)
     display_cost = card.template.cost
     is_creature = card.template.card_type.value == "Kreatur"
+    center_title_only = bool(
+        not is_creature
+        and getattr(card.template, "template_id", "").startswith("builder_ability_")
+    )
     if is_creature and any(existing.instance_id == card.instance_id for existing in self.engine.active_player.hand):
         display_cost = self.engine.get_card_cost_to_pay(self.engine.active_player, card)
     return self.render_scaled_card_surface(
@@ -128,12 +132,13 @@ def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surfac
             stats=self.get_display_template_stats(card.template) if is_creature else None,
             element=card.template.element,
             type_line=self.get_creature_type_line(card.template),
-            line_one=line_one,
-            line_two=note or line_two,
+            line_one="" if center_title_only else line_one,
+            line_two="" if center_title_only else note or line_two,
             accent_color=(186, 177, 154),
             frame_color=(191, 161, 92),
             tapped=False,
             selected=False,
+            center_title_only=center_title_only,
         ),
     )
 
@@ -280,7 +285,7 @@ def draw_card_preview_overlay(self) -> None:
         )
         pygame.draw.rect(self.screen, (52, 58, 68), panel_rect, border_radius=10)
         pygame.draw.rect(self.screen, CARD_BORDER, panel_rect, 2, border_radius=10)
-        title_surface = title_font.render("Faehigkeiten", True, (240, 240, 240))
+        title_surface = title_font.render("Details", True, (240, 240, 240))
         self.screen.blit(title_surface, (panel_rect.x + gap, panel_rect.y + gap))
         current_y = panel_rect.y + gap + title_surface.get_height() + gap
         max_text_width = panel_rect.width - gap * 2

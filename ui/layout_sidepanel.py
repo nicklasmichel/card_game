@@ -4,11 +4,13 @@ from typing import List
 
 import pygame
 
+from engine.builder import BUILDER_ABILITY_LABELS
 from core.game_mode import is_builder_mode
 from core.models import (
     ButtonSpec,
     CardType,
     Element,
+    PHASE_BUILDER_ABILITY,
     PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
@@ -34,17 +36,19 @@ from ui.style import (
 
 def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_BUILDER_CREATURE:
-        return "Kreatur bauen"
+        return "Build creature"
+    if phase == PHASE_BUILDER_ABILITY:
+        return "Ability"
     if phase == PHASE_MAIN_1:
         if is_builder_mode():
-            return "Aufbau"
+            return "Build"
         return "Hauptphase 1"
     if phase == PHASE_MAIN_2:
         return "Hauptphase 2"
     if phase == "Recycle auswaehlen":
         return "Hauptphase"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE}:
-        return "Kampf"
+        return "Combat" if is_builder_mode() else "Kampf"
     return phase
 
 
@@ -62,7 +66,7 @@ def get_pending_spell_panel_label(self) -> str | None:
 
 def get_action_panel_title(self) -> str:
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        return "Kreatur bauen"
+        return "Build creature"
     if self.engine.phase == PHASE_REACTION:
         return self.engine.get_reaction_window_title()
     if self.engine.phase == PHASE_SPELL_TARGETING:
@@ -76,9 +80,13 @@ def get_action_panel_prompt(self) -> str:
     if is_builder_mode() and self.engine.phase == PHASE_MAIN_1:
         if not self.engine.active_player.main_action_used_this_turn:
             return ""
-        return "Greife an oder beende den Zug."
+        return "Continue to the ability phase."
+    if is_builder_mode() and self.engine.phase == PHASE_BUILDER_ABILITY:
+        if not self.engine.builder_ability_used_this_turn:
+            return "Optionally choose exactly one ability card and its mode."
+        return "Attack or end the turn."
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        return "Verteile bereite Ressourcen auf die neue Kreatur."
+        return "Distribute ready resources across the new creature's stats."
     if self.engine.phase == PHASE_REACTION and self.engine.reaction_window_is_combat_window():
         return "Kampfzauber spielen."
     if self.engine.phase == PHASE_SPELL_TARGETING:
@@ -106,12 +114,14 @@ def get_action_panel_prompt(self) -> str:
 def draw_side_panel(self) -> None:
     panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect = self.get_side_panel_layout()
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=6)
-    self.draw_side_piles(enemy_piles_rect, self.engine.ai_player, self.get_playfield_sections()["enemy_hand"].y + 10)
+    if not is_builder_mode():
+        self.draw_side_piles(enemy_piles_rect, self.engine.ai_player, self.get_playfield_sections()["enemy_hand"].y + 10)
     self.draw_section_box(log_rect)
     self.draw_side_log(log_rect)
     self.draw_section_box(action_rect)
     self.draw_side_actions(action_rect)
-    self.draw_side_piles(player_piles_rect, self.engine.human_player, self.get_playfield_sections()["player_hand"].y + 10)
+    if not is_builder_mode():
+        self.draw_side_piles(player_piles_rect, self.engine.human_player, self.get_playfield_sections()["player_hand"].y + 10)
 
 
 def get_side_panel_layout(self) -> tuple[pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect]:
@@ -120,6 +130,13 @@ def get_side_panel_layout(self) -> tuple[pygame.Rect, pygame.Rect, pygame.Rect, 
     inner_width = panel.width - 28
     section_gap = 10
     inner_height = panel.height - 28
+    if is_builder_mode():
+        log_height = max(220, inner_height // 3)
+        enemy_piles_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, 0)
+        log_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, log_height)
+        action_rect = pygame.Rect(inner_x, log_rect.bottom + section_gap, inner_width, panel.bottom - 14 - (log_rect.bottom + section_gap))
+        player_piles_rect = pygame.Rect(inner_x, action_rect.bottom, inner_width, 0)
+        return panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect
     hand_height = self.get_playfield_sections()["player_hand"].height
     piles_height = min(hand_height, max(self.card_height + 44, inner_height // 5))
     remaining_height = inner_height - piles_height * 2 - section_gap * 4
@@ -145,12 +162,15 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
     phase_label = get_overview_phase_label(self.engine.phase)
     if is_builder_mode():
         lines = [
-            f"Zug: {self.engine.turn_number}",
-            f"Am Zug: {self.engine.active_player.name} - {phase_label}",
-            f"Spieler LP: {self.engine.human_player.life}",
-            f"Gegner LP: {self.engine.ai_player.life}",
-            f"Spieler Ressourcen: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
-            f"Gegner Ressourcen: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
+            f"Turn: {self.engine.turn_number}",
+            f"Active: {self.engine.active_player.name} - {phase_label}",
+            f"Player Life: {self.engine.human_player.life}",
+            f"Enemy Life: {self.engine.ai_player.life}",
+            f"Player Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
+            f"Enemy Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
+            f"Shared Deck/Discard: {len(self.engine.builder_shared_deck)}/{len(self.engine.builder_shared_discard)}",
+            f"Player Hand: {len(self.engine.human_player.hand)}",
+            f"Enemy Hand: {len(self.engine.ai_player.hand)}",
         ]
     else:
         lines = [
@@ -170,7 +190,7 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
     if self.engine.phase == PHASE_DECLARE_BLOCKERS:
         target = self.engine.get_unit_by_id(self.engine.selected_attack_target_id) if self.engine.selected_attack_target_id is not None else None
         target_name = target.name if target is not None else "-"
-        self.blit_text(self.small_font, f"Blockziel: {target_name}", MUTED_TEXT, rect.x + 12, y + 4)
+        self.blit_text(self.small_font, f"Block target: {target_name}", MUTED_TEXT, rect.x + 12, y + 4)
 
 
 def draw_side_log(self, rect: pygame.Rect) -> None:
@@ -346,14 +366,29 @@ def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
         build = self.engine.pending_builder_creature
         sections.append(
             (
-                "Neue Kreatur",
+                "New creature",
                 [
-                    f"Angriff: {build.aw}",
-                    f"Verteidigung: {build.vw}",
-                    f"Schaden: {build.sw}",
-                    f"Leben: {build.lw}",
-                    f"Kosten: {self.engine.builder_creature_build_cost()} / {build.available_resources} verfuegbar",
-                    f"Bereit danach: {self.engine.builder_remaining_ready_resources()}",
+                    f"Attack: {build.aw}",
+                    f"Defense: {build.vw}",
+                    f"Damage: {build.sw}",
+                    f"Life: {build.lw}",
+                    f"Cost: {self.engine.builder_creature_build_cost()} / {build.available_resources} available",
+                    f"Ready after build: {self.engine.builder_remaining_ready_resources()}",
+                ],
+            )
+        )
+        return sections
+    if self.engine.phase == PHASE_BUILDER_ABILITY and self.engine.pending_builder_ability is not None:
+        pending = self.engine.pending_builder_ability
+        card = next((existing for existing in self.engine.active_player.hand if existing.instance_id == pending.card_instance_id), None)
+        sections.append(
+            (
+                "Ability card",
+                [
+                    f"Card: {card.template.name if card is not None else '-'}",
+                    f"Mode: {pending.mode or '-'}",
+                    f"Stat: {pending.selected_stat or '-'}",
+                    f"Target: {self.engine.get_unit_by_id(pending.selected_target_id).name if pending.selected_target_id is not None and self.engine.get_unit_by_id(pending.selected_target_id) is not None else '-'}",
                 ],
             )
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pygame
 
+from core.game_mode import is_builder_mode
 from core.models import CardType, MAIN_PHASES, PHASE_REACTION
 from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
 
@@ -55,6 +56,8 @@ def can_drag_hand_card(self, card_id: int | None = None) -> bool:
 
 
 def can_drag_hand_card_to_resource(self) -> bool:
+    if is_builder_mode():
+        return False
     if (
         self.engine.phase in MAIN_PHASES
         and self.engine.active_player.is_human
@@ -90,6 +93,16 @@ def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
     target_card_id = self.dragged_hand_card_id if card_id is None else card_id
     if target_card_id is None:
         return False
+    if (
+        is_builder_mode()
+        and self.engine.phase == "Builder Ability"
+        and self.engine.active_player.is_human
+    ):
+        card = next(
+            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
+            None,
+        )
+        return card is not None and self.engine.get_builder_card_ability(card) is not None
     if self.engine.phase in MAIN_PHASES and self.engine.active_player.is_human:
         card = next(
             (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),

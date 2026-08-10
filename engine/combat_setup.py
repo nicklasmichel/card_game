@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from engine.combat_dice import apply_prepared_dice_battle
+from engine.combat_dice import apply_life_steal_healing, apply_prepared_dice_battle
 
+from core.ai.builder import choose_builder_blocks
+from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     PendingDirectAttack,
+    PHASE_BUILDER_ABILITY,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
@@ -22,7 +25,10 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
         return False
     if self.get_creature_defense_value(blocker) <= 0:
         return False
-    if not blocker.is_ready():
+    if is_builder_mode():
+        if blocker.tapped:
+            return False
+    elif not blocker.is_ready():
         return False
     if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
         return False
@@ -32,9 +38,14 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
 def can_creature_be_forced_to_block_attacker(self, blocker, attacker) -> bool:
     if blocker is None or attacker is None:
         return False
+    if attacker.has_ability(Ability.PROVOKE):
+        return True
     if getattr(blocker, "cannot_block", False):
         return False
-    if not blocker.is_ready():
+    if is_builder_mode():
+        if blocker.tapped:
+            return False
+    elif not blocker.is_ready():
         return False
     if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
         return False
@@ -65,7 +76,7 @@ def set_enraged_block_assignment(self, attacker_id: int, blocker_id: int | None)
         if old_blocker_id is not None:
             old_blocker = self.get_unit_by_id(old_blocker_id)
             if old_blocker is not None:
-                self.log(f"{old_blocker.name} blockt {attacker.name} nicht mehr durch Wuetend.")
+                self.log(f"{old_blocker.name} no longer blocks {attacker.name} by force.")
         return True
     blocker = self.get_unit_by_id(blocker_id)
     if blocker is None:
@@ -93,19 +104,19 @@ def ai_assign_enraged_blocks(self) -> None:
         if blocker is None:
             continue
         if self.set_enraged_block_assignment(attacker.unit_id, blocker.unit_id):
-            self.log(f"{attacker.name} zwingt {blocker.name} durch Wuetend zum Block.")
+            self.log(f"{attacker.name} forces {blocker.name} to block.")
 
 
 def begin_attack_declaration(self) -> None:
-    if self.phase != PHASE_MAIN_1:
+    if self.phase != PHASE_MAIN_1 and not (is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY):
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("Keine Kreaturen koennen angreifen.")
+        self.log("No creatures can attack.")
         return
     self.phase = PHASE_DECLARE_ATTACKERS
     self.selected_attackers = []
-    self.log("Waehle deine Angreifer.")
+    self.log("Choose your attackers.")
 
 
 def toggle_attacker(self, creature_id: int) -> None:
@@ -115,7 +126,7 @@ def toggle_attacker(self, creature_id: int) -> None:
     if creature is None or self.get_unit_owner(creature_id) != self.active_player:
         return
     if not creature.is_ready():
-        self.log("Diese Kreatur kann nicht angreifen.")
+        self.log("This creature cannot attack.")
         return
     if creature_id in self.selected_attackers:
         self.selected_attackers.remove(creature_id)
@@ -141,7 +152,7 @@ def confirm_attackers(self) -> None:
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
-        self.log("Keine Angreifer gewaehlt.")
+        self.log("No attackers selected.")
         self.attack_declared_this_turn = False
         self.enter_second_main_phase()
         return
@@ -174,26 +185,26 @@ def advance_after_attackers_declared(self) -> None:
         self.phase = PHASE_DECLARE_BLOCKERS
         self.selected_blocker_id = None
         if self.active_player.is_human:
-            self.log("Optional: Waehle fuer Wuetend-Angreifer einen gegnerischen Blocker. Danach weiter.")
+            self.log("Optional: choose forced blockers for Provoke attackers, then continue.")
             return
         self.ai_assign_enraged_blocks()
         if not self.available_blockers(self.defending_player):
-            self.log("Gegner hat keine Kreaturen zum Blocken. Schaden geht automatisch durch.")
+            self.log("Enemy has no creatures to block. Damage goes through automatically.")
             self.begin_pre_first_combat_window()
             return
-        self.log("Gegner ueberlegt seine Blocker.")
+        self.log("Enemy is choosing blockers.")
         self.ai_assign_blocks()
         self.finish_block_assignment()
         return
     if self.defending_player.is_human:
         self.ai_assign_enraged_blocks()
         if not self.available_blockers(self.defending_player):
-            self.log("Keine Kreaturen koennen blocken. Schaden geht automatisch durch.")
+            self.log("No creatures can block. Damage goes through automatically.")
             self.begin_pre_first_combat_window()
             return
         self.phase = PHASE_DECLARE_BLOCKERS
         self.selected_blocker_id = None
-        self.log("Waehle fuer jeden Angreifer hoechstens einen Blocker.")
+        self.log("Choose at most one blocker for each attacker.")
         return
 
 
@@ -203,18 +214,22 @@ def toggle_blocker_assignment(self, creature_id: int) -> None:
     blocker = self.get_unit_by_id(creature_id)
     if blocker is None or self.get_unit_owner(creature_id) != self.defending_player:
         return
-    if not blocker.is_ready():
-        self.log("Diese Kreatur kann nicht blocken.")
+    if is_builder_mode():
+        if blocker.tapped:
+            self.log("This creature cannot block.")
+            return
+    elif not blocker.is_ready():
+        self.log("This creature cannot block.")
         return
     if self.selected_blocker_id == creature_id:
         self.selected_blocker_id = None
         return
     if self.selected_blocker_id is None:
         self.selected_blocker_id = creature_id
-        self.log(f"{blocker.name} als Blocker ausgewaehlt. Waehle jetzt einen Angreifer.")
+        self.log(f"{blocker.name} selected as blocker. Choose an attacker.")
         return
     self.selected_blocker_id = creature_id
-    self.log(f"{blocker.name} als Blocker ausgewaehlt. Waehle jetzt einen Angreifer.")
+    self.log(f"{blocker.name} selected as blocker. Choose an attacker.")
 
 
 def toggle_selected_attack_target(self, creature_id: int) -> None:
@@ -228,7 +243,7 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
         if attacker is None:
             return
         if attacker.unit_id in self.enraged_forced_attackers:
-            self.log(f"{attacker.name} hat bereits einen erzwungenen Blocker.")
+            self.log(f"{attacker.name} already has a forced blocker.")
             return
         if blocker is None:
             currently_assigned = self.block_assignments.get(creature_id)
@@ -236,34 +251,34 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
                 old_blocker = self.get_unit_by_id(currently_assigned)
                 self.block_assignments[creature_id] = None
                 if old_blocker is not None:
-                    self.log(f"{old_blocker.name} blockt {attacker.name} nicht mehr.")
+                    self.log(f"{old_blocker.name} no longer blocks {attacker.name}.")
             else:
-                self.log("Waehle zuerst einen Blocker aus.")
+                self.log("Choose a blocker first.")
             return
         if not self.can_creature_block_attacker(blocker, attacker):
-            self.log(f"{blocker.name} kann {attacker.name} nicht blocken.")
+            self.log(f"{blocker.name} cannot block {attacker.name}.")
             return
         if any(
             assigned_blocker_id == blocker.unit_id and existing_attacker_id != attacker.unit_id
             for existing_attacker_id, assigned_blocker_id in self.block_assignments.items()
         ):
-            self.log(f"{blocker.name} blockt bereits einen anderen Angreifer.")
+            self.log(f"{blocker.name} already blocks another attacker.")
             return
         old_blocker_id = self.block_assignments.get(attacker.unit_id)
         if old_blocker_id == blocker.unit_id:
             self.block_assignments[attacker.unit_id] = None
-            self.log(f"{blocker.name} blockt {attacker.name} nicht mehr.")
+            self.log(f"{blocker.name} no longer blocks {attacker.name}.")
             return
         self.block_assignments[attacker.unit_id] = blocker.unit_id
         self.selected_blocker_id = None
-        self.log(f"{blocker.name} blockt {attacker.name}.")
+        self.log(f"{blocker.name} blocks {attacker.name}.")
         return
     if not self.active_player.is_human:
         return
     attacker = self.get_unit_by_id(self.selected_attack_target_id or -1)
     blocker = self.get_unit_by_id(creature_id)
     if attacker is None:
-        self.log("Waehle zuerst einen Wuetend-Angreifer aus.")
+        self.log("Choose a Provoke attacker first.")
         return
     if blocker is None or self.get_unit_owner(blocker.unit_id) != self.defending_player:
         return
@@ -274,9 +289,9 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
         self.set_enraged_block_assignment(attacker.unit_id, None)
         return
     if not self.set_enraged_block_assignment(attacker.unit_id, blocker.unit_id):
-        self.log(f"{blocker.name} kann nicht durch Wuetend {attacker.name} blocken.")
+        self.log(f"{blocker.name} cannot be forced to block {attacker.name}.")
         return
-    self.log(f"{attacker.name} zwingt {blocker.name} durch Wuetend zum Block.")
+    self.log(f"{attacker.name} forces {blocker.name} to block.")
 
 
 def clear_block_assignments(self) -> None:
@@ -286,7 +301,7 @@ def clear_block_assignments(self) -> None:
     self.selected_blocker_id = None
     self.selected_attack_target_id = None
     self.enraged_forced_attackers = set()
-    self.log("Alle Blockzuweisungen wurden geloescht.")
+    self.log("All block assignments were cleared.")
 
 
 def finish_block_assignment(self) -> None:
@@ -301,6 +316,9 @@ def finish_block_assignment(self) -> None:
 
 
 def begin_pre_first_combat_window(self) -> None:
+    if is_builder_mode():
+        self.begin_combat_resolution()
+        return
     self.begin_general_spell_window(
         trigger=ReactionTrigger.COMBAT_START,
         first_responder_id=self.active_player.player_id,
@@ -313,6 +331,9 @@ def begin_post_combat_window(self) -> None:
     self.selected_attackers.clear()
     self.selected_blocker_id = None
     self.selected_attack_target_id = None
+    if is_builder_mode():
+        self.enter_second_main_phase()
+        return
     self.begin_general_spell_window(
         trigger=ReactionTrigger.COMBAT_END,
         first_responder_id=self.active_player.player_id,
@@ -328,7 +349,10 @@ def ai_assign_blocks(self) -> None:
         if attacker is not None
     ]
     available_blockers = self.available_blockers(self.defending_player)
-    assignments = self.ai.choose_blockers_for_attackers(attackers, available_blockers, self.block_assignments)
+    if is_builder_mode():
+        assignments = choose_builder_blocks(self.defending_player, self)
+    else:
+        assignments = self.ai.choose_blockers_for_attackers(attackers, available_blockers, self.block_assignments)
     for attacker_id, blocker_id in assignments.items():
         if attacker_id in self.enraged_forced_attackers:
             continue
@@ -341,7 +365,7 @@ def ai_assign_blocks(self) -> None:
         if blocker.unit_id in [assigned for assigned in self.block_assignments.values() if assigned is not None]:
             continue
         self.block_assignments[attacker_id] = blocker_id
-        self.log(f"{self.defending_player.name} blockt {attacker.name} mit {blocker.name}.")
+        self.log(f"{self.defending_player.name} blocks {attacker.name} with {blocker.name}.")
 
 
 def begin_combat_resolution(self) -> None:
@@ -448,7 +472,7 @@ def advance_combat_resolution(self) -> None:
         blocker_id = self.block_assignments.get(attacker_id)
         if blocker_id is None:
             if attacker_id in self.blocked_attackers:
-                self.log(f"{attacker.name} bleibt geblockt und verursacht keinen direkten Schaden.")
+                self.log(f"{attacker.name} remains blocked and deals no direct damage.")
                 self.current_attack_index += 1
                 continue
             self.pending_direct_attacks.append(
@@ -500,6 +524,7 @@ def _apply_pending_direct_attack(self, pending) -> None:
     )
     if self.statistics is not None:
         self.statistics.register_unblocked_attack(self.active_player.player_id, damage)
-    self.log(f"{attacker.name} ist ungeblockt und verursacht {damage} Schaden an {self.defending_player.name}.")
+    self.log(f"{attacker.name} is unblocked and deals {damage} damage to {self.defending_player.name}.")
+    apply_life_steal_healing(self, attacker, damage)
     self.handle_creature_player_damage_triggers(self.active_player, attacker, damage)
     self.check_for_game_over()

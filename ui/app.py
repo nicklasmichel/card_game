@@ -6,6 +6,7 @@ from typing import Callable, Dict, List, Tuple
 
 import pygame
 
+from core.game_mode import is_builder_mode
 from core.game_logic import GameEngine
 from core.models import (
     ButtonSpec,
@@ -255,7 +256,10 @@ class TcgPrototypeApp:
         self.card_width = 172 if self.window_width >= 1800 else 151
         self.card_height = int(self.card_width * 1.26)
         self.card_gap = 18 if self.window_width >= 1800 else 13
-        self.side_panel_width = 380 if self.window_width >= 1800 else 350
+        if is_builder_mode():
+            self.side_panel_width = 470 if self.window_width >= 1800 else 430
+        else:
+            self.side_panel_width = 380 if self.window_width >= 1800 else 350
         self.main_area_width = self.window_width - self.side_panel_width - 30
         pygame.display.set_caption("TCG Prototype")
         self.clock = pygame.time.Clock()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
+from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -356,6 +357,8 @@ def play_selected_card_as_resource(self) -> None:
 
 
 def play_hand_card_as_resource(self, card_id: int) -> None:
+    if is_builder_mode():
+        return
     if self.phase not in MAIN_PHASES or self.active_player.resources_played_this_turn >= 2 or not self.active_player.is_human:
         return
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_id), None)
@@ -388,6 +391,13 @@ def play_selected_creature_card(self) -> None:
 
 
 def play_hand_card_in_summoning_zone(self, card_id: int) -> None:
+    if is_builder_mode():
+        if self.phase == "Builder Ability" and self.active_player.is_human:
+            if self.begin_builder_ability_use(card_id):
+                self.log("Waehle jetzt, ob du die Faehigkeit vergeben oder 1 Schaden zufuegen willst.")
+            else:
+                self.log("Diese Ability-Karte kann gerade nicht ausgespielt werden.")
+        return
     if self.phase == PHASE_REACTION and self.reaction_priority_player_id == self.human_player.player_id:
         self.begin_spell_from_hand(card_id)
         return

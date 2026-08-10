@@ -18,9 +18,11 @@ from core.models import (
     CardType,
     DiceRoundRecord,
     Element,
+    PendingBuilderAbilityUse,
     PendingBuilderCreatureBuild,
     PendingDirectAttack,
     PendingForcedDiscard,
+    PHASE_BUILDER_ABILITY,
     PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
@@ -47,24 +49,39 @@ from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatis
 class GameEngine:
     from engine.builder import (
         BUILDER_MAX_RESOURCES,
+        _can_grant_builder_ability_to_creature,
         adjust_builder_creature_stat,
         begin_builder_creature_build,
+        begin_builder_ability_use,
+        builder_draw_ability_card,
         builder_add_resource,
+        builder_pass_main_action,
+        builder_pending_ability_ready,
         builder_creature_build_cost,
         builder_creature_build_is_valid,
+        can_builder_use_ability_card,
         get_builder_preview_creature,
+        get_builder_card_ability,
         builder_mode_active,
         builder_remaining_ready_resources,
         builder_resource_template,
         builder_spend_ready_resources,
+        cancel_builder_ability_use,
+        choose_builder_ability_mode,
+        toggle_builder_creature_ability,
         cancel_builder_creature_build,
         can_builder_add_resource,
         can_builder_open_creature_build,
         can_take_builder_main_action,
         confirm_builder_creature_build,
         create_builder_creature,
+        discard_builder_ability_card,
         finish_builder_main_action,
+        finish_builder_turn_after_combat,
         initialize_builder_game,
+        resolve_builder_ability_use,
+        select_builder_ability_target,
+        skip_builder_ability_phase,
         start_builder_turn,
     )
     from engine.combat import (
@@ -279,7 +296,12 @@ class GameEngine:
         self.ai_turn_initialized = False
         self.pending_ai_action: Optional[dict] = None
         self.pending_builder_creature: Optional[PendingBuilderCreatureBuild] = None
+        self.pending_builder_ability: Optional[PendingBuilderAbilityUse] = None
         self.builder_creature_counter = 0
+        self.builder_shared_deck: List[CardInstance] = []
+        self.builder_shared_discard: List[CardInstance] = []
+        self.builder_ability_used_this_turn = False
+        self.builder_created_this_turn_ids: set[int] = set()
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
@@ -546,4 +568,5 @@ class GameEngine:
         self.current_attack_index = 0
         self.blocked_attackers = set()
         self.pending_ai_action = None
+        self.pending_builder_ability = None
 

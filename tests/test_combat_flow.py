@@ -93,6 +93,7 @@ class CombatFlowTests(EngineTestCase):
     def test_combat_phase_is_auto_skipped_when_active_player_has_no_creatures(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.active_player_index = 0
+        self.engine.starting_player_id = 1
         self.engine.turn_number = 5
         self.engine.human_player.battlefield.clear()
         self.engine.ai_player.battlefield.clear()
@@ -387,7 +388,13 @@ class CombatFlowTests(EngineTestCase):
         self.assertIsNone(self.engine.reaction_context)
         self.assertFalse(any("Gegner ist als Naechstes mit Reagieren oder Passen am Zug." == message for message in self.engine.log_messages))
         self.assertLessEqual(blocker.current_hp, blocker.lw - 1)
-        self.assertIn(attacker.unit_id, self.engine.combat_queue)
+        self.assertTrue(
+            attacker.unit_id in self.engine.combat_queue
+            or (
+                self.engine.pending_dice_battle is not None
+                and self.engine.pending_dice_battle.attacker_id == attacker.unit_id
+            )
+        )
 
     def test_combat_start_window_opens_only_for_defender_with_playable_spell(self) -> None:
         self.prepare_blocked_combat()

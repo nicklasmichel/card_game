@@ -86,7 +86,18 @@ class BattlefieldCreature:
         return not self.tapped and (not self.summoning_sick or self.has_ability(Ability.HASTE))
 
     def has_ability(self, ability: Ability) -> bool:
-        return ability in self.abilities or ability in self.temporary_abilities
+        all_abilities = set(self.abilities) | set(self.temporary_abilities)
+        if ability == Ability.LIFE_STEAL:
+            return Ability.LIFE_STEAL in all_abilities or Ability.LIFELINK in all_abilities
+        if ability == Ability.LIFELINK:
+            return Ability.LIFELINK in all_abilities or Ability.LIFE_STEAL in all_abilities
+        if ability == Ability.VIGILANT:
+            return Ability.VIGILANT in all_abilities or Ability.VIGILANCE in all_abilities
+        if ability == Ability.VIGILANCE:
+            return Ability.VIGILANCE in all_abilities or Ability.VIGILANT in all_abilities
+        if ability == Ability.ENRAGED:
+            return Ability.ENRAGED in all_abilities or Ability.PROVOKE in all_abilities
+        return ability in all_abilities
 
     def block_capacity(self) -> int:
         return 1

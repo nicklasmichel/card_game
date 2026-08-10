@@ -35,6 +35,10 @@ def get_card_text_fonts(self) -> tuple[pygame.font.Font, pygame.font.Font, pygam
 def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygame.Surface:
     line_one, line_two = self.get_card_ability_lines(card.template)
     is_creature = getattr(card.template, "card_type", None) is None or card.template.card_type.value == "Kreatur"
+    center_title_only = bool(
+        is_creature is False
+        and getattr(card.template, "template_id", "").startswith("builder_ability_")
+    )
     display_cost = card.template.cost
     if is_creature and hasattr(self, "engine"):
         display_cost = self.engine.get_card_cost_to_pay(self.engine.active_player, card)
@@ -45,12 +49,13 @@ def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygam
         stats=self.get_display_template_stats(card.template) if is_creature else None,
         element=card.template.element,
         type_line=self.get_creature_type_line(card.template),
-        line_one=line_one,
-        line_two=note or line_two,
+        line_one="" if center_title_only else line_one,
+        line_two="" if center_title_only else note or line_two,
         accent_color=(186, 177, 154),
         frame_color=CARD_FRAME_GOLD,
         tapped=False,
         selected=selected,
+        center_title_only=center_title_only,
     )
 
 
@@ -69,6 +74,7 @@ def build_card_surface(
     tapped: bool,
     selected: bool,
     attacking: bool = False,
+    center_title_only: bool = False,
 ) -> pygame.Surface:
     if template_id is None:
         raise ValueError(f"Full-art rendering requires a template_id for card '{title}'.")
@@ -84,6 +90,7 @@ def build_card_surface(
         tapped,
         selected,
         attacking,
+        center_title_only,
     )
 
 
@@ -99,6 +106,7 @@ def build_full_art_card_surface(
     tapped: bool,
     selected: bool,
     attacking: bool,
+    center_title_only: bool,
 ) -> pygame.Surface:
     s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
     image = self.card_art_images.get(template_id)
@@ -113,6 +121,7 @@ def build_full_art_card_surface(
             line_two=line_two,
             tapped=tapped,
             selected=selected,
+            center_title_only=center_title_only,
         )
 
     base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
@@ -141,10 +150,22 @@ def build_full_art_card_surface(
         cost_text = str(cost_value.resources) if cost_value.resources > 0 or show_zero_cost else ""
     cost_width = number_font.size(cost_text)[0] if cost_text else 0
     cost_x = self.card_width - s(8) - cost_width
-    title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
-    blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), header_y + s(3))
-    if cost_text:
+    if center_title_only:
+        title_text = self.fit_text(title_font, title, self.card_width - s(24))
+        title_surface = title_font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(self.card_width // 2, self.card_height // 2))
+        blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), title_rect.x, title_rect.y)
+    else:
+        title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
+        blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), header_y + s(3))
+    if cost_text and not center_title_only:
         blit_text_with_shadow(base, number_font, cost_text, (255, 255, 255), cost_x, header_y + s(3))
+    if center_title_only:
+        if selected:
+            pygame.draw.rect(base, HIGHLIGHT, pygame.Rect(0, 0, self.card_width, self.card_height), max(1, s(3)), border_radius=s(8))
+        if tapped:
+            return pygame.transform.rotate(base, -90)
+        return base
     keyword_lines = self.wrap_text(body_italic_font, line_one, self.card_width - s(20)) if line_one else []
     keyword_line_height = body_font.get_height() + s(1)
     keyword_y = header_y + s(22)
@@ -187,6 +208,7 @@ def build_generic_card_surface(
     line_two: str,
     tapped: bool,
     selected: bool,
+    center_title_only: bool = False,
 ) -> pygame.Surface:
     s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
     base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
@@ -202,10 +224,22 @@ def build_generic_card_surface(
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
     cost_text = f"{cost_value.resources}/{cost_value.recycle}" if cost_value.recycle > 0 else str(cost_value.resources)
     title_text = self.fit_text(title_font, title, self.card_width - s(56))
-    blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), s(10))
-    if cost_text and cost_text != "0":
+    if center_title_only:
+        title_text = self.fit_text(title_font, title, self.card_width - s(24))
+        title_surface = title_font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surface.get_rect(center=(self.card_width // 2, self.card_height // 2))
+        blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), title_rect.x, title_rect.y)
+    else:
+        blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), s(10))
+    if cost_text and cost_text != "0" and not center_title_only:
         cost_width = number_font.size(cost_text)[0]
         blit_text_with_shadow(base, number_font, cost_text, (255, 255, 255), self.card_width - s(10) - cost_width, s(8))
+    if center_title_only:
+        if selected:
+            pygame.draw.rect(base, HIGHLIGHT, outer_rect, max(1, s(3)), border_radius=s(8))
+        if tapped:
+            return pygame.transform.rotate(base, -90)
+        return base
 
     keyword_y = s(38)
     if line_one:
