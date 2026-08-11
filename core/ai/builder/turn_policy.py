@@ -8,6 +8,7 @@ from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP
 from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1
 
 from .attack_policy import BuilderAttackDecision, evaluate_best_builder_attack
+from .config import BUILDER_AI_WEIGHTS
 from .cap_strategy import compute_builder_cap_context
 from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
@@ -559,7 +560,9 @@ def _build_action_decision(
     terminal = _score_terminal_projection(projection, predicted_attack)
     creature_future_value = 0.0 if projected_candidate is None else projected_candidate.future_value * TURN_WEIGHTS.creature_future_value
     resource_growth_value = (
-        score_resource_growth_action(snapshot, current_frontier, next_frontier) * TURN_WEIGHTS.resource_growth
+        score_resource_growth_action(snapshot, current_frontier, next_frontier)
+        * TURN_WEIGHTS.resource_growth
+        * BUILDER_AI_WEIGHTS.resource_growth_vs_build
         if action_candidate.action_kind == "resource"
         else 0.0
     )

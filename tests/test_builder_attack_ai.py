@@ -222,6 +222,63 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertEqual(first, second)
 
+    def test_defensive_zero_attack_body_stays_back_when_counterdamage_is_worse(self) -> None:
+        defender = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)
+        self.engine.ai_player.life = 2
+        self.engine.human_player.life = 10
+        self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+
+        candidate, score, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+        attack_score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=(defender.unit_id,)), self.engine.ai_player, self.engine)
+
+        self.assertEqual(candidate.attacker_ids, ())
+        self.assertGreater(attack_score.lost_block_value, 0.0)
+        self.assertGreater(attack_score.projected_counter_damage, 0.0)
+        self.assertLess(attack_score.total, score.total)
+
+    def test_attack_selection_can_hold_back_partial_blockers(self) -> None:
+        hold_back = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)
+        attacker = self.make_builder_creature(1, aw=3, vw=0, sw=3, lw=2, ready=True)
+        self.engine.ai_player.life = 2
+        self.engine.human_player.life = 6
+        self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+
+        candidate, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertIn(attacker.unit_id, candidate.attacker_ids)
+        self.assertNotIn(hold_back.unit_id, candidate.attacker_ids)
+
+    def test_nonlethal_all_out_attack_is_rejected_when_it_enables_lethal(self) -> None:
+        a = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)
+        b = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)
+        c = self.make_builder_creature(1, aw=0, vw=2, sw=2, lw=1, ready=True)
+        self.engine.ai_player.life = 1
+        self.engine.human_player.life = 5
+        self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+
+        candidate, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertNotEqual(candidate.attacker_ids, (a.unit_id, b.unit_id, c.unit_id))
+
+    def test_ready_creature_that_does_not_attack_remains_legal_blocker(self) -> None:
+        blocker = self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.begin_attack_declaration()
+        self.engine.selected_attackers = []
+        self.engine.confirm_attackers()
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.block_assignments = {attacker.unit_id: None}
+
+        self.assertTrue(self.engine.can_creature_block_attacker(blocker, attacker))
+
+    def test_defense_zero_creature_cannot_block_under_runtime_rule(self) -> None:
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        zero_defense = self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+
+        self.assertFalse(self.engine.can_creature_block_attacker(zero_defense, attacker))
+
     def test_attack_selection_with_five_attackers_and_five_blockers_is_fast(self) -> None:
         for _ in range(5):
             self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
