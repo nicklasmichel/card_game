@@ -4,9 +4,64 @@ from typing import List
 
 import pygame
 
-from core.game_mode import is_builder_mode
-from core.models import Ability, CardTemplate, CardType, Element, SpellTiming
+from core.models import Ability, CardTemplate, CardType, Element
 from ui.style import CARD_BADGE_LIGHT, CARD_BORDER
+
+
+ABILITY_NAME_ORDER = [
+    Ability.DEATHTOUCH,
+    Ability.ENRAGED,
+    Ability.PROVOKE,
+    Ability.TRAMPLE,
+    Ability.HASTE,
+    Ability.FLYING,
+    Ability.VIGILANT,
+    Ability.VIGILANCE,
+    Ability.LIFE_STEAL,
+    Ability.LIFELINK,
+    Ability.MAGIC_RESISTANT,
+]
+
+ABILITY_DISPLAY_NAMES = {
+    Ability.DEATHTOUCH: "Deathtouch",
+    Ability.ENRAGED: "Wuetend",
+    Ability.PROVOKE: "Provoke",
+    Ability.TRAMPLE: "trample",
+    Ability.HASTE: "haste",
+    Ability.FLYING: "flying",
+    Ability.VIGILANT: "Vigilance",
+    Ability.VIGILANCE: "Vigilance",
+    Ability.LIFE_STEAL: "Lifelink",
+    Ability.LIFELINK: "Lifelink",
+    Ability.MAGIC_RESISTANT: "Magieresistent",
+}
+
+ABILITY_DESCRIPTIONS = {
+    Ability.DEATHTOUCH: "Whenever this creature deals at least 1 damage to another creature, destroy that creature.",
+    Ability.HASTE: "This creature enters ready instead of tapped, so it can attack immediately or stay ready to block.",
+    Ability.FLYING: "This creature can only be blocked by creatures with Flying, but it can block creatures without Flying.",
+    Ability.TRAMPLE: "If this creature wins a blocked attack, excess damage is dealt to the defending player.",
+    Ability.ENRAGED: "When this creature attacks, you may choose a creature the defending player controls. That creature blocks this creature.",
+    Ability.PROVOKE: "When this creature attacks, you may choose a creature the defending player controls. That creature blocks this creature.",
+    Ability.VIGILANT: "Attacking does not cause this creature to tap. It still enters tapped when built.",
+    Ability.VIGILANCE: "Attacking does not cause this creature to tap. It still enters tapped when built.",
+    Ability.LIFE_STEAL: "Whenever this creature deals damage, it heals itself by that amount, up to its maximum Life.",
+    Ability.LIFELINK: "Whenever this creature deals damage, it heals itself by that amount, up to its maximum Life.",
+    Ability.MAGIC_RESISTANT: "Diese Kreatur kann nicht das Ziel von Ritualen, Spontanzaubern oder Kampfzaubern sein.",
+}
+
+ABILITY_ART_KEYS = {
+    Ability.DEATHTOUCH: "deathtouch",
+    Ability.PROVOKE: "provoke",
+    Ability.ENRAGED: "provoke",
+    Ability.TRAMPLE: "trample",
+    Ability.HASTE: "haste",
+    Ability.FLYING: "flying",
+    Ability.VIGILANCE: "vigilance",
+    Ability.VIGILANT: "vigilance",
+    Ability.LIFELINK: "lifesteal",
+    Ability.LIFE_STEAL: "lifesteal",
+}
 
 
 def blit_text_with_shadow(surface: pygame.Surface, font: pygame.font.Font, text: str, color, x: int, y: int) -> None:
@@ -35,21 +90,16 @@ def get_element_symbol_key(element: Element) -> str:
 def get_creature_type_line(self, template: CardTemplate) -> str:
     if template.card_type == CardType.CREATURE:
         return f"Kreatur - {template.element.value}"
-    if template.card_type == CardType.SPELL and template.spell_timing is not None:
-        return f"{template.spell_timing.value} - {template.element.value}"
     return f"{template.card_type.value} - {template.element.value}"
 
 
 def get_card_ability_lines(self, template: CardTemplate) -> tuple[str, str]:
-    if is_builder_mode() and getattr(template, "template_id", "").startswith("builder_ability_"):
+    if getattr(template, "template_id", "").startswith("builder_ability_"):
         return template.name, ""
     names = self.get_ability_names(template.abilities)
     line_one = ", ".join(names)
     if not line_one and template.card_type in {CardType.RITUAL, CardType.SPELL}:
-        if template.card_type == CardType.SPELL and template.spell_timing is not None:
-            line_one = template.spell_timing.value
-        else:
-            line_one = template.card_type.value
+        line_one = template.card_type.value
     line_two = "" if template.card_type == CardType.CREATURE and names else normalize_rules_text(getattr(template, "rules_text", ""), names)
     return line_one, line_two
 
@@ -89,56 +139,31 @@ def get_display_template_stats(self, template) -> tuple[str, str, str, str]:
 
 
 def get_ability_names(self, abilities) -> List[str]:
-    order = [
-        Ability.DEATHTOUCH,
-        Ability.ENRAGED,
-        Ability.PROVOKE,
-        Ability.TRAMPLE,
-        Ability.HASTE,
-        Ability.FLYING,
-        Ability.VIGILANT,
-        Ability.VIGILANCE,
-        Ability.LIFE_STEAL,
-        Ability.LIFELINK,
-        Ability.MAGIC_RESISTANT,
-    ]
-    display_names = {
-        Ability.DEATHTOUCH: "Deathtouch",
-        Ability.ENRAGED: "Wuetend",
-        Ability.PROVOKE: "Provoke",
-        Ability.TRAMPLE: "Trampelnd",
-        Ability.HASTE: "Haste" if is_builder_mode() else "Schnell",
-        Ability.FLYING: "Flying" if is_builder_mode() else "Fliegend",
-        Ability.VIGILANT: "Vigilance" if is_builder_mode() else "Wachsam",
-        Ability.VIGILANCE: "Vigilance",
-        Ability.LIFE_STEAL: "Lifelink" if is_builder_mode() else "Lebensraub",
-        Ability.LIFELINK: "Lifelink",
-        Ability.MAGIC_RESISTANT: "Magieresistent",
-    }
-    return [display_names.get(ability, ability.value) for ability in order if ability in abilities]
+    return [ABILITY_DISPLAY_NAMES.get(ability, ability.value) for ability in ABILITY_NAME_ORDER if ability in abilities]
 
 
 def get_ability_description(ability: Ability) -> str:
-    descriptions = {
-        Ability.DEATHTOUCH: "Whenever this creature deals at least 1 damage to another creature, destroy that creature.",
-        Ability.HASTE: "This creature can attack during the turn it is created." if is_builder_mode() else "Schnelle Kreaturen kommen ungetappt ins Spiel und koennen direkt angreifen oder blocken.",
-        Ability.FLYING: "This creature can only be blocked by creatures with Flying." if is_builder_mode() else "Fliegende Kreaturen koennen nur von Kreaturen mit Fliegend geblockt werden.",
-        Ability.TRAMPLE: "Excess damage dealt to a blocking creature is dealt to the defending player.",
-        Ability.ENRAGED: "When this creature attacks, you may choose a creature the defending player controls. That creature blocks this creature.",
-        Ability.PROVOKE: "When this creature attacks, you may choose a creature the defending player controls. That creature blocks this creature.",
-        Ability.VIGILANT: "Attacking does not cause this creature to tap." if is_builder_mode() else "Diese Kreatur wird beim Angreifen nicht getappt.",
-        Ability.VIGILANCE: "Attacking does not cause this creature to tap.",
-        Ability.LIFE_STEAL: "Whenever this creature deals damage, it heals itself by that amount, up to its maximum Life." if is_builder_mode() else "Wenn diese Kreatur Schaden verursacht, heilt sie sich selbst um den tatsaechlich verursachten Schaden bis maximal zu ihrem Leben.",
-        Ability.LIFELINK: "Whenever this creature deals damage, it heals itself by that amount, up to its maximum Life.",
-        Ability.MAGIC_RESISTANT: "Diese Kreatur kann nicht das Ziel von Ritualen, Spontanzaubern oder Kampfzaubern sein.",
-    }
-    return descriptions.get(ability, ability.value)
+    return ABILITY_DESCRIPTIONS.get(ability, ability.value)
+
+
+def get_card_art_key(self, source) -> str | None:
+    template_id = getattr(source, "template_id", None)
+    if isinstance(template_id, str) and template_id in getattr(self, "card_art_images", {}):
+        return template_id
+    abilities = getattr(source, "abilities", frozenset())
+    for ability in ABILITY_NAME_ORDER:
+        if ability not in abilities:
+            continue
+        art_key = ABILITY_ART_KEYS.get(ability)
+        if art_key is not None and art_key in getattr(self, "card_art_images", {}):
+            return art_key
+    return None
 
 
 def get_card_preview_ability_details(self, source) -> List[tuple[str, str]]:
     template = source.template if hasattr(source, "template") else source
     template_id = getattr(template, "template_id", "")
-    if is_builder_mode() and template_id.startswith("builder_ability_"):
+    if template_id.startswith("builder_ability_"):
         card_name = getattr(template, "name", "Ability")
         return [
             (card_name, get_ability_description(getattr(Ability, template_id.removeprefix("builder_ability_").upper(), Ability.PROVOKE))),
@@ -151,23 +176,10 @@ def get_card_preview_ability_details(self, source) -> List[tuple[str, str]]:
     ordered_names = self.get_ability_names(abilities)
     if not ordered_names:
         return []
-    name_by_ability = {
-        Ability.DEATHTOUCH: "Deathtouch",
-        Ability.ENRAGED: "Wuetend",
-        Ability.PROVOKE: "Provoke",
-        Ability.TRAMPLE: "Trampelnd",
-        Ability.HASTE: "Haste" if is_builder_mode() else "Schnell",
-        Ability.FLYING: "Flying" if is_builder_mode() else "Fliegend",
-        Ability.VIGILANT: "Vigilance" if is_builder_mode() else "Wachsam",
-        Ability.VIGILANCE: "Vigilance",
-        Ability.LIFE_STEAL: "Lifelink" if is_builder_mode() else "Lebensraub",
-        Ability.LIFELINK: "Lifelink",
-        Ability.MAGIC_RESISTANT: "Magieresistent",
-    }
     details: List[tuple[str, str]] = []
-    for ability in (Ability.DEATHTOUCH, Ability.PROVOKE, Ability.ENRAGED, Ability.TRAMPLE, Ability.HASTE, Ability.FLYING, Ability.VIGILANCE, Ability.VIGILANT, Ability.LIFELINK, Ability.LIFE_STEAL, Ability.MAGIC_RESISTANT):
+    for ability in ABILITY_NAME_ORDER:
         if ability in abilities:
-            details.append((name_by_ability[ability], get_ability_description(ability)))
+            details.append((ABILITY_DISPLAY_NAMES[ability], get_ability_description(ability)))
     return details
 
 def normalize_rules_text(rules_text: str, ability_names: List[str]) -> str:

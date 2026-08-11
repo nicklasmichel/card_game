@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.builder_rules import coerce_builder_creature_ability
 from core.models import Ability
 
 
@@ -56,6 +57,32 @@ class BuilderCreatureCandidate:
             self.sw,
             self.lw,
         )
+
+    @property
+    def has_haste(self) -> bool:
+        return self.builder_ability == Ability.HASTE
+
+    @property
+    def builder_ability(self) -> Ability | None:
+        try:
+            return coerce_builder_creature_ability(self.abilities)
+        except ValueError:
+            return None
+
+    def has_ability(self, ability: Ability) -> bool:
+        return ability in self.abilities
+
+    @property
+    def haste_cost(self) -> int:
+        return 0
+
+    @property
+    def enters_tapped(self) -> bool:
+        return not self.has_haste
+
+    @property
+    def key(self) -> tuple[int, int, int, int, str]:
+        return self.signature + (getattr(self.builder_ability, "name", "-"),)
 
 
 @dataclass(frozen=True)

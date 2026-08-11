@@ -6,14 +6,13 @@ from unittest.mock import patch
 import core.config as config
 from core.ai.builder import choose_builder_blocks, evaluate_best_builder_attack, plan_builder_turn
 from core.game_logic import GameEngine
-from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_MAIN_1, ResourceCard
+from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_MAIN_1, ResourceCard
 
 
 class BuilderDebugLoggingTests(unittest.TestCase):
     def setUp(self) -> None:
         patcher = patch.multiple(
             config,
-            GAME_MODE="builder",
             BUILDER_AI_DEBUG=0,
             BUILDER_AI_DEBUG_TOP_N=3,
             BUILDER_AI_DEBUG_BUILD_TOP_N=3,
@@ -26,6 +25,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
 
     def make_engine(self) -> GameEngine:
         engine = GameEngine()
+        engine.debug_log_to_messages = True
         engine.log_messages.clear()
         return engine
 
@@ -57,7 +57,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
             vw=vw,
             sw=sw,
             lw=lw,
-            abilities=frozenset(),
+            abilities=frozenset({Ability.VIGILANCE}),
         )
         creature.tapped = not ready
         creature.summoning_sick = not ready
@@ -140,7 +140,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
     def plan_signature(self, decision) -> tuple:
         return (
             decision.action_candidate.action_kind,
-            None if decision.action_candidate.creature_candidate is None else decision.action_candidate.creature_candidate.signature,
+            None if decision.action_candidate.creature_candidate is None else decision.action_candidate.creature_candidate.key,
             decision.ability_action.action_kind,
             tuple() if decision.predicted_attack_decision is None else decision.predicted_attack_decision.candidate.attacker_ids,
         )
@@ -210,9 +210,11 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertIn("[AI STATE]", plan_logs)
         self.assertIn("fingerprint_before=", plan_logs)
         self.assertIn("future_raw=", plan_logs)
-        self.assertIn("new_unit_tapped=true", plan_logs)
+        self.assertIn("ability=", plan_logs)
+        self.assertIn("ability_cost=", plan_logs)
+        self.assertIn("haste_cost=", plan_logs)
+        self.assertIn("enters_tapped=", plan_logs)
         self.assertIn("block_reason=defense_zero", plan_logs)
-        self.assertNotIn("provoke", plan_logs.lower())
         self.assertNotIn("forced=", plan_logs.lower())
 
         attack_engine = self.make_attack_engine()
@@ -270,6 +272,19 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         pass_engine = self.make_pass_engine()
         plan_builder_turn(pass_engine.ai_player, pass_engine)
         self.assertIn("candidate=pass", "\n".join(pass_engine.log_messages))
+
+    def test_build_and_plan_logs_show_ability_and_readiness_fields(self) -> None:
+        self.set_debug(1, top_n=3, build_top_n=3)
+
+        engine = self.make_plan_engine()
+        plan_builder_turn(engine.ai_player, engine)
+        logs = "\n".join(engine.log_messages)
+
+        self.assertIn("ability=", logs)
+        self.assertIn("ability_cost=0", logs)
+        self.assertIn("haste_cost=0", logs)
+        self.assertIn("haste=true", logs)
+        self.assertIn("enters_tapped=false", logs)
 
     def test_gap_matches_winner_minus_runner_up(self) -> None:
         self.set_debug(1, top_n=2, build_top_n=2)
@@ -330,24 +345,17 @@ class BuilderDebugLoggingTests(unittest.TestCase):
 
         self.assertIn("can_block=false", logs)
         self.assertIn("block_reason=defense_zero", logs)
-        self.assertIn("new_unit_tapped=true", logs)
-        self.assertIn("new_unit_can_attack=false", logs)
-        self.assertIn("new_unit_can_block=false", logs)
+        self.assertIn("new_unit_tapped=", logs)
+        self.assertIn("new_unit_can_attack=", logs)
+        self.assertIn("new_unit_can_block=", logs)
 
-    def test_simulation_source_and_deck_mode_behavior(self) -> None:
+    def test_simulation_source_is_marked_in_debug_output(self) -> None:
         self.set_debug(1)
 
         simulation_engine = self.make_attack_engine()
         simulation_engine.simulation_mode = True
         evaluate_best_builder_attack(simulation_engine.ai_player, simulation_engine)
         self.assertIn("source=simulation", "\n".join(simulation_engine.log_messages))
-
-        with patch.object(config, "GAME_MODE", "deck"):
-            deck_engine = self.make_engine()
-            deck_engine.phase = PHASE_MAIN_1
-            self.set_builder_resources(deck_engine, deck_engine.ai_player, 4)
-            plan_builder_turn(deck_engine.ai_player, deck_engine)
-            self.assertEqual(self.debug_lines(deck_engine.log_messages), [])
 
     def test_debug_output_is_deterministic_for_identical_state(self) -> None:
         self.set_debug(1, top_n=2, build_top_n=2)

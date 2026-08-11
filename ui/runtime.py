@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.models import (
-    PHASE_GAME_OVER,
-    MAIN_PHASES,
-    PHASE_MULLIGAN,
-)
+from core.models import PHASE_GAME_OVER
 from ui.style import BG_COLOR, FPS
 
 
@@ -81,9 +77,6 @@ def get_think_progress(self, player) -> float | None:
 
 
 def handle_ui_action(self, action: str) -> bool:
-    if action == "ui_toggle_enemy_hand":
-        self.show_enemy_hand_cards = not self.show_enemy_hand_cards
-        return True
     if action == "ui_toggle_pause":
         now = pygame.time.get_ticks()
         if self.paused:
@@ -91,8 +84,6 @@ def handle_ui_action(self, action: str) -> bool:
                 paused_duration = now - self.pause_started_at_ms
                 for popup in self.damage_popups:
                     popup["started_at_ms"] += paused_duration
-                for reveal in self.recycle_reveals:
-                    reveal["started_at_ms"] += paused_duration
                 for animation in self.creature_lunges.values():
                     animation["started_at_ms"] += paused_duration
             self.paused = False
@@ -128,9 +119,7 @@ def handle_mouse_down(self, position: tuple[int, int]) -> None:
 def handle_mouse_up(self, position: tuple[int, int]) -> None:
     if self.dragged_hand_card_id is None:
         return
-    if self.drag_active and self.can_drag_hand_card_to_resource() and self.can_drop_on_resource_area(position):
-        self.engine.play_hand_card_as_resource(self.dragged_hand_card_id)
-    elif self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
+    if self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
         self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
     else:
         self.engine.handle_click("hand", self.dragged_hand_card_id)
@@ -157,15 +146,10 @@ def handle_mouse_click(self, position: tuple[int, int]) -> None:
                 self.engine.handle_action(spec.action)
                 self.update_decision_timer(force_reset=True)
             return
-    enemy_deck_target = self.get_target_at_position("enemy_deck", position)
-    if enemy_deck_target is not None:
-        self.handle_ui_action("ui_toggle_enemy_hand")
-        return
     for area in self.click_targets:
         target = self.get_target_at_position(area, position)
         if target is not None:
-            area_name = "hand" if area == "mulligan_hand" else area
-            self.engine.handle_click(area_name, target[1])
+            self.engine.handle_click(area, target[1])
             self.update_decision_timer(force_reset=True)
             return
 
@@ -181,32 +165,20 @@ def draw(self) -> None:
     self.creature_rects.clear()
     self.summoner_rects.clear()
 
-    previous_show_enemy_hand_cards = self.show_enemy_hand_cards
-    reveal_enemy_hand_from_effect = any(
-        getattr(creature, "reveal_opponent_hand", False)
-        for creature in self.engine.human_player.battlefield
-    )
-    self.show_enemy_hand_cards = self.show_enemy_hand_cards or reveal_enemy_hand_from_effect
     self.draw_enemy_area()
     self.draw_player_area()
     self.draw_combat_links()
     self.draw_creature_overlays()
     self.draw_damage_popups()
     self.draw_side_panel()
-    self.draw_recycle_reveals()
     self.draw_buttons()
     self.draw_dragged_card()
 
-    if self.engine.phase == PHASE_MULLIGAN:
-        self.draw_mulligan_overlay()
     if getattr(self.engine, "pending_dice_battles", None) or self.engine.pending_dice_battle is not None:
         self.draw_dice_battle_overlay()
-    self.draw_discard_target_overlay()
-    self.draw_reaction_focus_preview()
     self.draw_pause_overlay()
     if self.engine.phase == PHASE_GAME_OVER:
         self.draw_game_over_overlay()
     self.draw_card_preview_overlay()
-    self.show_enemy_hand_cards = previous_show_enemy_hand_cards
 
     pygame.display.flip()

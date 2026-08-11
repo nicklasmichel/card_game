@@ -4,7 +4,6 @@ from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from engine.combat_dice import apply_life_steal_healing, apply_prepared_dice_battle
 
 from core.ai.builder import choose_builder_blocks
-from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     PendingDirectAttack,
@@ -14,8 +13,6 @@ from core.models import (
     PHASE_DICE_BATTLE,
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
-    PHASE_REACTION,
-    ReactionTrigger,
 )
 
 
@@ -26,10 +23,7 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
         return False
     if self.get_creature_defense_value(blocker) <= 0:
         return False
-    if is_builder_mode():
-        if blocker.tapped:
-            return False
-    elif not blocker.is_ready():
+    if blocker.tapped:
         return False
     if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
         return False
@@ -43,10 +37,7 @@ def can_creature_be_forced_to_block_attacker(self, blocker, attacker) -> bool:
         return True
     if getattr(blocker, "cannot_block", False):
         return False
-    if is_builder_mode():
-        if blocker.tapped:
-            return False
-    elif not blocker.is_ready():
+    if blocker.tapped:
         return False
     if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
         return False
@@ -111,15 +102,15 @@ def ai_assign_enraged_blocks(self) -> None:
 
 
 def begin_attack_declaration(self) -> None:
-    if self.phase != PHASE_MAIN_1 and not (is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY):
+    if self.phase not in {PHASE_MAIN_1, PHASE_BUILDER_ABILITY}:
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("No creatures can attack." if is_builder_mode() else "Keine Kreaturen koennen angreifen.")
+        self.log("No creatures can attack.")
         return
     self.phase = PHASE_DECLARE_ATTACKERS
     self.selected_attackers = []
-    self.log("Choose your attackers." if is_builder_mode() else "Waehle deine Angreifer.")
+    self.log("Choose your attackers.")
 
 
 def toggle_attacker(self, creature_id: int) -> None:
@@ -155,20 +146,11 @@ def confirm_attackers(self) -> None:
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
-        self.log("No attackers selected." if is_builder_mode() else "Keine Angreifer gewaehlt.")
+        self.log("No attackers selected.")
         self.attack_declared_this_turn = False
         self.enter_second_main_phase()
         return
     self.attack_declared_this_turn = True
-    if getattr(self.active_player, "summoner_key", "") == "air" and not self.active_player.summoner_passive_draw_used_this_turn and len(attackers) >= 3:
-        self.active_player.summoner_passive_draw_used_this_turn = True
-        drawn = self.draw_card_for_player(self.active_player, "Beschwoerer-Passiv")
-        if drawn is not None:
-            self.log(f"{self.active_player.name} zieht 1 Karte durch den Beschwoerer.")
-        elif self.phase != PHASE_GAME_OVER:
-            self.log("Es kann keine Karte durch den Beschwoerer gezogen werden.")
-        if self.phase == PHASE_GAME_OVER:
-            return
     for attacker in attackers:
         if getattr(attacker, "draw_on_attack", 0) <= 0:
             continue
@@ -187,15 +169,15 @@ def advance_after_attackers_declared(self) -> None:
     if not self.defending_player.is_human:
         self.phase = PHASE_DECLARE_BLOCKERS
         self.selected_blocker_id = None
-        if self.active_player.is_human and (not is_builder_mode() or BUILDER_ABILITIES_ENABLED):
+        if self.active_player.is_human and BUILDER_ABILITIES_ENABLED:
             self.log("Optional: choose forced blockers for Provoke attackers, then continue.")
             return
         self.ai_assign_enraged_blocks()
         if not self.available_blockers(self.defending_player):
-            self.log("Enemy has no creatures to block. Damage goes through automatically.")
+            self.log(f"{self.defending_player.name} has no creatures to block. Damage goes through automatically.")
             self.begin_pre_first_combat_window()
             return
-        self.log("Enemy is choosing blockers.")
+        self.log(f"{self.defending_player.name} is choosing blockers.")
         self.ai_assign_blocks()
         self.finish_block_assignment()
         return
@@ -217,11 +199,7 @@ def toggle_blocker_assignment(self, creature_id: int) -> None:
     blocker = self.get_unit_by_id(creature_id)
     if blocker is None or self.get_unit_owner(creature_id) != self.defending_player:
         return
-    if is_builder_mode():
-        if blocker.tapped:
-            self.log("This creature cannot block.")
-            return
-    elif not blocker.is_ready():
+    if blocker.tapped:
         self.log("This creature cannot block.")
         return
     if self.selected_blocker_id == creature_id:
@@ -321,43 +299,18 @@ def finish_block_assignment(self) -> None:
 
 
 def begin_pre_first_combat_window(self) -> None:
-    if is_builder_mode():
-        self.begin_combat_resolution()
-        return
-    self.begin_general_spell_window(
-        trigger=ReactionTrigger.COMBAT_START,
-        first_responder_id=self.active_player.player_id,
-        resume_phase=PHASE_REACTION,
-        continuation=self.begin_combat_resolution,
-    )
+    self.begin_combat_resolution()
 
 
 def begin_post_combat_window(self) -> None:
     self.selected_attackers.clear()
     self.selected_blocker_id = None
     self.selected_attack_target_id = None
-    if is_builder_mode():
-        self.enter_second_main_phase()
-        return
-    self.begin_general_spell_window(
-        trigger=ReactionTrigger.COMBAT_END,
-        first_responder_id=self.active_player.player_id,
-        resume_phase=PHASE_REACTION,
-        continuation=self.enter_second_main_phase,
-    )
+    self.enter_second_main_phase()
 
 
 def ai_assign_blocks(self) -> None:
-    attackers = [
-        attacker
-        for attacker in (self.get_unit_by_id(attacker_id) for attacker_id in self.block_assignments)
-        if attacker is not None
-    ]
-    available_blockers = self.available_blockers(self.defending_player)
-    if is_builder_mode():
-        assignments = choose_builder_blocks(self.defending_player, self)
-    else:
-        assignments = self.ai.choose_blockers_for_attackers(attackers, available_blockers, self.block_assignments)
+    assignments = choose_builder_blocks(self.defending_player, self)
     for attacker_id, blocker_id in assignments.items():
         if attacker_id in self.enraged_forced_attackers:
             continue
@@ -427,12 +380,6 @@ def begin_combat_resolution(self) -> None:
     self.current_attack_index = len(self.combat_queue)
     if self.pending_dice_battles:
         self.pending_dice_battle = self.pending_dice_battles[0]
-        if len(self.pending_dice_battles) == 1:
-            apply_prepared_dice_battle(self, self.pending_dice_battle)
-        else:
-            for battle in self.pending_dice_battles:
-                apply_prepared_dice_battle(self, battle, batched=True)
-            self.cleanup_destroyed_units(log_destruction=not is_builder_mode())
         self.phase = PHASE_DICE_BATTLE
         return
     self.advance_combat_resolution()

@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
+from core.builder_rules import (
+    BUILDER_ABILITIES_ENABLED,
+    BUILDER_ABILITY_COST,
+    BUILDER_CREATURE_ABILITIES,
+    BUILDER_CREATURE_CAP,
+    BUILDER_HASTE_COST,
+    BUILDER_MAX_RESOURCES,
+    builder_creature_ability_set,
+    coerce_builder_creature_ability,
+    validate_builder_creature_ability,
+)
 from core.config import STARTING_LIFE
-from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -29,6 +38,7 @@ BUILDER_RESOURCE_TEMPLATE_ID = "builder_resource"
 BUILDER_PREVIEW_TEMPLATE_ID = "builder_creature_preview"
 BUILDER_ABILITY_PHASE_CARD_LIMIT = 1
 BUILDER_SHARED_ABILITY_COUNTS = 4
+BUILDER_CREATURE_ABILITY_OPTIONS = BUILDER_CREATURE_ABILITIES
 BUILDER_SHARED_ABILITY_SEQUENCE = (
     Ability.DEATHTOUCH,
     Ability.FLYING,
@@ -58,6 +68,12 @@ BUILDER_ABILITY_LABELS = {
     Ability.VIGILANT: "Vigilance",
     Ability.ENRAGED: "Provoke",
 }
+BUILDER_CREATURE_ABILITY_RULES_TEXT = {
+    Ability.HASTE: "Enters ready instead of tapped. It can attack immediately or stay ready to block next turn.",
+    Ability.FLYING: "Can only be blocked by creatures with Flying. It can still block creatures without Flying.",
+    Ability.VIGILANCE: "Does not tap when attacking. It still enters tapped when built.",
+    Ability.TRAMPLE: "If it wins a blocked attack, excess damage is dealt to the defending player.",
+}
 BUILDER_ABILITY_RULES_TEXT = {
     Ability.DEATHTOUCH: "Grant Deathtouch, +1 stat, or deal 1 damage to a creature.",
     Ability.FLYING: "Grant Flying, +1 stat, or deal 1 damage to a creature.",
@@ -67,6 +83,12 @@ BUILDER_ABILITY_RULES_TEXT = {
     Ability.VIGILANCE: "Grant Vigilance, +1 stat, or deal 1 damage to a creature.",
     Ability.PROVOKE: "Grant Provoke, +1 stat, or deal 1 damage to a creature.",
 }
+
+
+def get_builder_creature_ability_label(ability: Ability | None) -> str:
+    if ability is None:
+        return "-"
+    return BUILDER_ABILITY_LABELS[validate_builder_creature_ability(ability)]
 
 
 def builder_resource_template(self) -> CardTemplate:
@@ -82,7 +104,7 @@ def builder_resource_template(self) -> CardTemplate:
 
 
 def builder_mode_active(self) -> bool:
-    return is_builder_mode()
+    return True
 
 
 def builder_abilities_enabled(self) -> bool:
@@ -158,8 +180,8 @@ def discard_builder_ability_card(self, player: PlayerState, card_instance_id: in
 
 def initialize_builder_game(self) -> None:
     self.players = [
-        PlayerState(0, "Player", True, summoner_key="builder", life=STARTING_LIFE),
-        PlayerState(1, "Enemy", False, summoner_key="builder", life=STARTING_LIFE),
+        PlayerState(0, "Player 1", True, summoner_key="builder", life=STARTING_LIFE),
+        PlayerState(1, "Player 2", False, summoner_key="builder", life=STARTING_LIFE),
     ]
     self.turn_number = 0
     self.phase = PHASE_MAIN_1
@@ -191,7 +213,7 @@ def initialize_builder_game(self) -> None:
         seed=self.seed,
         started_at=datetime.now().isoformat(timespec="seconds"),
         start_player=self.players[self.starting_player_id].name,
-        player_names={0: "Player", 1: "Enemy"},
+        player_names={0: "Player 1", 1: "Player 2"},
     )
     self.log("New game started in builder mode.")
     self.start_turn()
@@ -240,27 +262,6 @@ def begin_builder_creature_build(self) -> bool:
         if builder_mode_active(self) and self.active_player.is_human and len(self.active_player.battlefield) >= BUILDER_CREATURE_CAP:
             self.log(f"Creature cap reached ({len(self.active_player.battlefield)}/{BUILDER_CREATURE_CAP}).")
         return False
-    if self.active_player.available_resources() <= 0:
-        creature = create_builder_creature(
-            self,
-            self.active_player,
-            aw=0,
-            vw=0,
-            sw=0,
-            lw=1,
-            abilities=frozenset(),
-        )
-        self.builder_created_this_turn_ids.add(creature.unit_id)
-        self.active_player.main_action_used_this_turn = True
-        if self.statistics is not None:
-            self.statistics.register_creature_played(self.active_player.player_id, 0)
-        self.log(
-            f"{self.active_player.name} creates {creature.name} "
-            f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}) "
-            f"for 0 resource(s)."
-        )
-        finish_builder_main_action(self)
-        return True
     self.pending_builder_creature = PendingBuilderCreatureBuild(available_resources=self.active_player.available_resources())
     self.phase = PHASE_BUILDER_CREATURE
     return True
@@ -299,14 +300,17 @@ def adjust_builder_creature_stat(self, stat_name: str, delta: int) -> None:
 
 
 def toggle_builder_creature_ability(self, ability: Ability) -> None:
-    return
+    pending = self.pending_builder_creature
+    if self.phase != PHASE_BUILDER_CREATURE or pending is None:
+        return
+    pending.choose_ability(validate_builder_creature_ability(ability))
 
 
 def builder_creature_build_is_valid(self, pending: PendingBuilderCreatureBuild | None = None) -> bool:
     current = self.pending_builder_creature if pending is None else pending
     if current is None:
         return False
-    if current.spent_resources <= 0:
+    if current.selected_ability is None:
         return False
     return current.spent_resources <= current.available_resources and current.lw >= 1 and current.aw >= 0 and current.vw >= 0 and current.sw >= 0
 
@@ -337,8 +341,8 @@ def builder_has_any_ability_targets(self, player: PlayerState) -> bool:
         return False
     if any(existing.current_hp > 0 for existing in player.battlefield):
         return True
-    enemy = self.players[1 - player.player_id]
-    return any(existing.current_hp > 0 for existing in enemy.battlefield)
+    opponent = self.players[1 - player.player_id]
+    return any(existing.current_hp > 0 for existing in opponent.battlefield)
 
 
 def _builder_should_skip_first_turn_draw(self, player: PlayerState) -> bool:
@@ -378,10 +382,21 @@ def create_builder_creature(
     vw: int,
     sw: int,
     lw: int,
+    ability: Ability | None = None,
     abilities: frozenset[Ability] = frozenset(),
 ):
     if len(player.battlefield) >= BUILDER_CREATURE_CAP:
         return None
+    raw_abilities = frozenset(abilities)
+    if ability is not None:
+        builder_ability = validate_builder_creature_ability(ability)
+        resolved_abilities = builder_creature_ability_set(builder_ability)
+    else:
+        try:
+            builder_ability = coerce_builder_creature_ability(raw_abilities)
+        except ValueError:
+            builder_ability = None
+        resolved_abilities = builder_creature_ability_set(builder_ability) if builder_ability is not None else raw_abilities
     self.builder_creature_counter += 1
     template = CardTemplate(
         template_id=f"builder_creature_{self.builder_creature_counter}",
@@ -392,7 +407,8 @@ def create_builder_creature(
         lw=lw,
         sw=sw,
         element=Element.AIR,
-        abilities=abilities,
+        abilities=resolved_abilities,
+        builder_ability=builder_ability,
         rules_text="",
         allow_zero_stats=True,
     )
@@ -400,8 +416,9 @@ def create_builder_creature(
     instance_id = self.make_instance_id()
     built = BattlefieldCreature.from_card(CardInstance(instance_id, template))
     built.current_hp = lw
-    built.tapped = True
-    built.summoning_sick = True
+    has_haste = built.builder_ability == Ability.HASTE
+    built.tapped = not has_haste
+    built.summoning_sick = not has_haste
     player.battlefield.append(built)
     return built
 
@@ -425,14 +442,15 @@ def get_builder_preview_creature(self, player: PlayerState) -> BattlefieldCreatu
         lw=pending.lw,
         sw=pending.sw,
         element=Element.AIR,
-        abilities=frozenset(),
+        abilities=builder_creature_ability_set(pending.selected_ability),
+        builder_ability=pending.selected_ability,
         rules_text="",
         allow_zero_stats=True,
     )
     preview = BattlefieldCreature.from_card(CardInstance(-(player.player_id + 1), template))
     preview.current_hp = pending.lw
     preview.tapped = False
-    preview.summoning_sick = True
+    preview.summoning_sick = not pending.has_haste
     setattr(preview, "is_builder_preview", True)
     return preview
 
@@ -454,7 +472,7 @@ def confirm_builder_creature_build(self) -> bool:
         vw=pending.vw,
         sw=pending.sw,
         lw=pending.lw,
-        abilities=frozenset(),
+        ability=pending.selected_ability,
     )
     self.builder_created_this_turn_ids.add(creature.unit_id)
     self.active_player.main_action_used_this_turn = True
@@ -463,7 +481,8 @@ def confirm_builder_creature_build(self) -> bool:
         self.statistics.register_creature_played(self.active_player.player_id, 0)
     self.log(
         f"{self.active_player.name} creates {creature.name} "
-        f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}) "
+        f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}"
+        f" / {get_builder_creature_ability_label(creature.builder_ability)}) "
         f"for {spent} resource(s)."
     )
     finish_builder_main_action(self)

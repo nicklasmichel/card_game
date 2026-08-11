@@ -47,11 +47,6 @@ def prune_finished_visuals(self) -> None:
         for popup in self.damage_popups
         if now - popup["started_at_ms"] <= 3000
     ]
-    self.recycle_reveals = [
-        reveal
-        for reveal in self.recycle_reveals
-        if now - reveal["started_at_ms"] <= 3000
-    ]
     self.creature_lunges = {
         creature_id: animation
         for creature_id, animation in self.creature_lunges.items()
@@ -91,7 +86,3 @@ def draw_creature_overlays(self) -> None:
         if self.last_preview_builder is not None:
             self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
         self.click_targets[target_key].append((rect, creature.unit_id))
-
-
-def draw_recycle_reveals(self) -> None:
-    return

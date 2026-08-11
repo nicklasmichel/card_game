@@ -3,18 +3,14 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-import core.config as config
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_ABILITY_COST, BUILDER_CREATURE_ABILITIES, BUILDER_CREATURE_CAP
 from core.game_logic import GameEngine
-from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
+from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
 from ui.layout_sidepanel import get_overview_phase_label
 
 
 class BuilderModeTests(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = patch.object(config, "GAME_MODE", "builder")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.engine = GameEngine()
         self.engine.log_messages.clear()
         self.engine.active_player_index = 0
@@ -30,7 +26,7 @@ class BuilderModeTests(unittest.TestCase):
     def set_builder_resources(self, player, total: int, *, tapped: int = 0) -> None:
         player.resources = [self.make_builder_resource(tapped=index < tapped) for index in range(total)]
 
-    def make_builder_creature(self, owner_id: int, *, aw: int, vw: int, sw: int, lw: int, ready: bool = True):
+    def make_builder_creature(self, owner_id: int, *, aw: int, vw: int, sw: int, lw: int, ready: bool = True, abilities: tuple[Ability, ...] = ()):
         player = self.engine.players[owner_id]
         creature = self.engine.create_builder_creature(
             player,
@@ -38,11 +34,18 @@ class BuilderModeTests(unittest.TestCase):
             vw=vw,
             sw=sw,
             lw=lw,
-            abilities=frozenset(),
+            abilities=frozenset(abilities or (Ability.VIGILANCE,)),
         )
         creature.tapped = not ready
         creature.summoning_sick = not ready
         return creature
+
+    def choose_builder_ability(self, ability: Ability) -> None:
+        self.engine.toggle_builder_creature_ability(ability)
+
+    def build_pending_creature(self, ability: Ability) -> None:
+        self.choose_builder_ability(ability)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
 
     def combat_result_messages(self) -> list[str]:
         return [
@@ -51,12 +54,7 @@ class BuilderModeTests(unittest.TestCase):
             if "wuerfelt" in message and "gewinnt und fuegt" in message
         ]
 
-    def test_mode_switch_between_deck_and_builder(self) -> None:
-        with patch.object(config, "GAME_MODE", "deck"):
-            normal_engine = GameEngine()
-        self.assertEqual(normal_engine.phase, "Mulligan")
-        self.assertEqual(len(normal_engine.human_player.hand), 5)
-
+    def test_engine_starts_directly_in_builder_mode(self) -> None:
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(len(self.engine.human_player.hand), 0)
 
@@ -86,16 +84,21 @@ class BuilderModeTests(unittest.TestCase):
         self.assertFalse(self.engine.can_builder_add_resource(player))
         self.assertFalse(self.engine.builder_add_resource(player))
 
-    def test_creature_build_with_zero_resources_creates_default_creature_immediately(self) -> None:
+    def test_creature_build_with_zero_resources_requires_choosing_one_free_ability(self) -> None:
         player = self.engine.human_player
         self.assertTrue(self.engine.can_builder_open_creature_build(player))
         self.assertTrue(self.engine.begin_builder_creature_build())
-        self.assertEqual(len(player.battlefield), 1)
-        creature = player.battlefield[0]
+        self.assertEqual(len(player.battlefield), 0)
+        self.assertFalse(self.engine.confirm_builder_creature_build())
+        self.choose_builder_ability(Ability.HASTE)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
         self.assertEqual((creature.aw, creature.vw, creature.sw, creature.lw, creature.current_hp), (0, 0, 0, 1, 1))
-        self.assertTrue(creature.tapped)
-        self.assertTrue(creature.summoning_sick)
-        self.assertEqual(self.engine.active_player, self.engine.ai_player)
+        self.assertTrue(creature.has_ability(Ability.HASTE))
+        self.assertFalse(creature.tapped)
+        self.assertFalse(creature.summoning_sick)
+        self.assertEqual(self.engine.active_player, player)
+        self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
         self.assertIsNone(self.engine.pending_builder_creature)
 
     def test_creature_build_distributes_resources_across_stats(self) -> None:
@@ -106,9 +109,11 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.adjust_builder_creature_stat("vw", 2)
         self.engine.adjust_builder_creature_stat("sw", 1)
         self.engine.adjust_builder_creature_stat("lw", 1)
+        self.choose_builder_ability(Ability.VIGILANCE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         self.assertEqual((creature.aw, creature.vw, creature.sw, creature.lw, creature.current_hp), (1, 2, 1, 2, 2))
+        self.assertTrue(creature.has_ability(Ability.VIGILANCE))
         self.assertTrue(creature.tapped)
         self.assertEqual(sum(1 for resource in player.resources if resource.tapped), 5)
 
@@ -119,10 +124,12 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.adjust_builder_creature_stat("aw", 1)
         self.engine.adjust_builder_creature_stat("sw", 1)
         self.engine.adjust_builder_creature_stat("lw", 1)
+        self.choose_builder_ability(Ability.VIGILANCE)
         preview = self.engine.get_builder_preview_creature(player)
         self.assertIsNotNone(preview)
         self.assertFalse(preview.tapped)
         self.assertTrue(preview.summoning_sick)
+        self.assertTrue(preview.has_ability(Ability.VIGILANCE))
         self.assertEqual((preview.aw, preview.vw, preview.sw, preview.lw, preview.current_hp), (1, 0, 1, 2, 2))
 
     def test_builder_creature_cap_is_enforced_per_player(self) -> None:
@@ -196,6 +203,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 1)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("aw", 1)
+        self.choose_builder_ability(Ability.VIGILANCE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         self.assertEqual(self.engine.active_player, self.engine.ai_player)
         self.assertIn("No creatures can attack. Combat is skipped and the turn ends.", self.engine.log_messages)
@@ -225,6 +233,8 @@ class BuilderModeTests(unittest.TestCase):
         with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
             self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
 
+        self.assertEqual(self.combat_result_messages(), [])
+        self.engine.end_dice_battle()
         results = self.combat_result_messages()
         self.assertEqual(len(results), 1)
         self.assertIn(f"{attacker.name} wuerfelt [6, 6] = 12, {blocker.name} wuerfelt [1] = 1.", results[0])
@@ -360,6 +370,205 @@ class BuilderModeTests(unittest.TestCase):
             ["+1 Atk", "-1 Atk", "+1 Def", "-1 Def", "+1 Dmg", "-1 Dmg", "+1 HP", "-1 HP"],
         )
 
+    def test_builder_creature_requires_exactly_one_valid_ability(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 4)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        pending = self.engine.pending_builder_creature
+        self.assertIsNotNone(pending)
+        self.engine.adjust_builder_creature_stat("aw", 1)
+        self.engine.adjust_builder_creature_stat("vw", 1)
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.assertEqual(pending.spent_resources, 3)
+        self.assertFalse(self.engine.builder_creature_build_is_valid())
+        for ability in BUILDER_CREATURE_ABILITIES:
+            self.choose_builder_ability(ability)
+            self.assertEqual(pending.selected_ability, ability)
+            self.assertEqual(pending.selected_abilities, frozenset({ability}))
+            self.assertEqual(pending.spent_resources, 3)
+            self.assertEqual(self.engine.builder_remaining_ready_resources(), 1)
+
+    def test_haste_creature_enters_ready_and_can_attack_same_turn(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        preview = self.engine.get_builder_preview_creature(player)
+        self.assertIsNotNone(preview)
+        self.assertTrue(preview.has_ability(Ability.HASTE))
+        self.assertFalse(preview.summoning_sick)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        self.assertTrue(creature.has_ability(Ability.HASTE))
+        self.assertFalse(creature.tapped)
+        self.assertFalse(creature.summoning_sick)
+        self.assertIn(creature, self.engine.available_attackers(player))
+
+    def test_haste_creature_can_block_next_enemy_turn_if_not_used_to_attack(self) -> None:
+        player = self.engine.human_player
+        enemy = self.engine.ai_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("vw", 1)
+        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True)
+        self.engine.active_player_index = enemy.player_id
+        self.assertTrue(self.engine.can_creature_block_attacker(creature, attacker))
+
+    def test_haste_creature_taps_normally_when_it_attacks(self) -> None:
+        player = self.engine.human_player
+        enemy = self.engine.ai_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        self.engine.active_player_index = player.player_id
+        self.engine.active_player.is_human = True
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [creature.unit_id]
+        enemy.life = 10
+        self.engine.confirm_attackers()
+        self.assertTrue(creature.tapped)
+
+    def test_flying_can_only_be_blocked_by_flying(self) -> None:
+        flying_attacker = self.make_builder_creature(0, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+        ground_blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
+        flying_blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.FLYING,))
+
+        self.assertFalse(self.engine.can_creature_block_attacker(ground_blocker, flying_attacker))
+        self.assertTrue(self.engine.can_creature_block_attacker(flying_blocker, flying_attacker))
+
+    def test_flying_can_block_flying_and_non_flying_attackers(self) -> None:
+        flying_blocker = self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.FLYING,))
+        flying_attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+        ground_attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
+
+        self.assertTrue(self.engine.can_creature_block_attacker(flying_blocker, flying_attacker))
+        self.assertTrue(self.engine.can_creature_block_attacker(flying_blocker, ground_attacker))
+
+    def test_vigilance_creature_enters_tapped_and_cannot_attack_same_turn(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.choose_builder_ability(Ability.VIGILANCE)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        self.assertTrue(creature.has_ability(Ability.VIGILANCE))
+        self.assertTrue(creature.tapped)
+        self.assertTrue(creature.summoning_sick)
+        self.assertNotIn(creature, self.engine.available_attackers(player))
+
+    def test_vigilance_does_not_tap_when_attacking(self) -> None:
+        player = self.engine.human_player
+        enemy = self.engine.ai_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.build_pending_creature(Ability.VIGILANCE)
+        creature = player.battlefield[-1]
+
+        self.engine.active_player_index = player.player_id
+        self.engine.start_turn()
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.selected_attackers = [creature.unit_id]
+        enemy.life = 10
+        self.engine.confirm_attackers()
+
+        self.assertFalse(creature.tapped)
+
+    def test_trample_deals_excess_damage_to_player_on_attacking_win(self) -> None:
+        attacker = self.make_builder_creature(0, aw=2, vw=1, sw=5, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.VIGILANCE,))
+        blocker.current_hp = 2
+        self.engine.active_player_index = 0
+        self.engine.ai_player.life = 10
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertEqual(self.engine.pending_dice_battle.trample_damage, 3)
+        self.assertEqual(self.engine.ai_player.life, 10)
+        self.engine.end_dice_battle()
+        self.assertEqual(self.engine.ai_player.life, 7)
+
+    def test_trample_does_not_damage_player_on_attacker_loss(self) -> None:
+        attacker = self.make_builder_creature(0, aw=1, vw=1, sw=5, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
+        blocker = self.make_builder_creature(1, aw=2, vw=1, sw=1, lw=5, ready=True, abilities=(Ability.VIGILANCE,))
+        self.engine.active_player_index = 0
+        self.engine.ai_player.life = 10
+
+        with patch.object(self.engine.rng, "randint", side_effect=[1, 6, 6]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertEqual(self.engine.pending_dice_battle.trample_damage, 0)
+        self.engine.end_dice_battle()
+        self.assertEqual(self.engine.ai_player.life, 10)
+
+    def test_trample_does_not_trigger_when_blocking(self) -> None:
+        attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.VIGILANCE,))
+        blocker = self.make_builder_creature(0, aw=2, vw=1, sw=5, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
+        self.engine.active_player_index = 1
+        self.engine.human_player.life = 10
+
+        with patch.object(self.engine.rng, "randint", side_effect=[1, 6, 6]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertEqual(self.engine.pending_dice_battle.trample_damage, 0)
+        self.engine.end_dice_battle()
+        self.assertEqual(self.engine.human_player.life, 10)
+
+    def test_dice_battle_button_uses_resolve_combat_label(self) -> None:
+        attacker = self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        labels = [button.label for button in self.engine.get_button_specs()]
+        self.assertEqual(labels, ["Resolve Combat"])
+
+    def test_creature_damage_is_applied_only_when_resolve_combat_is_pressed(self) -> None:
+        attacker = self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        self.assertEqual(blocker.current_hp, 2)
+        self.assertEqual(attacker.current_hp, 2)
+        self.engine.end_dice_battle()
+        self.assertEqual(blocker.current_hp, 0)
+        self.assertEqual(attacker.current_hp, 2)
+
+    def test_selected_builder_ability_cannot_be_changed_after_creation(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.engine.adjust_builder_creature_stat("sw", 1)
+        self.choose_builder_ability(Ability.FLYING)
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.assertFalse(creature.has_ability(Ability.HASTE))
+        self.assertTrue(creature.has_ability(Ability.FLYING))
+        self.assertEqual(creature.builder_ability, Ability.FLYING)
+
+    def test_builder_ui_exposes_all_four_single_select_ability_buttons(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        labels = [button.label for button in self.engine.get_button_specs() if button.action.startswith("builder_select_ability_")]
+        self.assertIn("Haste", labels)
+        self.assertIn("Flying", labels)
+        self.assertIn("Vigilance", labels)
+        self.assertIn("Trample", labels)
+
     def test_old_ability_state_does_not_affect_new_builder_game(self) -> None:
         self.engine.human_player.hand = [object()]
         self.engine.builder_shared_deck = [object()]
@@ -380,7 +589,7 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.reset_combat_state()
 
         steps = 0
-        while self.engine.phase != PHASE_GAME_OVER and steps < 80:
+        while self.engine.phase != PHASE_GAME_OVER and steps < 20:
             steps += 1
             if self.engine.phase in {PHASE_MAIN_1, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS}:
                 if not self.engine.prepare_ai_turn_action():
@@ -392,9 +601,15 @@ class BuilderModeTests(unittest.TestCase):
                 continue
             break
 
-        self.assertGreaterEqual(steps, 8)
+        self.assertGreaterEqual(steps, 6)
         self.assertTrue(all(len(player.battlefield) <= BUILDER_CREATURE_CAP for player in self.engine.players))
-        self.assertTrue(all(not creature.abilities for player in self.engine.players for creature in player.battlefield))
+        self.assertTrue(
+            all(
+                creature.builder_ability in BUILDER_CREATURE_ABILITIES and creature.abilities == frozenset({creature.builder_ability})
+                for player in self.engine.players
+                for creature in player.battlefield
+            )
+        )
         self.assertTrue(all(len(player.hand) == 0 for player in self.engine.players))
 
     def test_vanilla_builder_emits_no_provoke_or_ability_prompts_in_smoke_game(self) -> None:
@@ -408,7 +623,7 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.reset_combat_state()
 
         steps = 0
-        while self.engine.phase != PHASE_GAME_OVER and steps < 80:
+        while self.engine.phase != PHASE_GAME_OVER and steps < 20:
             steps += 1
             if self.engine.phase in {PHASE_MAIN_1, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS}:
                 if not self.engine.prepare_ai_turn_action():

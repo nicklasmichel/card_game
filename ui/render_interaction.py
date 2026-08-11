@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.game_mode import is_builder_mode
-from core.models import CardType, MAIN_PHASES, PHASE_REACTION
+from core.models import PHASE_BUILDER_ABILITY
 from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
 
 
@@ -15,19 +14,16 @@ def draw_playfield_section_box(self, rect: pygame.Rect, zone_key: str) -> None:
     pygame.draw.rect(mask, (255, 255, 255, 255), pygame.Rect(0, 0, rect.width, rect.height), border_radius=5)
     zone_surface.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     self.screen.blit(zone_surface, rect.topleft)
-    if zone_key == "player_resources" and self.dragged_hand_card_id is not None and self.can_drag_hand_card_to_resource():
-        if self.drag_current_pos is not None and self.can_drop_on_resource_area(self.drag_current_pos):
-            pygame.draw.rect(self.screen, ATTACK_HIGHLIGHT, rect, 3, border_radius=5)
-    if zone_key == "player_creatures" and self.dragged_hand_card_id is not None and self.can_drag_hand_card_to_creature():
+    if zone_key == "player_1_creatures" and self.dragged_hand_card_id is not None and self.can_drag_hand_card_to_creature():
         if self.drag_current_pos is not None and self.can_drop_on_creature_area(self.drag_current_pos):
             pygame.draw.rect(self.screen, ATTACK_HIGHLIGHT, rect, 3, border_radius=5)
 
 
 def get_zone_fill_color(self, zone_key: str) -> tuple[int, int, int, int]:
-    if zone_key in {"enemy_hand", "player_hand"}:
+    if zone_key in {"player_2_hand", "player_1_hand"}:
         return ZONE_HAND
 
-    player = self.engine.ai_player if zone_key.startswith("enemy_") else self.engine.human_player
+    player = self.engine.player_two if zone_key.startswith("player_2_") else self.engine.player_one
     deck_key = player.summoner_key or "air"
     base_map = {
         "fire": (214, 74, 66),
@@ -52,81 +48,20 @@ def get_target_at_position(self, area: str, position: tuple[int, int]) -> tuple[
 
 
 def can_drag_hand_card(self, card_id: int | None = None) -> bool:
-    return self.can_drag_hand_card_to_resource() or self.can_drag_hand_card_to_creature(card_id)
-
-
-def can_drag_hand_card_to_resource(self) -> bool:
-    if is_builder_mode():
-        return False
-    if (
-        self.engine.phase in MAIN_PHASES
-        and self.engine.active_player.is_human
-        and self.engine.active_player.resources_played_this_turn < 2
-        and self.engine.pending_recycle_payment is None
-    ):
-        return True
-    if (
-        self.engine.phase not in MAIN_PHASES
-        or not self.engine.active_player.is_human
-        or self.engine.pending_recycle_payment is not None
-        or self.dragged_hand_card_id is None
-    ):
-        return False
-    card = next(
-        (existing for existing in self.engine.human_player.hand if existing.instance_id == self.dragged_hand_card_id),
-        None,
-    )
-    return (
-        card is not None
-        and card.template.card_type in {CardType.RITUAL, CardType.SPELL}
-        and self.engine.can_play_card(self.engine.active_player, card)
-    )
-
-
-def can_drop_on_resource_area(self, position: tuple[int, int]) -> bool:
-    return self.player_resource_rect.collidepoint(position)
+    return self.can_drag_hand_card_to_creature(card_id)
 
 
 def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
-    if self.engine.pending_recycle_payment is not None:
-        return False
     target_card_id = self.dragged_hand_card_id if card_id is None else card_id
     if target_card_id is None:
         return False
-    if (
-        is_builder_mode()
-        and self.engine.phase == "Builder Ability"
-        and self.engine.active_player.is_human
-    ):
-        card = next(
-            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
-            None,
-        )
-        return card is not None and self.engine.get_builder_card_ability(card) is not None
-    if self.engine.phase in MAIN_PHASES and self.engine.active_player.is_human:
-        card = next(
-            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
-            None,
-        )
-        return (
-            card is not None
-            and card.template.card_type in {CardType.CREATURE, CardType.RITUAL, CardType.SPELL}
-            and self.engine.can_play_card(self.engine.active_player, card)
-        )
-    if (
-        self.engine.phase == PHASE_REACTION
-        and self.engine.reaction_priority_player_id == self.engine.human_player.player_id
-    ):
-        card = next(
-            (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
-            None,
-        )
-        return (
-            card is not None
-            and card.template.card_type in {CardType.RITUAL, CardType.SPELL}
-            and self.engine.can_react_with_card(self.engine.human_player, card)
-        )
-    return False
+    if self.engine.phase != PHASE_BUILDER_ABILITY or not self.engine.active_player.is_human:
+        return False
+    card = next(
+        (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),
+        None,
+    )
+    return card is not None and self.engine.get_builder_card_ability(card) is not None
 
 
 def can_drop_on_creature_area(self, position: tuple[int, int]) -> bool:

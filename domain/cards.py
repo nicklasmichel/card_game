@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
-from .enums import Ability, CardType, Element, ReactionTrigger, SpellEffect, SpellTargetMode, SpellTiming
+from .enums import Ability, CardType, Element
 
 
 @dataclass(frozen=True)
@@ -33,29 +32,14 @@ class CardTemplate:
     lw: int | None = None
     sw: int | None = None
     abilities: frozenset[Ability] = frozenset()
+    builder_ability: Ability | None = None
     card_type: CardType = CardType.CREATURE
     rules_text: str = ""
-    self_damage_on_play: int = 0
-    opponent_damage_on_play: int = 0
-    discard_self_on_play: int = 0
-    discard_opponent_on_play: int = 0
-    reveal_opponent_hand: bool = False
     return_to_deck_end_of_turn: bool = False
     cannot_block: bool = False
     must_attack_each_turn: bool = False
     all_attackers_die_bonus: int = 0
-    spell_effect: SpellEffect | None = None
-    spell_timing: SpellTiming | None = None
-    legal_reaction_windows: tuple[ReactionTrigger, ...] = ()
-    reaction_trigger: ReactionTrigger | None = None
-    target_mode: SpellTargetMode = SpellTargetMode.NONE
-    spell_amount: int = 0
-    combat_aw_bonus: int = 0
-    combat_sw_bonus: int = 0
-    spell_draw_count: int = 0
-    sacrifice_own_creature_on_cast: bool = False
     allow_zero_stats: bool = False
-    draw_on_play: int = 0
     draw_on_attack: int = 0
     draw_on_death: int = 0
     draw_on_player_damage: int = 0
@@ -112,75 +96,3 @@ class ResourceCard:
     template: CardTemplate
     resource_id: int | None = None
     tapped: bool = False
-
-
-@dataclass
-class PendingRecyclePayment:
-    card_instance_id: int
-    required_count: int
-    selected_resource_ids: list[int]
-    return_phase: str
-
-
-@dataclass
-class PendingForcedDiscard:
-    target_player_id: int
-    required_count: int
-    selected_card_ids: list[int]
-    source_card_name: str
-    return_phase: str
-
-
-@dataclass(frozen=True)
-class SpellTargetRef:
-    target_type: str
-    player_id: int | None = None
-    creature_id: int | None = None
-    card_instance_id: int | None = None
-    die_index: int | None = None
-    die_role: str | None = None
-    open_die_id: int | None = None
-
-
-@dataclass
-class ReactionContext:
-    trigger: ReactionTrigger
-    active_player: Any
-    source_player: Any | None = None
-    source_card: CardInstance | None = None
-    source_creature: Any | None = None
-    target_creature: Any | None = None
-    opposing_creature: Any | None = None
-    die_result: int | None = None
-    damage_amount: int | None = None
-    attacker_die: Any | None = None
-    blocker_die: Any | None = None
-    attacker_creature: Any | None = None
-    blocker_creature: Any | None = None
-    pending_damage_attacker_id: int | None = None
-
-
-@dataclass
-class StackItem:
-    source_card: CardInstance
-    controller: Any
-    targets: list[SpellTargetRef]
-    effect: SpellEffect
-    context: ReactionContext | None
-    amount: int = 0
-    draw_count: int = 0
-    sacrificed_creature_power: int = 0
-    selected_keyword_ability: Ability | None = None
-    selected_combat_bonus_mode: str | None = None
-
-
-@dataclass
-class PendingSpellCast:
-    card_instance_id: int
-    controller_id: int
-    origin_phase: str
-    selected_targets: list[SpellTargetRef] = field(default_factory=list)
-    selected_sacrifice_creature_id: int | None = None
-    selected_keyword_ability: Ability | None = None
-    selected_combat_bonus_mode: str | None = None
-    selected_recycle_resource_ids: list[int] = field(default_factory=list)

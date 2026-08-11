@@ -1,5 +1,7 @@
 from ui.layout_board import (
     draw_arrowhead,
+    draw_area_status_block,
+    draw_builder_resource_counter_text,
     draw_builder_resource_stack_card,
     draw_combat_links,
     draw_creatures,
@@ -30,6 +32,8 @@ from ui.layout_sidepanel import (
 __all__ = [
     "blit_text",
     "draw_arrowhead",
+    "draw_area_status_block",
+    "draw_builder_resource_counter_text",
     "draw_builder_resource_stack_card",
     "draw_buttons",
     "draw_combat_links",

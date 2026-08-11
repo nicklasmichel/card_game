@@ -5,7 +5,6 @@ import time
 import unittest
 from unittest.mock import patch
 
-import core.config as config
 from core.ai.builder import (
     BuilderBlockCandidate,
     choose_builder_blocks,
@@ -18,9 +17,6 @@ from core.models import Ability, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_
 
 class BuilderBlockAITests(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = patch.object(config, "GAME_MODE", "builder")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.engine = GameEngine()
         self.engine.log_messages.clear()
 
@@ -274,85 +270,84 @@ class BuilderBlockAITests(unittest.TestCase):
         decision_times: list[float] = []
         for seed in range(30):
             with self.subTest(seed=seed):
-                with patch.object(config, "GAME_MODE", "builder"):
-                    engine = GameEngine()
-                    engine.players = [
-                        PlayerState(0, "Spieler", False, summoner_key="builder", life=4 + (seed % 7), resources=[self.make_builder_resource(engine)]),
-                        PlayerState(1, "Gegner", False, summoner_key="builder", life=10, resources=[self.make_builder_resource(engine)]),
-                    ]
-                    engine.active_player_index = 1
-                    engine.phase = PHASE_DECLARE_BLOCKERS
-                    engine.reset_combat_state()
-                    attackers = []
-                    for index in range(1 + (seed % 3)):
-                        attacker = engine.create_builder_creature(
-                            engine.ai_player,
-                            aw=1 + ((seed + index) % 4),
-                            vw=1,
-                            sw=2 + ((seed + index * 2) % 5),
-                            lw=2 + ((seed + index) % 3),
-                            abilities=frozenset(
-                                ability
-                                for ability, enabled in (
-                                    (Ability.TRAMPLE, (seed + index) % 4 == 0),
-                                    (Ability.FLYING, (seed + index) % 5 == 0),
-                                    (Ability.LIFE_STEAL, (seed + index) % 6 == 0),
-                                )
-                                if enabled
-                            ),
-                        )
-                        attacker.tapped = False
-                        attacker.summoning_sick = False
-                        attackers.append(attacker)
-                    blockers = []
-                    for index in range(1 + ((seed + 1) % 3)):
-                        blocker = engine.create_builder_creature(
-                            engine.human_player,
-                            aw=1 + ((seed + index) % 3),
-                            vw=1 + ((seed + index * 3) % 4),
-                            sw=1 + ((seed + index) % 4),
-                            lw=2 + ((seed + index * 2) % 4),
-                            abilities=frozenset({Ability.FLYING}) if (seed + index) % 4 == 0 else frozenset(),
-                        )
-                        blocker.tapped = False
-                        blocker.summoning_sick = False
-                        blockers.append(blocker)
-                    engine.block_assignments = {attacker.unit_id: None for attacker in attackers}
-                    if attackers and blockers and seed % 5 == 0:
-                        forced_attacker = next((attacker for attacker in attackers if attacker.has_ability(Ability.FLYING)), attackers[0])
-                        legal_blocker = next(
-                            (
-                                blocker for blocker in blockers
-                                if engine.can_creature_be_forced_to_block_attacker(blocker, forced_attacker)
-                            ),
-                            None,
-                        )
-                        if legal_blocker is not None:
-                            engine.block_assignments[forced_attacker.unit_id] = legal_blocker.unit_id
-                            engine.enraged_forced_attackers = {forced_attacker.unit_id}
-                    start = time.perf_counter()
-                    planned = choose_builder_blocks(engine.human_player, engine)
-                    decision_times.append(time.perf_counter() - start)
-                    attacker_lookup = {attacker.unit_id: attacker for attacker in attackers}
-                    blocker_lookup = {blocker.unit_id: blocker for blocker in blockers}
-                    used_blockers = [blocker_id for blocker_id in planned.values() if blocker_id is not None]
-                    self.assertEqual(len(used_blockers), len(set(used_blockers)))
-                    self.assertTrue(all(math.isfinite(value) for value in getattr(engine.ai, "_last_builder_block_score").__dict__.values() if isinstance(value, float)))
-                    if not any(blocker_id is not None for blocker_id in planned.values()):
-                        no_block_decisions += 1
-                    baseline_damage = sum(attacker.sw for attacker in attackers)
-                    if baseline_damage >= engine.human_player.life and any(blocker_id is not None for blocker_id in planned.values()):
-                        lethal_block_decisions += 1
-                    for attacker_id, blocker_id in planned.items():
-                        attacker = attacker_lookup.get(attacker_id)
-                        blocker = blocker_lookup.get(blocker_id) if blocker_id is not None else None
-                        if blocker_id is None:
-                            continue
-                        self.assertIsNotNone(attacker)
-                        self.assertIsNotNone(blocker)
-                        self.assertTrue(engine.can_creature_block_attacker(blocker, attacker))
-                        if blocker.current_hp <= attacker.sw and blocker.sw < attacker.current_hp:
-                            chump_blocks += 1
+                engine = GameEngine()
+                engine.players = [
+                    PlayerState(0, "Spieler", False, summoner_key="builder", life=4 + (seed % 7), resources=[self.make_builder_resource(engine)]),
+                    PlayerState(1, "Gegner", False, summoner_key="builder", life=10, resources=[self.make_builder_resource(engine)]),
+                ]
+                engine.active_player_index = 1
+                engine.phase = PHASE_DECLARE_BLOCKERS
+                engine.reset_combat_state()
+                attackers = []
+                for index in range(1 + (seed % 3)):
+                    attacker = engine.create_builder_creature(
+                        engine.ai_player,
+                        aw=1 + ((seed + index) % 4),
+                        vw=1,
+                        sw=2 + ((seed + index * 2) % 5),
+                        lw=2 + ((seed + index) % 3),
+                        abilities=frozenset(
+                            ability
+                            for ability, enabled in (
+                                (Ability.TRAMPLE, (seed + index) % 4 == 0),
+                                (Ability.FLYING, (seed + index) % 5 == 0),
+                                (Ability.LIFE_STEAL, (seed + index) % 6 == 0),
+                            )
+                            if enabled
+                        ),
+                    )
+                    attacker.tapped = False
+                    attacker.summoning_sick = False
+                    attackers.append(attacker)
+                blockers = []
+                for index in range(1 + ((seed + 1) % 3)):
+                    blocker = engine.create_builder_creature(
+                        engine.human_player,
+                        aw=1 + ((seed + index) % 3),
+                        vw=1 + ((seed + index * 3) % 4),
+                        sw=1 + ((seed + index) % 4),
+                        lw=2 + ((seed + index * 2) % 4),
+                        abilities=frozenset({Ability.FLYING}) if (seed + index) % 4 == 0 else frozenset(),
+                    )
+                    blocker.tapped = False
+                    blocker.summoning_sick = False
+                    blockers.append(blocker)
+                engine.block_assignments = {attacker.unit_id: None for attacker in attackers}
+                if attackers and blockers and seed % 5 == 0:
+                    forced_attacker = next((attacker for attacker in attackers if attacker.has_ability(Ability.FLYING)), attackers[0])
+                    legal_blocker = next(
+                        (
+                            blocker for blocker in blockers
+                            if engine.can_creature_be_forced_to_block_attacker(blocker, forced_attacker)
+                        ),
+                        None,
+                    )
+                    if legal_blocker is not None:
+                        engine.block_assignments[forced_attacker.unit_id] = legal_blocker.unit_id
+                        engine.enraged_forced_attackers = {forced_attacker.unit_id}
+                start = time.perf_counter()
+                planned = choose_builder_blocks(engine.human_player, engine)
+                decision_times.append(time.perf_counter() - start)
+                attacker_lookup = {attacker.unit_id: attacker for attacker in attackers}
+                blocker_lookup = {blocker.unit_id: blocker for blocker in blockers}
+                used_blockers = [blocker_id for blocker_id in planned.values() if blocker_id is not None]
+                self.assertEqual(len(used_blockers), len(set(used_blockers)))
+                self.assertTrue(all(math.isfinite(value) for value in getattr(engine.ai, "_last_builder_block_score").__dict__.values() if isinstance(value, float)))
+                if not any(blocker_id is not None for blocker_id in planned.values()):
+                    no_block_decisions += 1
+                baseline_damage = sum(attacker.sw for attacker in attackers)
+                if baseline_damage >= engine.human_player.life and any(blocker_id is not None for blocker_id in planned.values()):
+                    lethal_block_decisions += 1
+                for attacker_id, blocker_id in planned.items():
+                    attacker = attacker_lookup.get(attacker_id)
+                    blocker = blocker_lookup.get(blocker_id) if blocker_id is not None else None
+                    if blocker_id is None:
+                        continue
+                    self.assertIsNotNone(attacker)
+                    self.assertIsNotNone(blocker)
+                    self.assertTrue(engine.can_creature_block_attacker(blocker, attacker))
+                    if blocker.current_hp <= attacker.sw and blocker.sw < attacker.current_hp:
+                        chump_blocks += 1
         self.assertTrue(decision_times)
         self.assertTrue(all(math.isfinite(value) for value in decision_times))
         self.assertGreaterEqual(no_block_decisions, 0)

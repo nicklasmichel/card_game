@@ -6,19 +6,14 @@ from typing import Callable, Dict, List, Tuple
 
 import pygame
 
-from core.game_mode import is_builder_mode
 from core.game_logic import GameEngine
 from core.models import (
     ButtonSpec,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
-    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
-    PHASE_MAIN_2,
-    PHASE_RECYCLE_PAYMENT,
-    PHASE_MULLIGAN,
 )
 from ui.card_rendering import (
     blit_centered_text,
@@ -31,9 +26,7 @@ from ui.card_rendering import (
     build_resource_back_surface,
     can_drag_hand_card,
     can_drag_hand_card_to_creature,
-    can_drag_hand_card_to_resource,
     can_drop_on_creature_area,
-    can_drop_on_resource_area,
     clear_drag_state,
     draw_art_panel,
     draw_card_badge,
@@ -50,6 +43,7 @@ from ui.card_rendering import (
     draw_summoner_footer,
     draw_summoner_life_circle,
     fit_text,
+    get_card_art_key,
     get_card_preview_ability_details,
     get_display_builder_creature_stats,
     get_display_creature_stats,
@@ -82,6 +76,8 @@ from ui.assets import (
 from ui.layout import (
     blit_text,
     draw_arrowhead,
+    draw_area_status_block,
+    draw_builder_resource_counter_text,
     draw_builder_resource_stack_card,
     draw_buttons,
     draw_combat_links,
@@ -104,14 +100,7 @@ from ui.layout import (
     get_side_panel_layout,
     handle_log_scroll,
 )
-from ui.overlays import (
-    draw_discard_target_overlay,
-    draw_dice_battle_overlay,
-    draw_game_over_overlay,
-    draw_mulligan_overlay,
-    draw_pause_overlay,
-    draw_reaction_focus_preview,
-)
+from ui.overlays import draw_dice_battle_overlay, draw_game_over_overlay, draw_pause_overlay
 from ui.runtime import (
     draw,
     get_decision_marker,
@@ -130,7 +119,6 @@ from ui.visuals import (
     draw_combat_damage_popups,
     draw_creature_overlays,
     draw_damage_popups,
-    draw_recycle_reveals,
     prune_finished_visuals,
 )
 
@@ -161,6 +149,7 @@ class TcgPrototypeApp:
     get_display_creature_stats = get_display_creature_stats
     get_display_template_stats = get_display_template_stats
     get_card_preview_ability_details = get_card_preview_ability_details
+    get_card_art_key = get_card_art_key
     draw_art_panel = draw_art_panel
     draw_resource_backdrop = draw_resource_backdrop
     build_resource_back_surface = build_resource_back_surface
@@ -172,8 +161,6 @@ class TcgPrototypeApp:
     blit_wrapped_text = blit_wrapped_text
     get_target_at_position = get_target_at_position
     can_drag_hand_card = can_drag_hand_card
-    can_drag_hand_card_to_resource = can_drag_hand_card_to_resource
-    can_drop_on_resource_area = can_drop_on_resource_area
     can_drag_hand_card_to_creature = can_drag_hand_card_to_creature
     can_drop_on_creature_area = can_drop_on_creature_area
     clear_drag_state = clear_drag_state
@@ -184,6 +171,8 @@ class TcgPrototypeApp:
     get_playfield_sections = get_playfield_sections
     draw_polyline = draw_polyline
     draw_arrowhead = draw_arrowhead
+    draw_area_status_block = draw_area_status_block
+    draw_builder_resource_counter_text = draw_builder_resource_counter_text
     draw_builder_resource_stack_card = draw_builder_resource_stack_card
     draw_link_marker = draw_link_marker
     draw_resources = draw_resources
@@ -198,12 +187,9 @@ class TcgPrototypeApp:
     draw_side_piles = draw_side_piles
     format_target_ref = format_target_ref
     handle_log_scroll = handle_log_scroll
-    draw_mulligan_overlay = draw_mulligan_overlay
-    draw_discard_target_overlay = draw_discard_target_overlay
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
     draw_pause_overlay = draw_pause_overlay
-    draw_reaction_focus_preview = draw_reaction_focus_preview
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
@@ -226,7 +212,6 @@ class TcgPrototypeApp:
     draw_damage_popups = draw_damage_popups
     draw_combat_damage_popups = draw_combat_damage_popups
     draw_creature_overlays = draw_creature_overlays
-    draw_recycle_reveals = draw_recycle_reveals
     run = run
     get_decision_marker = get_decision_marker
     update_decision_timer = update_decision_timer
@@ -260,10 +245,7 @@ class TcgPrototypeApp:
         self.card_width = 172 if self.window_width >= 1800 else 151
         self.card_height = int(self.card_width * 1.26)
         self.card_gap = 18 if self.window_width >= 1800 else 13
-        if is_builder_mode():
-            self.side_panel_width = 470 if self.window_width >= 1800 else 430
-        else:
-            self.side_panel_width = 380 if self.window_width >= 1800 else 350
+        self.side_panel_width = 470 if self.window_width >= 1800 else 430
         self.main_area_width = self.window_width - self.side_panel_width - 30
         pygame.display.set_caption("TCG Prototype")
         self.clock = pygame.time.Clock()
@@ -279,7 +261,6 @@ class TcgPrototypeApp:
         self.log_scroll_offset = 0
         self.log_viewport_rect = pygame.Rect(0, 0, 0, 0)
         self.buttons: List[Tuple[pygame.Rect, ButtonSpec]] = []
-        self.show_enemy_hand_cards = False
         self.primary_action_space_down = False
         self.paused = False
         self.pause_started_at_ms: int | None = None
@@ -299,7 +280,6 @@ class TcgPrototypeApp:
         self.preview_info_builder: Callable[[], list[tuple[str, str]]] | None = None
         self.preview_surface: pygame.Surface | None = None
         self.damage_popups: List[dict] = []
-        self.recycle_reveals: List[dict] = []
         self.creature_lunges: Dict[int, dict] = {}
         self.creature_overlay_draws: List[tuple] = []
         self.combat_overlay_card_rects: Dict[str, pygame.Rect] = {}
@@ -307,27 +287,18 @@ class TcgPrototypeApp:
         self.summoner_rects: Dict[int, pygame.Rect] = {}
         self.click_targets: Dict[str, List[Tuple[pygame.Rect, int]]] = {
             "hand": [],
-            "enemy_deck": [],
-            "player_summoner": [],
-            "enemy_summoner": [],
-            "player_creatures": [],
-            "enemy_creatures": [],
+            "player_1_creatures": [],
+            "player_2_creatures": [],
             "combat_lane": [],
-            "mulligan_hand": [],
-            "player_resources": [],
-            "discard_cards": [],
+            "player_1_resources": [],
         }
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
-        if is_builder_mode():
-            hand_rect = sections["player_hand"] if player.player_id == self.engine.human_player.player_id else sections["enemy_hand"]
-            return pygame.Rect(hand_rect.right - self.card_width - 18, hand_rect.y + 8, self.card_width, self.card_height)
-        resource_rect = sections["player_resources"] if player.player_id == self.engine.human_player.player_id else sections["enemy_resources"]
-        start_x = resource_rect.x + 10
-        available_width = resource_rect.width - 20
-        summoner_x = start_x + max(0, (available_width - self.card_width) // 2)
-        return pygame.Rect(summoner_x, resource_rect.y + 10, self.card_width, self.card_height)
+        area_rect = sections["player_1_creatures"] if player.player_id == self.engine.player_one.player_id else sections["player_2_creatures"]
+        width = max(self.card_width, 180)
+        height = self.title_font.get_height() * 3 + 24
+        return pygame.Rect(area_rect.x + 8, area_rect.y + 8, width, height)
 
     def is_creature_visually_tapped(self, creature) -> bool:
         return (

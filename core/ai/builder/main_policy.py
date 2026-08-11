@@ -48,15 +48,16 @@ def score_builder_resource_action(snapshot, resource_limit: int) -> float:
 def _debug_builder_decision(engine, snapshot, scored_candidates, resource_score: float, decision: str) -> None:
     if not getattr(config, "BUILDER_AI_DEBUG", 0):
         return
-    engine.log(
+    logger = getattr(engine, "debug_log", None) or engine.log
+    logger(
         "Builder AI: "
         f"resources={snapshot.own_total_resources} ready={snapshot.own_ready_resources} "
         f"board={snapshot.own_board_value:.1f} enemy_board={snapshot.enemy_board_value:.1f}"
     )
-    engine.log("Candidates:")
+    logger("Candidates:")
     for index, (candidate, score) in enumerate(scored_candidates[:5], start=1):
         abilities = ", ".join(ability.value for ability in sorted(candidate.abilities, key=lambda ability: ability.value)) or "-"
-        engine.log(
+        logger(
             f"{index}. {candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw} {abilities} | "
             f"cost {candidate.cost} | score {score.total:.2f} "
             f"(stats {score.raw_stats:.2f}, abil {score.abilities:.2f}, fit {score.board_fit:.2f}, syn {score.synergy:.2f}, "
@@ -64,5 +65,5 @@ def _debug_builder_decision(engine, snapshot, scored_candidates, resource_score:
             f"pdmg {score.expected_player_damage:.2f}, heal {score.expected_heal:.2f}, "
             f"kill {score.kill_pressure:.2f}, risk {score.death_risk:.2f})"
         )
-    engine.log(f"Resource score: {resource_score:.2f}")
-    engine.log(f"Decision: {decision}")
+    logger(f"Resource score: {resource_score:.2f}")
+    logger(f"Decision: {decision}")

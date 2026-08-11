@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from core.builder_rules import builder_creature_ability_set, coerce_builder_creature_ability
 from .enums import Ability
 
 
@@ -16,7 +17,7 @@ class PendingBuilderCreatureBuild:
     sw: int = 0
     lw: int = 1
     available_resources: int = 0
-    selected_abilities: set[Ability] = field(default_factory=set)
+    selected_ability: Ability | None = None
 
     @property
     def spent_resources(self) -> int:
@@ -26,6 +27,17 @@ class PendingBuilderCreatureBuild:
             + max(0, self.sw - self.base_sw)
             + max(0, self.lw - self.base_lw)
         )
+
+    @property
+    def has_haste(self) -> bool:
+        return self.selected_ability == Ability.HASTE
+
+    @property
+    def selected_abilities(self) -> frozenset[Ability]:
+        return builder_creature_ability_set(self.selected_ability)
+
+    def choose_ability(self, ability: Ability) -> None:
+        self.selected_ability = coerce_builder_creature_ability(ability)
 
 
 @dataclass

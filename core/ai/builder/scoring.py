@@ -160,8 +160,6 @@ def _score_raw_stats(candidate: BuilderCreatureCandidate) -> float:
 
 
 def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:
-    if not BUILDER_ABILITIES_ENABLED:
-        return 0.0
     score = sum(ABILITY_BASE_WEIGHTS.get(ability, 0.0) for ability in candidate.abilities)
     offense = candidate.aw + candidate.sw
     defense = candidate.vw + candidate.lw
@@ -330,18 +328,19 @@ def _score_candidate_matchups(
 
     offensive = _evaluate_offensive_matchups(candidate_future, future_enemy_blockers, prefer_forced=Ability.ENRAGED in candidate.abilities)
     defensive = _evaluate_defensive_matchups(candidate_future, enemy_attackers)
+    immediate_defense = _evaluate_immediate_defense(candidate_immediate, enemy_attackers)
     immediate = _evaluate_immediate_pressure(candidate_immediate, snapshot, immediate_enemy_blockers)
     evasion = _evaluate_evasion(candidate_future, candidate_immediate, snapshot, future_enemy_blockers, immediate_enemy_blockers)
 
     return {
         "matchup_offense": offensive["score"],
-        "matchup_defense": defensive["score"],
+        "matchup_defense": defensive["score"] + immediate_defense["score"],
         "immediate_pressure": immediate["score"],
         "evasion": evasion["score"],
         "expected_player_damage": offensive["expected_player_damage"] + immediate["expected_player_damage"],
         "expected_heal": offensive["expected_heal"] + immediate["expected_heal"],
-        "kill_pressure": offensive["kill_pressure"] + defensive["kill_pressure"],
-        "death_risk": offensive["death_risk"] + defensive["death_risk"],
+        "kill_pressure": offensive["kill_pressure"] + defensive["kill_pressure"] + immediate_defense["kill_pressure"],
+        "death_risk": offensive["death_risk"] + defensive["death_risk"] + immediate_defense["death_risk"],
     }
 
 
@@ -496,6 +495,17 @@ def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnaps
         "score": offensive["score"] + lethal_bonus,
         "expected_player_damage": offensive["expected_player_damage"],
         "expected_heal": offensive["expected_heal"],
+    }
+
+
+def _evaluate_immediate_defense(candidate_view, enemy_attackers: list) -> dict[str, float]:
+    if not candidate_view.has_ability(Ability.HASTE):
+        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
+    defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers)
+    return {
+        "score": defensive["score"],
+        "kill_pressure": defensive["kill_pressure"],
+        "death_risk": defensive["death_risk"],
     }
 
 

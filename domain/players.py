@@ -20,8 +20,8 @@ class BattlefieldCreature:
     sw: int
     element: Element
     abilities: frozenset[Ability]
+    builder_ability: Ability | None
     rules_text: str
-    reveal_opponent_hand: bool
     return_to_deck_end_of_turn: bool
     cannot_block: bool
     must_attack_each_turn: bool
@@ -54,8 +54,8 @@ class BattlefieldCreature:
             sw=card.template.effective_sw,
             element=card.template.element,
             abilities=card.template.abilities,
+            builder_ability=card.template.builder_ability,
             rules_text=card.template.rules_text,
-            reveal_opponent_hand=card.template.reveal_opponent_hand,
             return_to_deck_end_of_turn=card.template.return_to_deck_end_of_turn,
             cannot_block=card.template.cannot_block,
             must_attack_each_turn=card.template.must_attack_each_turn,

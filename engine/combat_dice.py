@@ -10,7 +10,6 @@ from core.models import (
     PendingDiceBattle,
     PHASE_DICE_BATTLE,
 )
-from core.game_mode import is_builder_mode
 
 
 def make_combat_unit_snapshot(self, creature: BattlefieldCreature) -> CombatUnitSnapshot:
@@ -51,7 +50,6 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
     self.pending_dice_battle = battle
     self.pending_dice_battles = [battle]
     self.log(f"Wuerfelkampf startet: {battle.attacker_snapshot.name} gegen {battle.blocker_snapshot.name}.")
-    apply_prepared_dice_battle(self, battle)
     self.phase = PHASE_DICE_BATTLE
 
 
@@ -271,10 +269,9 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
     battle.resolution_log = _build_battle_resolution_log(self, battle, damage)
     if batched:
         return
-    builder_mode = is_builder_mode()
-    if builder_mode and battle.resolution_log:
+    if battle.resolution_log:
         self.log(battle.resolution_log)
-    self.cleanup_destroyed_units(log_destruction=not builder_mode)
+    self.cleanup_destroyed_units(log_destruction=False)
     if self.statistics is not None:
         self.statistics.finish_creature_combat(
             attacker_owner=battle.attacker_owner,
@@ -288,8 +285,6 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
             attacker_hp_after=battle.attacker_hp_after,
             blocker_hp_after=battle.blocker_hp_after,
         )
-    if not builder_mode and battle.resolution_log:
-        self.log(battle.resolution_log)
     self.check_for_game_over()
 
 
@@ -297,34 +292,27 @@ def end_dice_battle(self) -> None:
     battles = list(getattr(self, "pending_dice_battles", []) or ([] if self.pending_dice_battle is None else [self.pending_dice_battle]))
     if not battles or not all(battle.resolution_complete for battle in battles):
         return
-    builder_mode = is_builder_mode()
-    if len(battles) > 1:
-        for battle in battles:
-            apply_prepared_dice_battle(self, battle, batched=True)
-        if builder_mode:
-            for battle in battles:
-                if battle.resolution_log:
-                    self.log(battle.resolution_log)
-            self.cleanup_destroyed_units(log_destruction=False)
-        else:
-            self.cleanup_destroyed_units()
-        for battle in battles:
-            if self.statistics is not None:
-                self.statistics.finish_creature_combat(
-                    attacker_owner=battle.attacker_owner,
-                    blocker_owner=battle.blocker_owner,
-                    attacker_creature_name=battle.attacker_snapshot.name,
-                    blocker_creature_name=battle.blocker_snapshot.name,
-                    attacker_aw=battle.attacker_snapshot.aw,
-                    attacker_vw=battle.attacker_snapshot.vw,
-                    blocker_aw=battle.blocker_snapshot.aw,
-                    blocker_vw=battle.blocker_snapshot.vw,
-                    attacker_hp_after=battle.attacker_hp_after,
-                    blocker_hp_after=battle.blocker_hp_after,
-                )
-            if not builder_mode and battle.resolution_log:
-                self.log(battle.resolution_log)
-        self.check_for_game_over()
+    for battle in battles:
+        apply_prepared_dice_battle(self, battle, batched=True)
+    for battle in battles:
+        if battle.resolution_log:
+            self.log(battle.resolution_log)
+    self.cleanup_destroyed_units(log_destruction=False)
+    for battle in battles:
+        if self.statistics is not None:
+            self.statistics.finish_creature_combat(
+                attacker_owner=battle.attacker_owner,
+                blocker_owner=battle.blocker_owner,
+                attacker_creature_name=battle.attacker_snapshot.name,
+                blocker_creature_name=battle.blocker_snapshot.name,
+                attacker_aw=battle.attacker_snapshot.aw,
+                attacker_vw=battle.attacker_snapshot.vw,
+                blocker_aw=battle.blocker_snapshot.aw,
+                blocker_vw=battle.blocker_snapshot.vw,
+                attacker_hp_after=battle.attacker_hp_after,
+                blocker_hp_after=battle.blocker_hp_after,
+            )
+    self.check_for_game_over()
     self.pending_dice_battle = None
     self.pending_dice_battles = []
     self.advance_combat_resolution()

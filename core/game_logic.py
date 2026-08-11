@@ -5,11 +5,8 @@ from random import Random
 from typing import Dict, List, Optional
 
 from core.ai_logic import SimpleAI
-from cards import build_card_templates, build_test_deck, validate_deck_definitions
-from cards.registry import get_deck_templates
 from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
-from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, HUMAN_DECK_NAME, STARTING_HAND_SIZE, STARTING_LIFE
-from core.game_mode import is_builder_mode
+from core.config import STARTING_LIFE
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -22,27 +19,16 @@ from core.models import (
     PendingBuilderAbilityUse,
     PendingBuilderCreatureBuild,
     PendingDirectAttack,
-    PendingForcedDiscard,
     PHASE_BUILDER_ABILITY,
     PHASE_BUILDER_CREATURE,
     PHASE_DECLARE_ATTACKERS,
     PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
-    PHASE_FORCED_DISCARD,
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
-    PHASE_MULLIGAN,
-    PHASE_REACTION,
-    PHASE_RECYCLE_PAYMENT,
-    PHASE_SPELL_TARGETING,
     PendingDiceBattle,
-    PendingRecyclePayment,
-    PendingSpellCast,
     PlayerState,
-    ReactionContext,
     ResourceCard,
-    SpellTargetRef,
-    StackItem,
 )
 from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatistics
 
@@ -132,19 +118,12 @@ class GameEngine:
         process_ai_turn,
     )
     from engine.flow import (
-        apply_ai_mulligan,
-        apply_human_mulligan,
         auto_resolve_human_no_blockers_if_needed,
         available_attackers,
         available_blockers,
         begin_first_turn,
         begin_main_phase_priority_window,
-        can_take_second_main_actions,
-        begin_forced_discard,
         clear_end_of_turn_temporary_effects,
-        choose_cards_to_discard_for_ai,
-        confirm_forced_discard,
-        discard_cards,
         draw_card_for_player,
         enter_combat_or_second_main,
         enter_second_main_phase,
@@ -156,102 +135,32 @@ class GameEngine:
         handle_action,
         handle_human_timeout,
         has_more_dice_battles_after_current,
-        has_playable_creature_in_hand,
         is_own_main_phase,
-        lose_game_from_empty_deck,
         resolve_stalled_dice_battle_if_needed,
         request_combat_transition,
         start_turn,
-        toggle_forced_discard_selection,
         toggle_hand_card,
     )
     from engine.resources import (
-        activate_summoner_draw,
-        begin_recycle_payment,
-        can_activate_summoner_draw,
-        cancel_recycle_payment,
-        confirm_recycle_payment,
         format_card_cost,
         format_resource_play_log,
         get_card_cost_to_pay,
         handle_creature_player_damage_triggers,
         play_hand_card_in_summoning_zone,
-        play_hand_card_as_creature,
-        play_hand_card_as_resource,
-        play_selected_card_as_resource,
-        play_selected_creature_card,
-        register_hand_card_played,
-        resolve_creature_play,
         resolve_end_of_turn_returns,
-        toggle_recycle_resource_selection,
     )
-    from engine.spells import (
-        begin_spell_from_hand,
-        begin_spell_cast,
-        begin_spell_cast_from_card,
-        advance_combat_window_priority,
-        begin_reaction_window,
-        build_spell_reaction_context,
-        begin_general_spell_window,
-        begin_triggered_reaction_window,
-        can_play_card,
-        can_target_creature_with_explicit_spell,
-        can_react_with_card,
-        cancel_pending_spell_cast,
-        cleanup_destroyed_units_for_spells,
-        commit_spell_cast,
-        confirm_pending_spell_cast,
-        count_valid_return_to_hand_targets,
-        deal_spell_damage_to_player,
-        describe_pending_spell_requirements,
-        destroy_creature_immediately,
-        finish_reaction_window,
-        finish_spell_resolution_after_reaction,
-        get_card_from_pending_spell,
-        get_current_attacker_creatures,
-        get_valid_turn_attack_bonus_targets,
-        get_valid_discard_creature_target_refs,
-        get_player_by_id,
-        get_player_combat_dice,
-        get_reaction_window_profile,
-        get_reaction_window_description,
-        get_reaction_window_title,
-        has_valid_verwehung_target,
-        has_valid_attacker_combat_bonus_targets,
-        has_valid_turn_attack_bonus_targets,
-        has_valid_jagdwind_target,
-        has_valid_combat_die_target,
-        is_valid_turn_attack_bonus_target,
-        is_general_spell_window_trigger,
-        is_spell_card,
-        pass_reaction,
-        pending_spell_ready,
-        reaction_window_is_combat_window,
-        reaction_window_shows_stack_preview,
-        remove_creature_from_combat,
-        resolve_spell_stack_to,
-        resolve_stack_item,
-        resolve_target_discard_card,
-        resolve_target_discard_card_for_controller,
-        resolve_target_creature,
-        resume_stack_resolution,
-        select_pending_spell_combat_bonus_mode,
-        select_pending_spell_keyword,
-        select_spell_target_ref,
-        toggle_pending_spell_recycle_resource,
-    )
+    from engine.destroy import destroy_creature_immediately
     from engine.turns import (
         clear_combat_temporary_effects,
     )
 
     def __init__(self) -> None:
-        self.templates = build_card_templates()
-        validate_deck_definitions(self.templates)
+        self.templates = {}
         self.players: List[PlayerState] = []
         self.active_player_index = 0
         self.starting_player_id = 0
         self.turn_number = 0
-        self.phase = PHASE_MULLIGAN if ENABLE_MULLIGAN else PHASE_MAIN_1
+        self.phase = PHASE_MAIN_1
         self.game_over_text = ""
         self.log_messages: List[str] = []
         self.game_over_summary_lines: List[str] = []
@@ -275,21 +184,6 @@ class GameEngine:
         self.enraged_forced_attackers: set[int] = set()
         self.pending_dice_battle: Optional[PendingDiceBattle] = None
         self.pending_dice_battles: List[PendingDiceBattle] = []
-        self.pending_recycle_payment: Optional[PendingRecyclePayment] = None
-        self.pending_forced_discard: Optional[PendingForcedDiscard] = None
-        self.pending_spell_cast: Optional[PendingSpellCast] = None
-        self.spell_stack: List[StackItem] = []
-        self.reaction_context: Optional[ReactionContext] = None
-        self.reaction_priority_player_id: Optional[int] = None
-        self.reaction_pass_count = 0
-        self.reaction_sequence_player_ids: List[int] = []
-        self.reaction_sequence_index = 0
-        self.reaction_base_stack_size = 0
-        self.reaction_resume_phase = PHASE_MAIN_1
-        self.reaction_continuation = None
-        self.pending_stack_resolution_base_size = 0
-        self.pending_stack_resolution_continuation = None
-        self.resolving_stack = False
         self.pending_direct_attack: Optional[PendingDirectAttack] = None
         self.pending_direct_attacks: List[PendingDirectAttack] = []
         self.combat_queue: List[int] = []
@@ -308,6 +202,7 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
+        self.debug_log_to_messages = False
 
         self.start_new_game()
 
@@ -317,6 +212,14 @@ class GameEngine:
 
     @property
     def ai_player(self) -> PlayerState:
+        return self.players[1]
+
+    @property
+    def player_one(self) -> PlayerState:
+        return self.players[0]
+
+    @property
+    def player_two(self) -> PlayerState:
         return self.players[1]
 
     @property
@@ -384,11 +287,19 @@ class GameEngine:
         self.next_instance_id += 1
         return instance_id
 
-    def log(self, message: str) -> None:
-        self.log_messages.append(message)
+    def _write_log_line(self, message: str) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as log_file:
             log_file.write(message + "\n")
+
+    def log(self, message: str) -> None:
+        self.log_messages.append(message)
+        self._write_log_line(message)
+
+    def debug_log(self, message: str) -> None:
+        if self.debug_log_to_messages:
+            self.log_messages.append(message)
+        self._write_log_line(message)
 
     def queue_player_damage_event(
         self,
@@ -441,93 +352,47 @@ class GameEngine:
             PlayerState(0, "Spieler", True),
             PlayerState(1, "Gegner", False),
         ]
-        deck_names = {
-            0: HUMAN_DECK_NAME,
-            1: AI_DECK_NAME,
-        }
         self.log_messages.clear()
         self.game_over_summary_lines.clear()
         self.game_over_text = ""
         self.turn_number = 0
-        self.phase = PHASE_MULLIGAN
+        self.phase = PHASE_MAIN_1
         self.game_over_saved = False
         self.exit_requested = False
         self.pending_visual_events.clear()
         self.reset_combat_state()
-        if is_builder_mode():
-            self.initialize_builder_game()
-            return
-
-        for player in self.players:
-            player.summoner_key = deck_names[player.player_id]
-            player.life = STARTING_LIFE
-            player.deck = build_test_deck(deck_names[player.player_id], self.templates, self.make_instance_id)
-            self.rng.shuffle(player.deck)
-            player.hand.clear()
-            player.discard_pile.clear()
-            player.battlefield.clear()
-            player.resources.clear()
-            player.resources_played_this_turn = 0
-            player.summoner_passive_draw_used_this_turn = False
-            player.creature_cost_reduction_this_turn = 0
-            player.summoner_tapped = False
-            player.turns_started = 0
-            player.mulligan_used = False
-            for _ in range(STARTING_HAND_SIZE):
-                drawn = player.draw_card()
-                if drawn is not None:
-                    continue
-
-        self.starting_player_id = self.rng.choice([0, 1])
-        self.statistics = GameStatistics(
-            game_id=self.game_id,
-            seed=self.seed,
-            started_at=datetime.now().isoformat(timespec="seconds"),
-            start_player=self.players[self.starting_player_id].name,
-            player_names={0: "Spieler", 1: "Gegner"},
-        )
-        self.log("Neue Partie gestartet.")
-        self.selected_hand_ids.clear()
-        if ENABLE_MULLIGAN:
-            self.apply_ai_mulligan()
-            self.phase = PHASE_MULLIGAN
-            self.log("Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.")
-        else:
-            self.log("Mulligan ist deaktiviert.")
-            self.begin_first_turn()
+        self.initialize_builder_game()
+        return
 
     def start_test_combat(self) -> None:
+        self.initialize_builder_game()
         for player in self.players:
-            player.summoner_key = HUMAN_DECK_NAME if player.player_id == 0 else AI_DECK_NAME
             player.life = STARTING_LIFE
-            player.deck.clear()
-            player.hand.clear()
-            player.discard_pile.clear()
-            player.battlefield.clear()
-            player.resources.clear()
-            player.resources_played_this_turn = 0
-            player.summoner_passive_draw_used_this_turn = False
-            player.creature_cost_reduction_this_turn = 0
-            player.summoner_tapped = False
             player.turns_started = 0
-            player.mulligan_used = False
+            player.main_action_used_this_turn = False
 
-        human_template = self.rng.choice(get_deck_templates(HUMAN_DECK_NAME, self.templates))
-        ai_template = self.rng.choice(get_deck_templates(AI_DECK_NAME, self.templates))
-        while human_template.card_type != CardType.CREATURE:
-            human_template = self.rng.choice(get_deck_templates(HUMAN_DECK_NAME, self.templates))
-        while ai_template.card_type != CardType.CREATURE:
-            ai_template = self.rng.choice(get_deck_templates(AI_DECK_NAME, self.templates))
-        human_card = CardInstance(self.make_instance_id(), human_template)
-        ai_card = CardInstance(self.make_instance_id(), ai_template)
-        human_creature = BattlefieldCreature.from_card(human_card)
-        ai_creature = BattlefieldCreature.from_card(ai_card)
+        human_creature = self.create_builder_creature(
+            self.human_player,
+            aw=2,
+            vw=1,
+            sw=1,
+            lw=2,
+            abilities=frozenset(),
+        )
+        ai_creature = self.create_builder_creature(
+            self.ai_player,
+            aw=2,
+            vw=1,
+            sw=1,
+            lw=2,
+            abilities=frozenset(),
+        )
+        if human_creature is None or ai_creature is None:
+            raise RuntimeError("Builder test combat setup failed to create creatures.")
         human_creature.tapped = False
         human_creature.summoning_sick = False
         ai_creature.tapped = False
         ai_creature.summoning_sick = False
-        self.human_player.battlefield = [human_creature]
-        self.ai_player.battlefield = [ai_creature]
         self.active_player_index = 0
         self.starting_player_id = 0
         self.turn_number = 1
@@ -537,7 +402,7 @@ class GameEngine:
             seed=self.seed,
             started_at=datetime.now().isoformat(timespec="seconds"),
             start_player=self.human_player.name,
-            player_names={0: "Spieler", 1: "Gegner"},
+            player_names={0: self.human_player.name, 1: self.ai_player.name},
         )
         self.log(f"Testkampf gestartet: {human_creature.name} gegen {ai_creature.name}.")
         self.start_dice_battle(human_creature.unit_id, ai_creature.unit_id)
@@ -550,21 +415,6 @@ class GameEngine:
         self.enraged_forced_attackers = set()
         self.pending_dice_battle = None
         self.pending_dice_battles = []
-        self.pending_recycle_payment = None
-        self.pending_forced_discard = None
-        self.pending_spell_cast = None
-        self.spell_stack = []
-        self.reaction_context = None
-        self.reaction_priority_player_id = None
-        self.reaction_pass_count = 0
-        self.reaction_sequence_player_ids = []
-        self.reaction_sequence_index = 0
-        self.reaction_base_stack_size = 0
-        self.reaction_resume_phase = PHASE_MAIN_1
-        self.reaction_continuation = None
-        self.pending_stack_resolution_base_size = 0
-        self.pending_stack_resolution_continuation = None
-        self.resolving_stack = False
         self.pending_direct_attack = None
         self.pending_direct_attacks = []
         self.combat_queue = []

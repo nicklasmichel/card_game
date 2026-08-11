@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES, BUILDER_CREATURE_CAP
 from core.models import Ability, BattlefieldCreature, PlayerState
 
 from .turn_types import BuilderAbilityActionCandidate, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
@@ -172,9 +172,9 @@ def project_creature_action(
         sw=candidate.sw,
         lw=candidate.lw,
         current_hp=candidate.lw,
-        abilities=frozenset(),
-        tapped=True,
-        summoning_sickness=True,
+        abilities=normalize_builder_abilities(candidate.abilities),
+        tapped=candidate.enters_tapped,
+        summoning_sickness=candidate.enters_tapped,
         cannot_block=False,
         debug_label="projected",
     )
@@ -185,7 +185,7 @@ def project_creature_action(
         own_units=own_units,
         own_ready_resources=max(0, base_projection.own_ready_resources - candidate.cost),
         hypothetical_unit_id=projected_unit.unit_id,
-        candidate_signature=("creature",) + candidate.signature,
+        candidate_signature=("creature",) + candidate.key,
     )
 
 
@@ -297,12 +297,15 @@ def project_ability_action(
 
 
 def synthetic_unit_id_for_candidate(candidate: BuilderCreatureCandidate) -> int:
+    ability_index = 0
+    if candidate.builder_ability in BUILDER_CREATURE_ABILITIES:
+        ability_index = BUILDER_CREATURE_ABILITIES.index(candidate.builder_ability) + 1
     encoded = (
         candidate.aw * 10000
         + candidate.vw * 1000
         + candidate.sw * 100
         + candidate.lw * 10
-        + candidate.cost
+        + ability_index
     )
     return -(SYNTHETIC_UNIT_BASE_ID + encoded)
 

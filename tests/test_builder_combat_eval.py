@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
-
-import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.ai.builder import (
     build_builder_snapshot,
@@ -21,9 +18,6 @@ from core.models import Ability
 
 class BuilderCombatEvalTests(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = patch.object(config, "GAME_MODE", "builder")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.engine = GameEngine()
         self.engine.log_messages.clear()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from core.models import CardCost, Element
+from core.models import CardCost, CardType, Element
 from ui.render_helpers import accent_light, blit_text_with_shadow
 from ui.style import (
     CARD_BADGE_LIGHT,
@@ -34,16 +34,20 @@ def get_card_text_fonts(self) -> tuple[pygame.font.Font, pygame.font.Font, pygam
 
 def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygame.Surface:
     line_one, line_two = self.get_card_ability_lines(card.template)
-    is_creature = getattr(card.template, "card_type", None) is None or card.template.card_type.value == "Kreatur"
+    is_creature = getattr(card.template, "card_type", CardType.CREATURE) == CardType.CREATURE
     center_title_only = bool(
-        is_creature is False
+        not is_creature
         and getattr(card.template, "template_id", "").startswith("builder_ability_")
     )
+    if is_creature:
+        line_one = ""
+        line_two = ""
     display_cost = card.template.cost
     if is_creature and hasattr(self, "engine"):
         display_cost = self.engine.get_card_cost_to_pay(self.engine.active_player, card)
     return self.build_card_surface(
         template_id=card.template.template_id,
+        art_key=self.get_card_art_key(card.template),
         title=card.template.name,
         cost=display_cost,
         stats=self.get_display_template_stats(card.template) if is_creature else None,
@@ -62,6 +66,7 @@ def build_hand_card_surface(self, card, selected: bool, note: str = "") -> pygam
 def build_card_surface(
     self,
     template_id: str | None,
+    art_key: str | None,
     title: str,
     cost: CardCost | int,
     stats: tuple[str, str, str, str] | None,
@@ -83,6 +88,7 @@ def build_card_surface(
     return build_full_art_card_surface(
         self,
         template_id,
+        art_key,
         title,
         cost,
         stats,
@@ -101,6 +107,7 @@ def build_card_surface(
 def build_full_art_card_surface(
     self,
     template_id: str,
+    art_key: str | None,
     title: str,
     cost: int,
     stats: tuple[str, str, str, str] | None,
@@ -115,7 +122,7 @@ def build_full_art_card_surface(
     hide_cost: bool,
 ) -> pygame.Surface:
     s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
-    image = self.card_art_images.get(template_id)
+    image = self.card_art_images.get(art_key or template_id)
     if image is None:
         return build_generic_card_surface(
             self,

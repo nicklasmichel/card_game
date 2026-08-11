@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
-import core.config as config
 from core.game_logic import GameEngine
 from core.models import BattlefieldCreature, CardInstance, CombatUnitSnapshot, PlayerState, ResourceCard
 
 
 class EngineTestCase(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = patch.object(config, "GAME_MODE", "normal")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.engine = GameEngine()
         self.engine.players = [
-            PlayerState(0, "Spieler", True),
-            PlayerState(1, "Gegner", False),
+            PlayerState(0, "Spieler", True, summoner_key="builder"),
+            PlayerState(1, "Gegner", False, summoner_key="builder"),
         ]
         self.engine.active_player_index = 0
         self.engine.reset_combat_state()

@@ -170,10 +170,15 @@ def build_builder_plan_dict(candidate) -> dict:
         "vw": candidate.vw,
         "sw": candidate.sw,
         "lw": candidate.lw,
-        "abilities": tuple(),
+        "ability": candidate.builder_ability,
+        "ability_label": None if candidate.builder_ability is None else candidate.builder_ability.value,
+        "ability_cost": 0,
+        "haste": candidate.has_haste,
+        "haste_cost": candidate.haste_cost,
+        "abilities": tuple(sorted(ability.value for ability in candidate.abilities)),
         "cost": candidate.cost,
         "profile": candidate.generation_reason or "planned",
-        "candidate_signature": candidate.signature,
+        "candidate_signature": candidate.key,
     }
 
 
@@ -557,25 +562,13 @@ def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderP
             )
         )
     projected.sort(key=_projected_candidate_sort_key, reverse=True)
-    full_budget = [candidate for candidate in projected if candidate.candidate.cost == available_resources]
-    if full_budget:
-        return full_budget, False, {
-            "budget": available_resources,
-            "considered_budgets": considered_budgets,
-            "generated_count": len(candidates),
-            "legal_count": len(legal),
-            "projected_all": tuple(projected),
-            "frontier": tuple(full_budget),
-        }
-    highest_cost = max(candidate.candidate.cost for candidate in projected)
-    frontier = [candidate for candidate in projected if candidate.candidate.cost == highest_cost]
-    return frontier, highest_cost != available_resources, {
+    return projected, False, {
         "budget": available_resources,
         "considered_budgets": considered_budgets,
         "generated_count": len(candidates),
         "legal_count": len(legal),
         "projected_all": tuple(projected),
-        "frontier": tuple(frontier),
+        "frontier": tuple(projected),
     }
 
 
@@ -759,8 +752,8 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
 
     def take(candidates: list[BuilderProjectedCandidate], count: int, reason: str) -> None:
         for projected in candidates[:count]:
-            if projected.candidate.signature not in selected:
-                selected[projected.candidate.signature] = BuilderProjectedCandidate(
+            if projected.candidate.key not in selected:
+                selected[projected.candidate.key] = BuilderProjectedCandidate(
                     candidate=projected.candidate,
                     static_score=projected.static_score,
                     future_value=projected.future_value,
@@ -768,15 +761,15 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
                 )
 
     by_future = sorted(projected_candidates, key=_projected_candidate_sort_key, reverse=True)
-    by_damage = sorted(projected_candidates, key=lambda projected: (projected.candidate.sw, projected.future_value, projected.candidate.signature), reverse=True)
-    by_attack = sorted(projected_candidates, key=lambda projected: (projected.candidate.aw, projected.future_value, projected.candidate.signature), reverse=True)
+    by_damage = sorted(projected_candidates, key=lambda projected: (projected.candidate.sw, projected.future_value, projected.candidate.key), reverse=True)
+    by_attack = sorted(projected_candidates, key=lambda projected: (projected.candidate.aw, projected.future_value, projected.candidate.key), reverse=True)
     by_defense = sorted(
         projected_candidates,
         key=lambda projected: (
             projected.candidate.vw + projected.candidate.lw,
             projected.static_score.matchup_defense,
             projected.future_value,
-            projected.candidate.signature,
+            projected.candidate.key,
         ),
         reverse=True,
     )
@@ -785,7 +778,7 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         key=lambda projected: (
             min(projected.candidate.aw, projected.candidate.vw, projected.candidate.sw),
             projected.future_value,
-            projected.candidate.signature,
+            projected.candidate.key,
         ),
         reverse=True,
     )
@@ -1139,7 +1132,7 @@ def _projected_candidate_sort_key(projected: BuilderProjectedCandidate) -> tuple
         projected.static_score.board_fit,
         projected.static_score.survivability,
         projected.static_score.kill_pressure,
-        projected.candidate.signature,
+        projected.candidate.key,
     )
 
 
@@ -1152,7 +1145,7 @@ def _turn_decision_sort_key(decision: BuilderTurnDecision) -> tuple:
         decision.score.expected_enemy_kill_value,
         1 if decision.ability_action.action_kind != "skip" else 0,
         candidate.action_kind,
-        candidate.creature_candidate.signature if candidate.creature_candidate is not None else ("resource",),
+        candidate.creature_candidate.key if candidate.creature_candidate is not None else ("resource",),
         _ability_candidate_sort_key(decision.ability_action),
     )
 
@@ -1221,7 +1214,7 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
         return
     top_n = builder_debug_build_top_n()
     selected_signature = (
-        decision.action_candidate.creature_candidate.signature
+        decision.action_candidate.creature_candidate.key
         if decision.action_candidate.action_kind == "creature" and decision.action_candidate.creature_candidate is not None
         else None
     )
@@ -1246,13 +1239,13 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
     )
     ranked = shortlisted if shortlisted else frontier
     displayed = list(ranked[:top_n])
-    if selected_signature is not None and all(candidate.candidate.signature != selected_signature for candidate in displayed):
-        selected = next((candidate for candidate in ranked if candidate.candidate.signature == selected_signature), None)
+    if selected_signature is not None and all(candidate.candidate.key != selected_signature for candidate in displayed):
+        selected = next((candidate for candidate in ranked if candidate.candidate.key == selected_signature), None)
         if selected is not None:
             displayed.append(selected)
-    seen: set[tuple[int, int, int, int]] = set()
+    seen: set[tuple] = set()
     for index, projected in enumerate(displayed, start=1):
-        signature = projected.candidate.signature
+        signature = projected.candidate.key
         if signature in seen:
             continue
         seen.add(signature)
@@ -1265,6 +1258,11 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
             pairs=(
                 ("rank", index),
                 ("stats", f"{projected.candidate.aw}/{projected.candidate.vw}/{projected.candidate.sw}/{projected.candidate.lw}"),
+                ("ability", getattr(projected.candidate.builder_ability, "value", "-")),
+                ("ability_cost", 0),
+                ("haste", projected.candidate.has_haste),
+                ("haste_cost", projected.candidate.haste_cost),
+                ("enters_tapped", projected.candidate.enters_tapped),
                 ("cost", projected.candidate.cost),
                 ("unused", max(0, snapshot.own_ready_resources - projected.candidate.cost)),
                 ("total", score.total),
@@ -1296,6 +1294,11 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
             decision="build",
             pairs=(
                 ("choose", f"{best.candidate.aw}/{best.candidate.vw}/{best.candidate.sw}/{best.candidate.lw}"),
+                ("ability", getattr(best.candidate.builder_ability, "value", "-")),
+                ("ability_cost", 0),
+                ("haste", best.candidate.has_haste),
+                ("haste_cost", best.candidate.haste_cost),
+                ("enters_tapped", best.candidate.enters_tapped),
                 ("total", best.static_score.total),
                 ("runner_up", "-" if runner_up is None else f"{runner_up.candidate.aw}/{runner_up.candidate.vw}/{runner_up.candidate.sw}/{runner_up.candidate.lw}"),
                 ("runner_up_total", 0.0 if runner_up is None else runner_up.static_score.total),
@@ -1317,7 +1320,7 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             return
         key = (
             current.action_candidate.action_kind,
-            None if current.action_candidate.creature_candidate is None else current.action_candidate.creature_candidate.signature,
+            None if current.action_candidate.creature_candidate is None else current.action_candidate.creature_candidate.key,
             current.ability_action.action_kind,
             current.ability_action.target_id,
             current.ability_action.selected_stat,
@@ -1378,11 +1381,16 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             pairs.append(("stats", f"{action.creature_candidate.aw}/{action.creature_candidate.vw}/{action.creature_candidate.sw}/{action.creature_candidate.lw}"))
             pairs.extend(
                 (
-                    ("new_unit_tapped", True),
-                    ("new_unit_sick", True),
-                    ("new_unit_can_attack", False),
-                    ("new_unit_can_block", False),
-                    ("new_unit_block_reason", "tapped"),
+                    ("ability", getattr(action.creature_candidate.builder_ability, "value", "-")),
+                    ("ability_cost", 0),
+                    ("haste", action.creature_candidate.has_haste),
+                    ("haste_cost", action.creature_candidate.haste_cost),
+                    ("enters_tapped", action.creature_candidate.enters_tapped),
+                    ("new_unit_tapped", action.creature_candidate.enters_tapped),
+                    ("new_unit_sick", action.creature_candidate.enters_tapped),
+                    ("new_unit_can_attack", action.creature_candidate.has_haste),
+                    ("new_unit_can_block", action.creature_candidate.vw > 0 and not action.creature_candidate.enters_tapped),
+                    ("new_unit_block_reason", "-" if action.creature_candidate.vw > 0 and not action.creature_candidate.enters_tapped else ("defense_zero" if action.creature_candidate.vw <= 0 else "tapped")),
                 )
             )
         emit_builder_debug_line(engine, "AI PLAN", player=player, decision="main", pairs=tuple(pairs))

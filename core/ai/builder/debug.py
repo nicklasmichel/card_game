@@ -6,7 +6,6 @@ from typing import Iterable
 
 import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
-from core.game_mode import is_builder_mode
 from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_MAIN_1
 
 
@@ -15,7 +14,7 @@ def builder_debug_level() -> int:
 
 
 def builder_debug_enabled() -> bool:
-    return builder_debug_level() > 0 and is_builder_mode()
+    return builder_debug_level() > 0
 
 
 def builder_debug_verbose() -> bool:
@@ -93,7 +92,8 @@ def emit_builder_debug_line(engine, prefix: str, *, player=None, decision: str, 
     ]
     line_pairs.extend(pairs)
     payload = " ".join(f"{key}={_format_value(value)}" for key, value in line_pairs if value is not None)
-    engine.log(f"[{prefix}] {payload}")
+    logger = getattr(engine, "debug_log", None) or engine.log
+    logger(f"[{prefix}] {payload}")
 
 
 def log_builder_state(engine, player, *, decision: str, snapshot=None, enemy=None) -> None:
@@ -153,6 +153,7 @@ def log_builder_state(engine, player, *, decision: str, snapshot=None, enemy=Non
                     ("owner", owner.player_id),
                     ("stats", f"{getattr(unit, 'aw', 0)}/{getattr(unit, 'vw', 0)}/{getattr(unit, 'sw', 0)}"),
                     ("hp", f"{getattr(unit, 'current_hp', 0)}/{getattr(unit, 'lw', 0)}"),
+                    ("abilities", tuple(sorted(getattr(ability, "value", str(ability)) for ability in getattr(unit, "abilities", ())))),
                     ("injured", max(0, getattr(unit, "lw", 0) - getattr(unit, "current_hp", 0))),
                     ("tapped", _is_tapped(unit)),
                     ("ready", _is_ready(unit)),
@@ -239,11 +240,13 @@ def _candidate_row_key(candidate) -> tuple:
         return ("block", tuple(getattr(candidate, "assignments", ())))
     if hasattr(candidate, "attacker_ids"):
         return ("attack", tuple(getattr(candidate, "attacker_ids", ())), tuple(getattr(candidate, "enraged_targets", ())))
+    if hasattr(candidate, "key"):
+        return ("build", tuple(getattr(candidate, "key", ())))
     if hasattr(candidate, "signature"):
         return ("build", tuple(getattr(candidate, "signature", ())))
     if hasattr(candidate, "action_kind"):
         current = getattr(candidate, "creature_candidate", None)
-        signature = None if current is None else getattr(current, "signature", ())
+        signature = None if current is None else getattr(current, "key", getattr(current, "signature", ()))
         return ("turn", getattr(candidate, "action_kind", ""), signature)
     return ("unknown", repr(candidate))
 
@@ -360,15 +363,11 @@ def _iter_weight_rows() -> list[tuple[str, str, float]]:
             if not attr_name.isupper():
                 continue
             if isinstance(value, (int, float)):
-                if not BUILDER_ABILITIES_ENABLED and _weight_entry_is_ability_related(attr_name, attr_name):
-                    continue
                 rows.append((short_name, attr_name, float(value)))
                 continue
             if isinstance(value, dict):
                 for dict_key, dict_value in sorted(value.items(), key=lambda item: str(getattr(item[0], "value", item[0]))):
                     if not isinstance(dict_value, (int, float)):
-                        continue
-                    if not BUILDER_ABILITIES_ENABLED and _weight_entry_is_ability_related(attr_name, dict_key):
                         continue
                     rows.append((short_name, f"{attr_name}.{getattr(dict_key, 'value', dict_key)}", float(dict_value)))
     rows.sort(key=lambda row: (row[0], row[1]))
@@ -384,6 +383,16 @@ def _weight_entry_is_ability_related(attr_name: str, dict_key) -> bool:
         lowered = dict_key.lower()
         if any(token in lowered for token in ("haste", "flying", "trample", "vigil", "life", "rage", "provoke", "touch")):
             return True
+    return False
+
+
+def _weight_entry_mentions_haste(attr_name: str, dict_key) -> bool:
+    if "HASTE" in attr_name:
+        return True
+    if isinstance(dict_key, Ability):
+        return dict_key == Ability.HASTE
+    if isinstance(dict_key, str):
+        return "haste" in dict_key.lower()
     return False
 
 

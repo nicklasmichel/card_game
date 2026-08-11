@@ -53,5 +53,5 @@ def _sort_key(scored_candidate: tuple[BuilderCreatureCandidate, BuilderCandidate
         score.immediate_pressure,
         score.survivability,
         -candidate.cost,
-        tuple(reversed(candidate.signature)),
+        tuple(reversed(candidate.key)),
     )

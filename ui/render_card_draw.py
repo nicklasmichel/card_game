@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import pygame
 
-from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
-from core.game_mode import is_builder_mode
-from core.models import MAIN_PHASES, PHASE_REACTION
 from ui.render_helpers import blit_text_with_shadow
 from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLOR
 
@@ -102,11 +99,7 @@ def draw_summoner_footer(self, surface: pygame.Surface, summoner_key: str, life:
     card_number_font = pygame.font.SysFont("arial", number_size, bold=True)
     life_font = pygame.font.SysFont("arial", number_size * 2, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
-    rules_texts = {
-        "air": "Wenn in deinem Zug mindestens 3 Kreaturen angreifen, ziehe 1 Karte.",
-        "fire": f"Wenn du deinen Zug mit weniger als {FIRE_SUMMONER_DRAW_THRESHOLD} Leben beginnst, ziehe 1 zusaetzliche Karte.",
-    }
-    rules_text = rules_texts.get(summoner_key, "")
+    rules_text = ""
     rules_start_y = int(self.card_height * 0.5)
     rules_rect = pygame.Rect(s(10), rules_start_y, self.card_width - s(20), self.card_height - rules_start_y - s(12))
     rule_lines = self.wrap_text(rules_font, rules_text, rules_rect.width)
@@ -153,22 +146,15 @@ def draw_creature_card(
     accent = PLAYER_CARD_COLOR if is_human else ENEMY_CARD_COLOR
     template_id = getattr(creature, "template_id", None)
     hide_title = bool(
-        is_builder_mode()
-        and isinstance(template_id, str)
+        isinstance(template_id, str)
         and (template_id.startswith("builder_creature_") or template_id == "builder_creature_preview")
     )
     stats = self.get_display_builder_creature_stats(creature) if hide_title else self.get_display_creature_stats(creature)
     line_one = ""
-    line_two = ""
-    if extra_line:
-        line_two = extra_line
-    ability_line_one, ability_line_two = self.get_card_ability_lines_from_creature(creature)
-    if ability_line_one:
-        line_one = ability_line_one
-    if not extra_line and ability_line_two:
-        line_two = ability_line_two
+    line_two = extra_line
     surface = self.build_card_surface(
         template_id=template_id,
+        art_key=self.get_card_art_key(creature),
         title=creature.name,
         cost=creature.cost,
         stats=stats,
