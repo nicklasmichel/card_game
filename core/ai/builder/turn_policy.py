@@ -10,7 +10,21 @@ from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS,
 from .attack_policy import BuilderAttackDecision, evaluate_best_builder_attack
 from .config import BUILDER_AI_WEIGHTS
 from .cap_strategy import compute_builder_cap_context
-from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
+from .candidates import builder_candidate_budgets, generate_builder_creature_candidates, is_legal_builder_candidate
+from .debug import (
+    builder_debug_build_top_n,
+    builder_debug_enabled,
+    builder_debug_include_fingerprints,
+    builder_debug_top_n,
+    builder_debug_verbose,
+    contribution_pairs,
+    emit_builder_debug_line,
+    ensure_builder_weights_logged,
+    log_builder_fingerprint,
+    log_builder_state,
+    score_delta_keys,
+    turn_score_gap,
+)
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
 from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
 from .snapshot import build_builder_snapshot
@@ -220,11 +234,15 @@ def build_builder_runtime_fingerprint(player, engine) -> tuple:
 
 
 def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> BuilderTurnDecision:
+    if builder_debug_enabled():
+        ensure_builder_weights_logged(engine)
     snapshot = build_builder_snapshot(player, engine)
+    if builder_debug_verbose():
+        log_builder_state(engine, player, decision="main", snapshot=snapshot)
     base_projection = build_current_turn_projection(player, engine)
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
-    static_candidates, fallback_used = _build_projected_candidates(player, engine, snapshot)
+    static_candidates, fallback_used, build_debug = _build_projected_candidates(player, engine, snapshot)
     shortlisted = _shortlist_projected_candidates(static_candidates, snapshot.own_ready_resources)
 
     decisions: list[BuilderTurnDecision] = []
@@ -266,12 +284,22 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
         )
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     decision = decisions[0]
-    _debug_turn_decision(engine, snapshot, baseline_attack, decisions, fallback_used)
+    _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, decision)
+    _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, decisions, fallback_used)
     return decision
 
 
 def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allow_ability: bool) -> BuilderTurnDecision:
+    if builder_debug_enabled():
+        ensure_builder_weights_logged(engine)
     snapshot = build_builder_snapshot(player, engine)
+    if builder_debug_verbose():
+        log_builder_state(
+            engine,
+            player,
+            decision="attack" if engine.phase == PHASE_DECLARE_ATTACKERS else "continue",
+            snapshot=snapshot,
+        )
     base_projection = build_current_turn_projection(player, engine)
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
@@ -496,14 +524,22 @@ def _shortlist_ability_actions(candidates: list[BuilderAbilityActionCandidate], 
     return selected
 
 
-def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderProjectedCandidate], bool]:
+def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderProjectedCandidate], bool, dict]:
     available_resources = player.available_resources()
     candidates = generate_builder_creature_candidates(snapshot, available_resources)
+    considered_budgets = builder_candidate_budgets(snapshot, available_resources)
     enemy_creatures = list(engine.players[1 - player.player_id].battlefield)
     own_creatures = list(player.battlefield)
     legal = [candidate for candidate in candidates if is_legal_builder_candidate(candidate, available_resources)]
     if not legal:
-        return [], False
+        return [], False, {
+            "budget": available_resources,
+            "considered_budgets": considered_budgets,
+            "generated_count": len(candidates),
+            "legal_count": 0,
+            "projected_all": tuple(),
+            "frontier": tuple(),
+        }
     projected: list[BuilderProjectedCandidate] = []
     for candidate in legal:
         static_score = score_builder_creature_candidate(
@@ -523,9 +559,24 @@ def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderP
     projected.sort(key=_projected_candidate_sort_key, reverse=True)
     full_budget = [candidate for candidate in projected if candidate.candidate.cost == available_resources]
     if full_budget:
-        return full_budget, False
+        return full_budget, False, {
+            "budget": available_resources,
+            "considered_budgets": considered_budgets,
+            "generated_count": len(candidates),
+            "legal_count": len(legal),
+            "projected_all": tuple(projected),
+            "frontier": tuple(full_budget),
+        }
     highest_cost = max(candidate.candidate.cost for candidate in projected)
-    return [candidate for candidate in projected if candidate.candidate.cost == highest_cost], highest_cost != available_resources
+    frontier = [candidate for candidate in projected if candidate.candidate.cost == highest_cost]
+    return frontier, highest_cost != available_resources, {
+        "budget": available_resources,
+        "considered_budgets": considered_budgets,
+        "generated_count": len(candidates),
+        "legal_count": len(legal),
+        "projected_all": tuple(projected),
+        "frontier": tuple(frontier),
+    }
 
 
 def _build_action_decision(
@@ -555,7 +606,7 @@ def _build_action_decision(
     next_frontier = []
     if action_candidate.action_kind == "resource":
         next_snapshot = build_builder_snapshot(projection.players[projection.player_id], projection)
-        next_frontier, _ = _build_projected_candidates(projection.players[projection.player_id], projection, next_snapshot)
+        next_frontier, _, _ = _build_projected_candidates(projection.players[projection.player_id], projection, next_snapshot)
 
     terminal = _score_terminal_projection(projection, predicted_attack)
     creature_future_value = 0.0 if projected_candidate is None else projected_candidate.future_value * TURN_WEIGHTS.creature_future_value
@@ -579,6 +630,11 @@ def _build_action_decision(
         snapshot,
         action_candidate.action_kind,
     ) * TURN_WEIGHTS.ability_impact
+    raw_resource_growth_value = (
+        score_resource_growth_action(snapshot, current_frontier, next_frontier)
+        if action_candidate.action_kind == "resource"
+        else 0.0
+    )
     resource_value = resource_growth_value
     draw_value = _score_attack_draw_value(player, engine, predicted_attack)
     card_value = _remaining_hand_value(player, engine, ability_action.card_instance_id, snapshot, projection) - skip_hold_value
@@ -595,6 +651,54 @@ def _build_action_decision(
         + draw_value
         + card_value
         + risk
+    )
+    debug_contributions = (
+        ("terminal", terminal, 1.0, terminal),
+        ("board_value", _score_board_projection_value(projection), TURN_WEIGHTS.board_value, board_value),
+        ("resource_value", resource_growth_value, 1.0, resource_value),
+        ("card_value", card_value, 1.0, card_value),
+        ("draw_value", draw_value, 1.0, draw_value),
+        ("future", 0.0 if projected_candidate is None else projected_candidate.future_value, TURN_WEIGHTS.creature_future_value, creature_future_value),
+        (
+            "growth",
+            raw_resource_growth_value,
+            TURN_WEIGHTS.resource_growth * BUILDER_AI_WEIGHTS.resource_growth_vs_build if action_candidate.action_kind == "resource" else 0.0,
+            resource_growth_value,
+        ),
+        (
+            "combat_delta",
+            predicted_attack.score.total - baseline_attack.score.total,
+            TURN_WEIGHTS.immediate_combat_delta,
+            immediate_combat_delta,
+        ),
+        (
+            "readiness",
+            _score_end_of_turn_readiness(projection, predicted_attack, snapshot),
+            TURN_WEIGHTS.ready_defense,
+            end_of_turn_readiness,
+        ),
+        (
+            "survival_urgency",
+            _score_action_survival_urgency(snapshot, projection, action_candidate.action_kind),
+            TURN_WEIGHTS.survival_urgency,
+            survival_urgency,
+        ),
+        ("lethal", predicted_attack.score.lethal_value, 1.0, predicted_attack.score.lethal_value),
+        (
+            "ability",
+            _score_ability_action_value(
+                ability_action,
+                main_projection,
+                projection,
+                predicted_attack,
+                skip_attack,
+                snapshot,
+                action_candidate.action_kind,
+            ),
+            TURN_WEIGHTS.ability_impact,
+            ability_value,
+        ),
+        ("risk", risk / TURN_WEIGHTS.risk_penalty if TURN_WEIGHTS.risk_penalty else risk, TURN_WEIGHTS.risk_penalty, risk),
     )
     score = BuilderTurnScore(
         terminal=round(terminal, 4),
@@ -618,6 +722,7 @@ def _build_action_decision(
         projected_attack_score=round(predicted_attack.score.total, 4),
         search_was_exact=predicted_attack.search_metadata.exact_search,
         evaluated_candidate_count=1,
+        debug_contributions=tuple((name, round(raw, 4), round(weight, 4), round(contribution, 4)) for name, raw, weight, contribution in debug_contributions),
     )
     return BuilderTurnDecision(
         action_candidate=action_candidate,
@@ -1111,44 +1216,208 @@ def _projection_unit_signature(unit) -> tuple:
     )
 
 
-def _debug_turn_decision(engine, snapshot, baseline_attack, decisions, fallback_used: bool) -> None:
-    if not getattr(config, "BUILDER_AI_DEBUG", 0):
+def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortlisted: list[BuilderProjectedCandidate], decision: BuilderTurnDecision) -> None:
+    if not builder_debug_enabled():
         return
-    engine.log("Builder AI Turn:")
-    engine.log(
-        f"resources={snapshot.own_total_resources} ready={snapshot.own_ready_resources} "
-        f"life={snapshot.own_life} enemy_life={snapshot.enemy_life} "
-        f"board={snapshot.own_board_value:.1f} enemy_board={snapshot.enemy_board_value:.1f} "
-        f"urgency={_base_survival_pressure(snapshot):.2f}"
+    top_n = builder_debug_build_top_n()
+    selected_signature = (
+        decision.action_candidate.creature_candidate.signature
+        if decision.action_candidate.action_kind == "creature" and decision.action_candidate.creature_candidate is not None
+        else None
     )
-    engine.log(
-        f"Baseline attack: {[*baseline_attack.candidate.attacker_ids]} "
-        f"score={baseline_attack.score.total:.2f} lethal={baseline_attack.score.lethal_probability:.2f} "
-        f"exact={baseline_attack.search_metadata.exact_search}"
+    all_candidates = list(build_debug.get("projected_all", ()))
+    frontier = list(build_debug.get("frontier", ()))
+    if not all_candidates and not frontier:
+        return
+    emit_builder_debug_line(
+        engine,
+        "AI BUILD",
+        player=player,
+        decision="build",
+        pairs=(
+            ("budget", build_debug.get("budget", 0)),
+            ("considered_budgets", build_debug.get("considered_budgets", ())),
+            ("generated", build_debug.get("generated_count", 0)),
+            ("legal", build_debug.get("legal_count", 0)),
+            ("frontier", len(frontier)),
+            ("shortlisted", len(shortlisted)),
+            ("pruned", len(shortlisted) < len(all_candidates) or len(frontier) < len(all_candidates)),
+        ),
     )
-    if fallback_used:
-        engine.log("Fallback: no full-budget build found, using highest legal cost frontier.")
-    for index, decision in enumerate(decisions[:6], start=1):
-        action = decision.action_candidate
-        attack = decision.predicted_attack_decision
-        if action.action_kind == "creature" and action.creature_candidate is not None:
-            candidate = action.creature_candidate
-            engine.log(
-                f"{index}. Creature {candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw} "
-                f"| tapped_new={True} | future={decision.score.creature_future_value:.2f} "
-                f"| delta={decision.score.immediate_combat_delta:.2f} | readiness={decision.score.end_of_turn_readiness:.2f} "
-                f"| total={decision.score.total:.2f} attack={[*attack.candidate.attacker_ids]}"
-            )
-        else:
-            engine.log(
-                f"{index}. {action.action_kind.title()} "
-                f"| growth={decision.score.resource_growth_value:.2f} delta={decision.score.immediate_combat_delta:.2f} "
-                f"| total={decision.score.total:.2f} attack={[*attack.candidate.attacker_ids]}"
-            )
+    ranked = shortlisted if shortlisted else frontier
+    displayed = list(ranked[:top_n])
+    if selected_signature is not None and all(candidate.candidate.signature != selected_signature for candidate in displayed):
+        selected = next((candidate for candidate in ranked if candidate.candidate.signature == selected_signature), None)
+        if selected is not None:
+            displayed.append(selected)
+    seen: set[tuple[int, int, int, int]] = set()
+    for index, projected in enumerate(displayed, start=1):
+        signature = projected.candidate.signature
+        if signature in seen:
+            continue
+        seen.add(signature)
+        score = projected.static_score
+        emit_builder_debug_line(
+            engine,
+            "AI BUILD",
+            player=player,
+            decision="build",
+            pairs=(
+                ("rank", index),
+                ("stats", f"{projected.candidate.aw}/{projected.candidate.vw}/{projected.candidate.sw}/{projected.candidate.lw}"),
+                ("cost", projected.candidate.cost),
+                ("unused", max(0, snapshot.own_ready_resources - projected.candidate.cost)),
+                ("total", score.total),
+                ("future", projected.future_value),
+                ("raw", score.raw_stats),
+                ("abilities", score.abilities),
+                ("synergy", score.synergy),
+                ("board_fit", score.board_fit),
+                ("immediate_pressure", score.immediate_pressure),
+                ("survivability", score.survivability),
+                ("matchup_offense", score.matchup_offense),
+                ("matchup_defense", score.matchup_defense),
+                ("evasion", score.evasion),
+                ("expected_player_damage", score.expected_player_damage),
+                ("expected_heal", score.expected_heal),
+                ("kill_pressure", score.kill_pressure),
+                ("death_risk", score.death_risk),
+                ("shortlist_reasons", projected.shortlist_reasons),
+                ("selected_in_turn", selected_signature == signature),
+            ),
+        )
+    if ranked:
+        best = ranked[0]
+        runner_up = ranked[1] if len(ranked) > 1 else None
+        emit_builder_debug_line(
+            engine,
+            "AI BUILD",
+            player=player,
+            decision="build",
+            pairs=(
+                ("choose", f"{best.candidate.aw}/{best.candidate.vw}/{best.candidate.sw}/{best.candidate.lw}"),
+                ("total", best.static_score.total),
+                ("runner_up", "-" if runner_up is None else f"{runner_up.candidate.aw}/{runner_up.candidate.vw}/{runner_up.candidate.sw}/{runner_up.candidate.lw}"),
+                ("runner_up_total", 0.0 if runner_up is None else runner_up.static_score.total),
+                ("gap", 0.0 if runner_up is None else round(best.static_score.total - runner_up.static_score.total, 4)),
+            ),
+        )
+
+
+def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, baseline_attack, decisions, fallback_used: bool) -> None:
+    if not builder_debug_enabled():
+        return
     best = decisions[0]
-    engine.log(
-        f"Decision: {best.action_candidate.action_kind} / attack {[*best.predicted_attack_decision.candidate.attacker_ids]}"
+    gap, runner_up = turn_score_gap(decisions)
+    displayed: list[BuilderTurnDecision] = []
+    seen_keys: set[tuple] = set()
+
+    def add_decision(current: BuilderTurnDecision | None) -> None:
+        if current is None:
+            return
+        key = (
+            current.action_candidate.action_kind,
+            None if current.action_candidate.creature_candidate is None else current.action_candidate.creature_candidate.signature,
+            current.ability_action.action_kind,
+            current.ability_action.target_id,
+            current.ability_action.selected_stat,
+        )
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        displayed.append(current)
+
+    for action_kind in ("resource", "creature", "pass", "continue"):
+        add_decision(next((current for current in decisions if current.action_candidate.action_kind == action_kind), None))
+    add_decision(best)
+    add_decision(runner_up)
+    for current in decisions:
+        if len(displayed) >= builder_debug_top_n() + 4:
+            break
+        add_decision(current)
+    displayed.sort(key=_turn_decision_sort_key, reverse=True)
+    emit_builder_debug_line(
+        engine,
+        "AI PLAN",
+        player=player,
+        decision="main",
+        pairs=(
+            ("resources", f"{snapshot.own_ready_resources}/{snapshot.own_total_resources}"),
+            ("life", f"{snapshot.own_life}/{snapshot.enemy_life}"),
+            ("board", f"{snapshot.own_board_value}/{snapshot.enemy_board_value}"),
+            ("urgency", _base_survival_pressure(snapshot)),
+            ("baseline_attack", list(baseline_attack.candidate.attacker_ids)),
+            ("baseline_attack_score", baseline_attack.score.total),
+            ("baseline_attack_lethal", baseline_attack.score.lethal_probability),
+            ("attack_search_exact", baseline_attack.search_metadata.exact_search),
+            ("fallback", fallback_used),
+        ),
     )
+    for rank, current in enumerate(displayed, start=1):
+        action = current.action_candidate
+        attack = current.predicted_attack_decision
+        pairs = [
+            ("rank", rank),
+            ("candidate", action.action_kind),
+            ("total", current.score.total),
+            ("attack", [] if attack is None else list(attack.candidate.attacker_ids)),
+            ("board_value", current.score.board_value),
+            ("resource_value", current.score.resource_value),
+            ("creature_future_value", current.score.creature_future_value),
+            ("resource_growth_value", current.score.resource_growth_value),
+            ("immediate_combat_delta", current.score.immediate_combat_delta),
+            ("expected_player_damage", current.score.expected_player_damage),
+            ("expected_enemy_kill_value", current.score.expected_enemy_kill_value),
+            ("expected_own_death_value", current.score.expected_own_death_value),
+            ("end_of_turn_readiness", current.score.end_of_turn_readiness),
+            ("survival_urgency", current.score.survival_urgency),
+            ("lethal_value", current.score.lethal_value),
+            ("risk_adjustment", current.score.risk_adjustment),
+        ]
+        if action.creature_candidate is not None:
+            pairs.append(("stats", f"{action.creature_candidate.aw}/{action.creature_candidate.vw}/{action.creature_candidate.sw}/{action.creature_candidate.lw}"))
+            pairs.extend(
+                (
+                    ("new_unit_tapped", True),
+                    ("new_unit_sick", True),
+                    ("new_unit_can_attack", False),
+                    ("new_unit_can_block", False),
+                    ("new_unit_block_reason", "tapped"),
+                )
+            )
+        emit_builder_debug_line(engine, "AI PLAN", player=player, decision="main", pairs=tuple(pairs))
+        if builder_debug_verbose():
+            emit_builder_debug_line(
+                engine,
+                "AI PLAN",
+                player=player,
+                decision="main",
+                pairs=(("rank", rank),) + contribution_pairs(current.score),
+            )
+    emit_builder_debug_line(
+        engine,
+        "AI PLAN",
+        player=player,
+        decision="main",
+        pairs=(
+            ("choose", best.action_candidate.action_kind),
+            ("choose_stats", None if best.action_candidate.creature_candidate is None else f"{best.action_candidate.creature_candidate.aw}/{best.action_candidate.creature_candidate.vw}/{best.action_candidate.creature_candidate.sw}/{best.action_candidate.creature_candidate.lw}"),
+            ("total", best.score.total),
+            ("runner_up", "-" if runner_up is None else runner_up.action_candidate.action_kind),
+            (
+                "runner_up_stats",
+                None if runner_up is None or runner_up.action_candidate.creature_candidate is None
+                else f"{runner_up.action_candidate.creature_candidate.aw}/{runner_up.action_candidate.creature_candidate.vw}/{runner_up.action_candidate.creature_candidate.sw}/{runner_up.action_candidate.creature_candidate.lw}",
+            ),
+            ("runner_up_total", 0.0 if runner_up is None else runner_up.score.total),
+            ("gap", gap),
+            ("delta_keys", "-" if runner_up is None else score_delta_keys(best.score, runner_up.score)),
+            ("planned_attack", [] if best.predicted_attack_decision is None else list(best.predicted_attack_decision.candidate.attacker_ids)),
+        ),
+    )
+    if builder_debug_verbose() and builder_debug_include_fingerprints():
+        after = build_builder_runtime_fingerprint(player, engine)
+        log_builder_fingerprint(engine, player, decision="main", before=runtime_signature, after=after)
 
 
 def _is_finite_score(score: BuilderTurnScore) -> bool:

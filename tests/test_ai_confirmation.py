@@ -7,6 +7,7 @@ import core.config as config
 from core.ai.plans import TurnPlan
 from core.models import CardInstance, PendingDiceBattle, PHASE_DECLARE_ATTACKERS, PHASE_DICE_BATTLE, PHASE_REACTION, PHASE_MAIN_1, PHASE_MAIN_2, PHASE_SPELL_TARGETING, ReactionContext, ReactionTrigger
 from tests.helpers import EngineTestCase
+from ui.layout_sidepanel import get_action_panel_prompt
 
 
 class AiConfirmationTests(EngineTestCase):
@@ -18,7 +19,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.active_player_index = self.engine.ai_player.player_id
 
 
-    def test_ai_resource_phase_prepares_without_confirmation_button(self) -> None:
+    def test_ai_resource_phase_prepares_with_confirmation_button_and_prompt(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.ai_player.summoner_key = "air"
         self.engine.ai_player.hand = [
@@ -35,9 +36,16 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(self.engine.has_pending_ai_action())
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertEqual(len(self.engine.ai_player.resources), 0)
-        self.assertEqual(self.engine.get_button_specs(), [])
+        self.assertEqual(
+            [(button.label, button.enabled, button.action) for button in self.engine.get_button_specs()],
+            [("Next", True, "confirm_ai_action")],
+        )
+        self.assertEqual(
+            self.engine.current_prompt(),
+            self.engine.pending_ai_action["description"],
+        )
 
-        self.engine.execute_prepared_ai_action()
+        self.engine.handle_action("confirm_ai_action")
 
         self.assertFalse(self.engine.has_pending_ai_action())
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
@@ -186,12 +194,33 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(self.engine.has_pending_ai_action())
         self.assertEqual(len(self.engine.ai_player.battlefield), 0)
         self.assertEqual(len(self.engine.ai_player.hand), 1)
+        self.assertEqual(
+            [(button.label, button.enabled, button.action) for button in self.engine.get_button_specs()],
+            [("Next", True, "confirm_ai_action")],
+        )
+        self.assertEqual(
+            self.engine.current_prompt(),
+            self.engine.pending_ai_action["description"],
+        )
 
-        self.engine.execute_prepared_ai_action()
+        self.engine.handle_action("confirm_ai_action")
 
         self.assertFalse(self.engine.has_pending_ai_action())
         self.assertEqual(len(self.engine.ai_player.battlefield), 1)
         self.assertEqual(len(self.engine.ai_player.hand), 0)
+
+    def test_builder_pending_ai_action_is_visible_in_action_panel_prompt(self) -> None:
+        with patch.object(config, "GAME_MODE", "builder"):
+            self.engine.phase = PHASE_MAIN_1
+            self.engine.active_player_index = self.engine.ai_player.player_id
+            self.engine.ai_player.is_human = False
+            self.engine.ai_player.hand = []
+            self.engine.pending_ai_action = {
+                "kind": "builder_add_resource",
+                "description": "Enemy increases resources.",
+            }
+
+            self.assertEqual(get_action_panel_prompt(self), "Enemy increases resources.")
 
     def test_ai_summoning_without_attackers_skips_combat_confirmation(self) -> None:
         self.engine.phase = PHASE_MAIN_1

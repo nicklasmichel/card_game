@@ -7,6 +7,7 @@ import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP
 from core.game_logic import GameEngine
 from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
+from ui.layout_sidepanel import get_overview_phase_label
 
 
 class BuilderModeTests(unittest.TestCase):
@@ -42,6 +43,13 @@ class BuilderModeTests(unittest.TestCase):
         creature.tapped = not ready
         creature.summoning_sick = not ready
         return creature
+
+    def combat_result_messages(self) -> list[str]:
+        return [
+            message
+            for message in self.engine.log_messages
+            if "wuerfelt" in message and "gewinnt und fuegt" in message
+        ]
 
     def test_mode_switch_between_deck_and_builder(self) -> None:
         with patch.object(config, "GAME_MODE", "deck"):
@@ -209,6 +217,122 @@ class BuilderModeTests(unittest.TestCase):
         self.assertEqual(self.engine.pending_dice_battle.attack_sum, 0)
         self.assertEqual(self.engine.pending_dice_battle.defense_sum, 0)
 
+    def test_builder_single_duel_logs_complete_result_once_before_cleanup(self) -> None:
+        attacker = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=1, ready=True)
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=1, ready=True)
+        self.engine.log_messages.clear()
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        results = self.combat_result_messages()
+        self.assertEqual(len(results), 1)
+        self.assertIn(f"{attacker.name} wuerfelt [6, 6] = 12, {blocker.name} wuerfelt [1] = 1.", results[0])
+        self.assertIn(f"{attacker.name} gewinnt und fuegt {blocker.name} 1 Schaden zu.", results[0])
+        self.assertIn(f"{blocker.name} wird zerstoert.", results[0])
+        self.assertFalse(any("Kampfschaden zerstoert" in message for message in self.engine.log_messages))
+
+    def test_builder_multiple_blocked_combats_log_each_duel_once_in_stable_order(self) -> None:
+        attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
+        attacker_two = self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
+        blocker_one = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+        blocker_two = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=1, ready=True)
+        self.engine.block_assignments = {
+            attacker_one.unit_id: blocker_one.unit_id,
+            attacker_two.unit_id: blocker_two.unit_id,
+        }
+        self.engine.log_messages.clear()
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1, 5, 5, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.assertEqual(self.engine.phase, "Wuerfelkampf")
+        self.engine.end_dice_battle()
+
+        results = self.combat_result_messages()
+        self.assertEqual(len(results), 2)
+        self.assertLess(
+            self.engine.log_messages.index(results[0]),
+            self.engine.log_messages.index(results[1]),
+        )
+        self.assertIn(attacker_one.name, results[0])
+        self.assertIn(blocker_one.name, results[0])
+        self.assertIn(f"{blocker_one.name} bleibt bei 1 Leben.", results[0])
+        self.assertIn(attacker_two.name, results[1])
+        self.assertIn(blocker_two.name, results[1])
+        self.assertIn(f"{blocker_two.name} wird zerstoert.", results[1])
+
+    def test_builder_mixed_blocked_and_unblocked_attack_logs_both_paths(self) -> None:
+        blocked_attacker = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
+        direct_attacker = self.make_builder_creature(0, aw=1, vw=1, sw=2, lw=2, ready=True)
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+        self.engine.block_assignments = {
+            blocked_attacker.unit_id: blocker.unit_id,
+            direct_attacker.unit_id: None,
+        }
+        self.engine.log_messages.clear()
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.engine.end_dice_battle()
+
+        results = self.combat_result_messages()
+        self.assertEqual(len(results), 1)
+        self.assertIn(blocked_attacker.name, results[0])
+        self.assertTrue(
+            any(
+                message == f"{direct_attacker.name} is unblocked and deals {direct_attacker.sw} damage to {self.engine.ai_player.name}."
+                for message in self.engine.log_messages
+            )
+        )
+
+    def test_builder_combat_logging_has_no_duplicate_destroy_messages(self) -> None:
+        attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
+        attacker_two = self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
+        blocker_one = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=1, ready=True)
+        blocker_two = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=1, ready=True)
+        self.engine.block_assignments = {
+            attacker_one.unit_id: blocker_one.unit_id,
+            attacker_two.unit_id: blocker_two.unit_id,
+        }
+        self.engine.log_messages.clear()
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1, 5, 5, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.engine.end_dice_battle()
+
+        joined = "\n".join(self.engine.log_messages)
+        self.assertEqual(joined.count(f"{blocker_one.name} wird zerstoert."), 1)
+        self.assertEqual(joined.count(f"{blocker_two.name} wird zerstoert."), 1)
+        self.assertNotIn(f"Kampfschaden zerstoert {blocker_one.name}.", joined)
+        self.assertNotIn(f"Kampfschaden zerstoert {blocker_two.name}.", joined)
+
+    def test_builder_multiple_blocked_combats_log_complete_result_lines_for_each_duel(self) -> None:
+        attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
+        attacker_two = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
+        blocker_one = self.make_builder_creature(1, aw=1, vw=2, sw=1, lw=2, ready=True)
+        blocker_two = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+        self.engine.block_assignments = {
+            attacker_one.unit_id: blocker_one.unit_id,
+            attacker_two.unit_id: blocker_two.unit_id,
+        }
+        self.engine.log_messages.clear()
+
+        with patch.object(self.engine.rng, "randint", side_effect=[6, 6, 1, 1, 5, 5, 1]):
+            self.engine.begin_combat_resolution()
+
+        self.engine.end_dice_battle()
+
+        results = self.combat_result_messages()
+        self.assertEqual(len(results), 2)
+        for message in results:
+            self.assertIn("wuerfelt [", message)
+            self.assertIn(" = ", message)
+            self.assertIn("gewinnt und fuegt", message)
+            self.assertTrue("bleibt bei" in message or "wird zerstoert." in message)
+
     def test_builder_ui_offers_no_ability_actions(self) -> None:
         self.engine.phase = PHASE_MAIN_1
         self.engine.active_player_index = 0
@@ -216,6 +340,25 @@ class BuilderModeTests(unittest.TestCase):
         self.assertNotIn("Grant ability", labels)
         self.assertNotIn("Play card", labels)
         self.assertNotIn("Skip ability", labels)
+
+    def test_builder_main_buttons_use_new_labels(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.active_player_index = self.engine.human_player.player_id
+        labels = [button.label for button in self.engine.get_button_specs()]
+        self.assertEqual(labels, ["Add Resource", "Build Creature"])
+
+    def test_builder_main_phase_label_uses_main(self) -> None:
+        self.assertEqual(get_overview_phase_label(PHASE_MAIN_1), "Main")
+
+    def test_builder_creature_stat_buttons_use_requested_order_and_labels(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 4)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        labels = [button.label for button in self.engine.get_button_specs()]
+        self.assertEqual(
+            labels[:8],
+            ["+1 Atk", "-1 Atk", "+1 Def", "-1 Def", "+1 Dmg", "-1 Dmg", "+1 HP", "-1 HP"],
+        )
 
     def test_old_ability_state_does_not_affect_new_builder_game(self) -> None:
         self.engine.human_player.hand = [object()]

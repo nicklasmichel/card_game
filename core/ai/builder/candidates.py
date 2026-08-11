@@ -31,6 +31,10 @@ def generate_builder_creature_candidates(
     return sorted(candidates.values(), key=lambda candidate: (candidate.cost, candidate.signature, candidate.generation_reason))
 
 
+def builder_candidate_budgets(snapshot: BuilderStrategicSnapshot, available_resources: int) -> tuple[int, ...]:
+    return _candidate_budgets(snapshot, available_resources)
+
+
 def _candidate_budgets(snapshot: BuilderStrategicSnapshot, available_resources: int) -> tuple[int, ...]:
     if available_resources <= 4:
         return tuple(range(0, available_resources + 1))

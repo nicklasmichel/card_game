@@ -60,6 +60,7 @@ class BuilderTurnScore:
     projected_attack_score: float = 0.0
     search_was_exact: bool = True
     evaluated_candidate_count: int = 0
+    debug_contributions: tuple[tuple[str, float, float, float], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

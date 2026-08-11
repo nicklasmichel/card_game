@@ -131,12 +131,11 @@ def draw_card_badge(
     font: pygame.font.Font | None = None,
     think_progress: float | None = None,
 ) -> None:
-    base_font = font or self.font
-    badge_font_size = max(
-        base_font.get_height() + 12,
-        int(badge_rect.height * 0.9),
-    )
+    badge_font_size = max(16, int(badge_rect.height * 0.9))
     badge_font = pygame.font.Font(None, badge_font_size)
+    while badge_font.size(text)[0] > badge_rect.width - 4 and badge_font_size > 12:
+        badge_font_size -= 1
+        badge_font = pygame.font.Font(None, badge_font_size)
     self.blit_centered_text_to_surface(surface, badge_font, text, (0, 0, 0), badge_rect)
 
 

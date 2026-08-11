@@ -1210,7 +1210,15 @@ def should_return_creature_from_combat_death(self, owner, creature) -> bool:
     )
 
 
-def destroy_creature_immediately(self, owner, creature, source_name: str, *, died_in_combat: bool = False) -> ReactionContext:
+def destroy_creature_immediately(
+    self,
+    owner,
+    creature,
+    source_name: str,
+    *,
+    died_in_combat: bool = False,
+    log_destruction: bool = True,
+) -> ReactionContext:
     remove_creature_from_combat(self, creature.unit_id)
     return_to_hand_after_death = died_in_combat and should_return_creature_from_combat_death(self, owner, creature)
     if creature in owner.battlefield:
@@ -1219,7 +1227,8 @@ def destroy_creature_immediately(self, owner, creature, source_name: str, *, die
     setattr(creature, "owner_id", owner.player_id)
     destroyed_card = CardInstance(self.make_instance_id(), self.templates[creature.template_id])
     owner.discard_pile.append(destroyed_card)
-    self.log(f"{source_name} zerstoert {creature.name}. {creature.name} geht auf den Ablagestapel.")
+    if log_destruction:
+        self.log(f"{source_name} zerstoert {creature.name}. {creature.name} geht auf den Ablagestapel.")
     draw_on_death = getattr(creature, "draw_on_death", 0)
     if draw_on_death > 0:
         for _ in range(draw_on_death):

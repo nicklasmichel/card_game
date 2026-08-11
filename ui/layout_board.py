@@ -4,6 +4,7 @@ from typing import Dict
 
 import pygame
 
+from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.config import STARTING_LIFE
 from core.game_mode import is_builder_mode
 from core.models import PHASE_BUILDER_CREATURE
@@ -52,6 +53,10 @@ def draw_enemy_area(self) -> None:
         creatures_rect.width - 20,
         creatures_rect.height - 20,
     )
+    if is_builder_mode():
+        creature_count_text = f"Creatures {len(self.engine.ai_player.battlefield)}/{BUILDER_CREATURE_CAP}"
+        count_surface = self.title_font.render(creature_count_text, True, TEXT_COLOR)
+        self.screen.blit(count_surface, (creatures_rect.right - 14 - count_surface.get_width(), creatures_rect.y + 10))
 
 
 def draw_player_area(self) -> None:
@@ -106,6 +111,9 @@ def draw_player_area(self) -> None:
         life_y = hand_rect.y + 10
         self.screen.blit(life_surface, (text_x, life_y))
         self.summoner_rects[self.engine.human_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, life_surface.get_width() + 16, life_surface.get_height() + 8)
+        creature_count_text = f"Creatures {len(self.engine.human_player.battlefield)}/{BUILDER_CREATURE_CAP}"
+        count_surface = self.title_font.render(creature_count_text, True, TEXT_COLOR)
+        self.screen.blit(count_surface, (creatures_rect.right - 14 - count_surface.get_width(), creatures_rect.y + 10))
 
 
 def draw_combat_links(self) -> None:
@@ -267,7 +275,7 @@ def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
 def draw_builder_resource_stack_card(self, player, x: int, y: int) -> pygame.Rect:
     surface = self.build_resource_back_surface(self.engine.builder_resource_template().element, False)
     badge_rect = pygame.Rect(self.card_width // 2 - 28, self.card_height // 2 - 22, 56, 44)
-    self.draw_card_badge(surface, badge_rect, str(player.total_resources()), self.font, self.get_think_progress(player))
+    self.draw_card_badge(surface, badge_rect, f"{player.total_resources()}/{BUILDER_MAX_RESOURCES}", self.small_font, self.get_think_progress(player))
     rect = pygame.Rect(x, y, self.card_width, self.card_height)
     self.screen.blit(surface, rect.topleft)
     return rect

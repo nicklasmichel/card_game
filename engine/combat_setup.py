@@ -432,7 +432,7 @@ def begin_combat_resolution(self) -> None:
         else:
             for battle in self.pending_dice_battles:
                 apply_prepared_dice_battle(self, battle, batched=True)
-            self.cleanup_destroyed_units()
+            self.cleanup_destroyed_units(log_destruction=not is_builder_mode())
         self.phase = PHASE_DICE_BATTLE
         return
     self.advance_combat_resolution()

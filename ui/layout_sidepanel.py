@@ -34,6 +34,17 @@ from ui.style import (
     TEXT_COLOR,
 )
 
+BUILDER_STAT_BUTTON_COLORS = {
+    "builder_aw_up": (164, 97, 97),
+    "builder_aw_down": (164, 97, 97),
+    "builder_vw_up": (96, 122, 172),
+    "builder_vw_down": (96, 122, 172),
+    "builder_sw_up": (168, 128, 74),
+    "builder_sw_down": (168, 128, 74),
+    "builder_lw_up": (95, 150, 109),
+    "builder_lw_down": (95, 150, 109),
+}
+
 
 def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_BUILDER_CREATURE:
@@ -42,7 +53,7 @@ def get_overview_phase_label(phase: str) -> str:
         return "Combat" if not BUILDER_ABILITIES_ENABLED else "Ability"
     if phase == PHASE_MAIN_1:
         if is_builder_mode():
-            return "Build"
+            return "Main"
         return "Hauptphase 1"
     if phase == PHASE_MAIN_2:
         return "Hauptphase 2"
@@ -78,6 +89,8 @@ def get_action_panel_title(self) -> str:
 
 
 def get_action_panel_prompt(self) -> str:
+    if self.engine.pending_ai_action is not None:
+        return self.engine.current_prompt()
     if is_builder_mode() and self.engine.phase == PHASE_MAIN_1:
         if not self.engine.active_player.main_action_used_this_turn:
             return ""
@@ -451,42 +464,69 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     height = 36
     gap = 10
     start_x = rect.x + button_margin
+    large_next_button = len(action_specs) == 1 and action_specs[0].label == "Next"
+    builder_main_action_row = (
+        is_builder_mode()
+        and self.engine.phase == PHASE_MAIN_1
+        and self.engine.active_player.is_human
+        and len(action_specs) == 2
+        and {spec.action for spec in action_specs} == {"builder_add_resource", "builder_open_creature"}
+    )
+    if builder_main_action_row:
+        height = 72
+    elif large_next_button:
+        height = 72
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        stat_rows = min(4, len(action_specs) // 2)
-        trailing_buttons = max(0, len(action_specs) - stat_rows * 2)
-        button_total_height = stat_rows * height + max(0, stat_rows - 1) * gap
+        stat_rows = min(2, len(action_specs) // 4)
+        trailing_buttons = max(0, len(action_specs) - stat_rows * 4)
+        stat_button_size = max(44, min((width - gap * 3) // 4, 72))
+        button_total_height = stat_rows * stat_button_size + max(0, stat_rows - 1) * gap
         if trailing_buttons:
-            button_total_height += gap + trailing_buttons * height + max(0, trailing_buttons - 1) * gap
+            button_total_height += gap + trailing_buttons * 44 + max(0, trailing_buttons - 1) * gap
+    elif builder_main_action_row:
+        button_total_height = height
     else:
         button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
     button_start_y = rect.bottom - 12 - button_total_height
     detail_start_y = draw_action_detail_sections(self, rect, prompt_rect.bottom + 8, button_start_y - 8)
     start_y = button_start_y
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        half_gap = 8
-        half_width = (width - half_gap) // 2
+        stat_gap = 8
+        stat_button_size = max(44, min((width - stat_gap * 3) // 4, 72))
         current_y = start_y
-        stat_rows = min(4, len(action_specs) // 2)
+        stat_rows = min(2, len(action_specs) // 4)
         for row_index in range(stat_rows):
-            left_spec = action_specs[row_index * 2]
-            right_spec = action_specs[row_index * 2 + 1]
-            left_rect = pygame.Rect(start_x, current_y, half_width, height)
-            right_rect = pygame.Rect(start_x + half_width + half_gap, current_y, half_width, height)
-            for button_rect, spec in ((left_rect, left_spec), (right_rect, right_spec)):
-                pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
+            row_specs = action_specs[row_index * 4 : row_index * 4 + 4]
+            for column_index, spec in enumerate(row_specs):
+                button_rect = pygame.Rect(
+                    start_x + column_index * (stat_button_size + stat_gap),
+                    current_y,
+                    stat_button_size,
+                    stat_button_size,
+                )
+                color = BUILDER_STAT_BUTTON_COLORS.get(spec.action, BUTTON_COLOR) if spec.enabled else BUTTON_DISABLED
+                pygame.draw.rect(self.screen, color, button_rect, border_radius=6)
                 pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
-                self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
+                self.blit_centered_text(self.small_font, spec.label, TEXT_COLOR, button_rect)
                 self.buttons.append((button_rect, spec))
-            current_y += height + gap
-        if stat_rows and len(action_specs) > stat_rows * 2:
-            current_y += 0
-        for spec in action_specs[stat_rows * 2:]:
-            button_rect = pygame.Rect(start_x, current_y, width, height)
+            current_y += stat_button_size + gap
+        for spec in action_specs[stat_rows * 4:]:
+            button_rect = pygame.Rect(start_x, current_y, width, 44)
             pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
             pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
             self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
             self.buttons.append((button_rect, spec))
-            current_y += height + gap
+            current_y += 44 + gap
+        return
+    if builder_main_action_row:
+        half_gap = 12
+        half_width = (width - half_gap) // 2
+        for index, spec in enumerate(action_specs):
+            button_rect = pygame.Rect(start_x + index * (half_width + half_gap), start_y, half_width, height)
+            pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            self.blit_centered_text(self.font, spec.label, TEXT_COLOR, button_rect)
+            self.buttons.append((button_rect, spec))
         return
     for index, spec in enumerate(action_specs):
         button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)

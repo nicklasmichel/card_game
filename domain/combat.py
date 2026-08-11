@@ -57,6 +57,9 @@ class PendingDiceBattle:
     history: List[DiceRoundRecord] = field(default_factory=list)
     resolution_complete: bool = False
     result_applied: bool = False
+    attacker_hp_after: int = 0
+    blocker_hp_after: int = 0
+    resolution_log: str = ""
 
 
 @dataclass

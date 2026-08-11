@@ -6,6 +6,8 @@ from typing import List
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from engine.builder import BUILDER_ABILITY_LABELS
 from core.ai.builder import build_builder_runtime_fingerprint, materialize_builder_turn_decision
+from core.ai.builder.attack_policy import log_builder_attack_decision
+from core.ai.builder.debug import log_builder_runtime_action
 from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
@@ -243,6 +245,8 @@ def prepare_ai_turn_action(self) -> bool:
     if is_builder_mode() and self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
         planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
         attack_decision = planner_decision.predicted_attack_decision
+        if attack_decision is not None:
+            log_builder_attack_decision(self, self.active_player, attack_decision)
         attacker_ids = list(attack_decision.candidate.attacker_ids) if attack_decision is not None else []
         lookup = {creature.unit_id: creature for creature in self.available_attackers(self.active_player)}
         attackers = [lookup[attacker_id] for attacker_id in attacker_ids if attacker_id in lookup]
@@ -358,6 +362,7 @@ def execute_prepared_ai_action(self) -> None:
     self.pending_ai_action = None
     if action is None:
         return
+    log_builder_runtime_action(self, action)
     kind = action["kind"]
     if kind == "play_resource":
         chosen = next((card for card in self.active_player.hand if card.instance_id == action["card_id"]), None)
@@ -764,7 +769,7 @@ def current_prompt(self) -> str:
 def get_button_specs(self) -> List[ButtonSpec]:
     if self.phase == PHASE_MULLIGAN:
         return [
-            ButtonSpec("Weiter", True, "confirm_mulligan"),
+            ButtonSpec("Next", True, "confirm_mulligan"),
             ButtonSpec("Hand behalten", True, "keep_mulligan"),
         ]
     if self.phase == PHASE_GAME_OVER:
@@ -772,7 +777,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
             ButtonSpec("New game" if is_builder_mode() else "Neue Partie", True, "new_game"),
         ]
     if self.pending_ai_action is not None:
-        return []
+        return [ButtonSpec("Next", True, "confirm_ai_action")]
 
     if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE and self.active_player.is_human:
         pending = self.pending_builder_creature
@@ -781,14 +786,14 @@ def get_button_specs(self) -> List[ButtonSpec]:
         spent = self.builder_creature_build_cost()
         plus_enabled = spent < pending.available_resources
         buttons = [
-            ButtonSpec("Attack -", pending.aw > pending.base_aw, "builder_aw_down"),
-            ButtonSpec("Attack +", plus_enabled, "builder_aw_up"),
-            ButtonSpec("Defense -", pending.vw > pending.base_vw, "builder_vw_down"),
-            ButtonSpec("Defense +", plus_enabled, "builder_vw_up"),
-            ButtonSpec("Damage -", pending.sw > pending.base_sw, "builder_sw_down"),
-            ButtonSpec("Damage +", plus_enabled, "builder_sw_up"),
-            ButtonSpec("Life -", pending.lw > pending.base_lw, "builder_lw_down"),
-            ButtonSpec("Life +", plus_enabled, "builder_lw_up"),
+            ButtonSpec("+1 Atk", plus_enabled, "builder_aw_up"),
+            ButtonSpec("-1 Atk", pending.aw > pending.base_aw, "builder_aw_down"),
+            ButtonSpec("+1 Def", plus_enabled, "builder_vw_up"),
+            ButtonSpec("-1 Def", pending.vw > pending.base_vw, "builder_vw_down"),
+            ButtonSpec("+1 Dmg", plus_enabled, "builder_sw_up"),
+            ButtonSpec("-1 Dmg", pending.sw > pending.base_sw, "builder_sw_down"),
+            ButtonSpec("+1 HP", plus_enabled, "builder_lw_up"),
+            ButtonSpec("-1 HP", pending.lw > pending.base_lw, "builder_lw_down"),
         ]
         buttons.extend(
             [
@@ -847,8 +852,8 @@ def get_button_specs(self) -> List[ButtonSpec]:
             resource_enabled = self.can_builder_add_resource(self.active_player)
             creature_enabled = self.can_builder_open_creature_build(self.active_player)
             if resource_enabled or creature_enabled:
-                buttons.append(ButtonSpec("Resource", resource_enabled, "builder_add_resource"))
-                buttons.append(ButtonSpec("Creature", creature_enabled, "builder_open_creature"))
+                buttons.append(ButtonSpec("Add Resource", resource_enabled, "builder_add_resource"))
+                buttons.append(ButtonSpec("Build Creature", creature_enabled, "builder_open_creature"))
             elif self.available_attackers(self.active_player):
                 buttons.append(ButtonSpec("To combat", True, "to_combat"))
                 buttons.append(ButtonSpec("End turn", True, "end_turn"))
@@ -884,35 +889,35 @@ def get_button_specs(self) -> List[ButtonSpec]:
         ):
             buttons.append(ButtonSpec(f"+{pending_card.template.combat_aw_bonus} Angriff", True, "choose_global_bonus_attack"))
             buttons.append(ButtonSpec(f"+{pending_card.template.combat_sw_bonus} Schaden", True, "choose_global_bonus_damage"))
-        buttons.append(ButtonSpec("Weiter", self.pending_spell_ready(), "confirm_spell_target"))
+        buttons.append(ButtonSpec("Next", self.pending_spell_ready(), "confirm_spell_target"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_spell_target"))
     elif self.phase == PHASE_RECYCLE_PAYMENT:
         ready = (
             self.pending_recycle_payment is not None
             and len(self.pending_recycle_payment.selected_resource_ids) == self.pending_recycle_payment.required_count
         )
-        buttons.append(ButtonSpec("Weiter", ready, "confirm_recycle"))
+        buttons.append(ButtonSpec("Next", ready, "confirm_recycle"))
         buttons.append(ButtonSpec("Abbrechen", True, "cancel_recycle"))
     elif self.phase == PHASE_FORCED_DISCARD:
         ready = (
             self.pending_forced_discard is not None
             and len(self.pending_forced_discard.selected_card_ids) == self.pending_forced_discard.required_count
         )
-        buttons.append(ButtonSpec("Weiter", ready, "confirm_forced_discard"))
+        buttons.append(ButtonSpec("Next", ready, "confirm_forced_discard"))
     elif self.phase == PHASE_DECLARE_ATTACKERS:
         attacker_count = len(self.selected_attackers)
         if is_builder_mode():
-            attack_label = "Skip attack" if attacker_count <= 0 else "Continue"
+            attack_label = "Skip attack" if attacker_count <= 0 else "Next"
         else:
-            attack_label = "Angriff ueberspringen" if attacker_count <= 0 else "Weiter"
+            attack_label = "Angriff ueberspringen" if attacker_count <= 0 else "Next"
         buttons.append(ButtonSpec(attack_label, True, "confirm_attackers"))
     elif self.phase == PHASE_DECLARE_BLOCKERS:
         blocker_count = sum(1 for blocker_id in self.block_assignments.values() if blocker_id is not None)
         if is_builder_mode():
-            block_label = "Skip blocks" if blocker_count <= 0 else "Continue"
+            block_label = "Skip blocks" if blocker_count <= 0 else "Next"
             clear_label = "Clear blocks"
         else:
-            block_label = "Blocken ueberspringen" if blocker_count <= 0 else "Weiter"
+            block_label = "Blocken ueberspringen" if blocker_count <= 0 else "Next"
             clear_label = "Block entfernen"
         buttons.append(ButtonSpec(block_label, True, "confirm_blocks"))
         buttons.append(ButtonSpec(clear_label, True, "clear_blocks"))

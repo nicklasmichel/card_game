@@ -7,6 +7,18 @@ import core.config as config
 from core.models import Ability
 
 from .config import BUILDER_AI_WEIGHTS
+from .debug import (
+    builder_debug_enabled,
+    builder_debug_include_fingerprints,
+    builder_debug_top_n,
+    builder_debug_verbose,
+    contribution_pairs,
+    emit_builder_debug_line,
+    log_builder_fingerprint,
+    log_builder_state,
+    score_delta_keys,
+    select_scored_rows,
+)
 from .cap_strategy import compute_builder_cap_context
 from .combat_assignments import (
     convolve_damage_distributions,
@@ -65,6 +77,7 @@ class BuilderAttackScore:
     lethal_probability: float = 0.0
     guaranteed_player_damage: float = 0.0
     chosen_block_assignment: tuple[tuple[int, int], ...] = ()
+    debug_contributions: tuple[tuple[str, float, float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -73,6 +86,7 @@ class BuilderAttackDecision:
     score: BuilderAttackScore
     defensive_response: tuple[tuple[int, int], ...] | None
     search_metadata: BuilderSearchMetadata
+    scored_candidates: tuple[tuple[BuilderAttackCandidate, BuilderAttackScore], ...] = ()
 
 
 def evaluate_best_builder_attack(
@@ -136,8 +150,9 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
         score=best_score,
         defensive_response=best_score.chosen_block_assignment,
         search_metadata=metadata,
+        scored_candidates=tuple(scored_candidates),
     )
-    _debug_attack_decision(combat_context, player, scored_candidates, best_candidate, metadata)
+    _debug_attack_decision(combat_context, player, decision)
     return decision, scored_candidates
 
 
@@ -261,6 +276,9 @@ def _score_builder_attack_candidate_details(
                 counter_lethal_risk=0.0,
                 total=round(preservation, 4),
                 chosen_block_assignment=(),
+                debug_contributions=(
+                    ("preservation", round(preservation, 4), 1.0, round(preservation, 4)),
+                ),
             ),
             {
                 "exact_search": True,
@@ -299,17 +317,53 @@ def _score_builder_attack_candidate_details(
     if include_counterattack and candidate.attacker_ids and best_response.lethal_value < GUARANTEED_LETHAL_BONUS:
         counter_score = _estimate_candidate_counterattack(candidate, player, enemy)
         adjusted_total = best_response.total
-        adjusted_total -= best_response.lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
-        adjusted_total -= counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
-        adjusted_total -= counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
+        lost_block_penalty = best_response.lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
+        counter_damage_penalty = counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
+        counter_lethal_penalty = counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
+        adjusted_total -= lost_block_penalty
+        adjusted_total -= counter_damage_penalty
+        adjusted_total -= counter_lethal_penalty
+        lethal_penalty = 0.0
         if counter_score.guaranteed_player_damage >= player.life > 0:
-            adjusted_total -= BUILDER_AI_WEIGHTS.enemy_lethal_penalty
+            lethal_penalty = BUILDER_AI_WEIGHTS.enemy_lethal_penalty
+            adjusted_total -= lethal_penalty
+        debug_contributions = tuple(
+            current
+            for current in best_response.debug_contributions
+            if current[0] not in {"lost_block", "counter_damage", "counter_lethal", "enemy_lethal_penalty"}
+        ) + (
+            (
+                "lost_block",
+                round(best_response.lost_block_value, 4),
+                round(-BUILDER_AI_WEIGHTS.lost_block_value, 4),
+                round(-lost_block_penalty, 4),
+            ),
+            (
+                "counter_damage",
+                round(counter_score.player_damage, 4),
+                round(-BUILDER_AI_WEIGHTS.expected_counter_damage, 4),
+                round(-counter_damage_penalty, 4),
+            ),
+            (
+                "counter_lethal",
+                round(counter_score.lethal_probability, 4),
+                round(-BUILDER_AI_WEIGHTS.enemy_lethal_probability, 4),
+                round(-counter_lethal_penalty, 4),
+            ),
+            (
+                "enemy_lethal_penalty",
+                round(1.0 if lethal_penalty else 0.0, 4),
+                round(-lethal_penalty, 4),
+                round(-lethal_penalty, 4),
+            ),
+        )
         best_response = replace(
             best_response,
             projected_counter_damage=round(counter_score.player_damage, 4),
             projected_counter_kill_value=round(counter_score.enemy_kill_value, 4),
             counter_lethal_risk=round(counter_score.lethal_value, 4),
             total=round(adjusted_total, 4),
+            debug_contributions=debug_contributions,
         )
     return best_response, block_metadata
 
@@ -424,6 +478,21 @@ def evaluate_attack_assignment(
     projected_counter_damage = 0.0
     projected_counter_kill_value = 0.0
     counter_lethal_risk = 0.0
+    debug_contributions = (
+        ("player_damage", player_damage, PLAYER_DAMAGE_WEIGHT, player_damage * PLAYER_DAMAGE_WEIGHT),
+        ("enemy_creature_damage", enemy_creature_damage, ENEMY_BOARD_DAMAGE_WEIGHT, enemy_creature_damage * ENEMY_BOARD_DAMAGE_WEIGHT),
+        ("own_creature_damage", own_creature_damage, -OWN_BOARD_DAMAGE_PENALTY, -own_creature_damage * OWN_BOARD_DAMAGE_PENALTY),
+        ("enemy_kill_value", enemy_kill_value, ENEMY_KILL_VALUE_WEIGHT, enemy_kill_value * ENEMY_KILL_VALUE_WEIGHT),
+        ("own_death_risk", effective_own_death_penalty, -OWN_DEATH_VALUE_PENALTY, -effective_own_death_penalty * OWN_DEATH_VALUE_PENALTY),
+        ("lifesteal", lifesteal_value, 1.0, lifesteal_value),
+        ("board_position", board_position_value, 1.0, board_position_value),
+        ("vigilance", vigilance_value, 1.0, vigilance_value),
+        ("slot_release", slot_release_value, 1.0, slot_release_value),
+        ("lethal", lethal_value, 1.0, lethal_value),
+        ("lost_block", lost_block_value, 0.0, 0.0),
+        ("counter_damage", projected_counter_damage, 0.0, 0.0),
+        ("counter_lethal", counter_lethal_risk, 0.0, 0.0),
+    )
     return BuilderAttackScore(
         player_damage=round(player_damage, 4),
         enemy_creature_damage=round(enemy_creature_damage, 4),
@@ -442,6 +511,7 @@ def evaluate_attack_assignment(
         lethal_probability=round(lethal_probability, 4),
         guaranteed_player_damage=round(float(guaranteed_player_damage), 4),
         chosen_block_assignment=tuple(sorted(block_assignment)),
+        debug_contributions=tuple((name, round(raw, 4), round(weight, 4), round(contribution, 4)) for name, raw, weight, contribution in debug_contributions),
     )
 
 
@@ -717,32 +787,133 @@ def _attack_candidate_sort_key(scored_candidate: tuple[BuilderAttackCandidate, B
     )
 
 
-def _debug_attack_decision(engine, player, scored_candidates, best_candidate, metadata: BuilderSearchMetadata) -> None:
-    if not getattr(config, "BUILDER_AI_DEBUG", 0):
+def log_builder_attack_decision(engine, player, decision: BuilderAttackDecision) -> None:
+    _debug_attack_decision(engine, player, decision)
+
+
+def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> None:
+    if not builder_debug_enabled():
         return
+    if not hasattr(engine, "turn_number"):
+        return
+    scored_candidates = list(decision.scored_candidates)
+    best_candidate = decision.candidate
+    metadata = decision.search_metadata
+    if builder_debug_verbose():
+        log_builder_state(engine, player, decision="attack")
     available = list(engine.available_attackers(player))
-    engine.log("Builder AI Attack:")
-    engine.log("Available attackers: " + (", ".join(f"{creature.name}#{creature.unit_id}" for creature in available) or "-"))
-    for index, (candidate, score) in enumerate(scored_candidates[:5], start=1):
-        attackers = ", ".join(str(attacker_id) for attacker_id in candidate.attacker_ids) or "No attack"
-        forced = ", ".join(f"{attacker_id}->{blocker_id}" for attacker_id, blocker_id in candidate.enraged_targets) or "-"
-        response = ", ".join(f"{attacker_id}->{blocker_id}" for attacker_id, blocker_id in score.chosen_block_assignment) or "-"
-        held_back = ", ".join(
-            str(creature.unit_id)
-            for creature in available
-            if creature.unit_id not in candidate.attacker_ids
-        ) or "-"
-        engine.log(
-            f"{index}. Attack [{attackers}] | forced {forced} | player_damage={score.player_damage:.2f} | "
-            f"enemy_kill_value={score.enemy_kill_value:.2f} | own_death_risk={score.own_death_risk:.2f} | "
-            f"lost_block={score.lost_block_value:.2f} | counter_damage={score.projected_counter_damage:.2f} | "
-            f"enemy_lethal={score.counter_lethal_risk:.2f} | held_back [{held_back}] | response {response} | total={score.total:.2f}"
-        )
-    engine.log(
-        f"Search: exact={metadata.exact_search} attack_candidates={metadata.evaluated_attack_candidates} "
-        f"block_assignments={metadata.evaluated_block_assignments} budget={metadata.search_budget_name}"
+    cap_context = compute_builder_cap_context(
+        player,
+        engine,
+        creature_cap=getattr(engine, "BUILDER_CREATURE_CAP", 5),
+        resource_budget=player.total_resources(),
     )
-    if best_candidate is None:
-        engine.log("Decision: No attack")
-    else:
-        engine.log(f"Decision: Attack {list(best_candidate.attacker_ids)}")
+    mandatory = {
+        ("attack", tuple(), tuple()),
+        ("attack", tuple(sorted(creature.unit_id for creature in available)), tuple()),
+    }
+    if scored_candidates:
+        mandatory.add(_candidate_row_key(scored_candidates[0][0]))
+    if len(scored_candidates) > 1:
+        mandatory.add(_candidate_row_key(scored_candidates[1][0]))
+    displayed = select_scored_rows(scored_candidates, top_n=builder_debug_top_n(), mandatory_keys=mandatory)
+    emit_builder_debug_line(
+        engine,
+        "AI ATTACK",
+        player=player,
+        decision="attack",
+        pairs=(
+            ("available", [creature.unit_id for creature in available]),
+            ("cap_pressure", cap_context.cap_pressure),
+            ("replacement_value", cap_context.replacement_value),
+            ("best_replacement_value", cap_context.best_replacement_value),
+            ("weakest_unit", cap_context.weakest_unit_id),
+            ("search_exact", metadata.exact_search),
+            ("attack_candidates", metadata.evaluated_attack_candidates),
+            ("block_assignments", metadata.evaluated_block_assignments),
+            ("pruned", metadata.pruned_candidates),
+            ("budget", metadata.search_budget_name),
+        ),
+    )
+    for rank, (candidate, score) in enumerate(displayed, start=1):
+        held_back = [creature.unit_id for creature in available if creature.unit_id not in candidate.attacker_ids]
+        blocked_ids = {attacker_id for attacker_id, _ in score.chosen_block_assignment}
+        unblocked_ids = [attacker_id for attacker_id in candidate.attacker_ids if attacker_id not in blocked_ids]
+        weakest_attacking = cap_context.at_cap and cap_context.weakest_unit_id in candidate.attacker_ids
+        response_fights = []
+        for attacker_id, blocker_id in score.chosen_block_assignment:
+            attacker = engine.get_unit_by_id(attacker_id)
+            blocker = engine.get_unit_by_id(blocker_id)
+            if attacker is None or blocker is None:
+                continue
+            estimate = estimate_builder_combat(attacker, blocker)
+            response_fights.append(
+                f"{attacker_id}->{blocker_id}:pdmg={estimate.expected_player_damage:.2f},kill={estimate.defender_death_probability:.2f},risk={estimate.attacker_death_probability:.2f}"
+            )
+        emit_builder_debug_line(
+            engine,
+            "AI ATTACK",
+            player=player,
+            decision="attack",
+            pairs=(
+                ("rank", rank),
+                ("attackers", list(candidate.attacker_ids)),
+                ("held", held_back),
+                ("total", score.total),
+                ("player_damage", score.player_damage),
+                ("guaranteed_player_damage", score.guaranteed_player_damage),
+                ("lethal_probability", score.lethal_probability),
+                ("own_lethal", score.lethal_value >= GUARANTEED_LETHAL_BONUS),
+                ("enemy_creature_damage", score.enemy_creature_damage),
+                ("enemy_kill_value", score.enemy_kill_value),
+                ("own_creature_damage", score.own_creature_damage),
+                ("own_death_risk", score.own_death_risk),
+                ("lost_block_value", score.lost_block_value),
+                ("projected_counter_damage", score.projected_counter_damage),
+                ("projected_counter_kill_value", score.projected_counter_kill_value),
+                ("enemy_lethal_risk", score.counter_lethal_risk),
+                ("board_position_value", score.board_position_value),
+                ("response_policy", "adversarial_worst_for_attacker"),
+                ("best_response", list(score.chosen_block_assignment)),
+                ("response_unblocked", unblocked_ids),
+                ("response_total", score.total),
+                ("response_fights", response_fights),
+                ("slot_release_possible", weakest_attacking and cap_context.weakest_unit_id in blocked_ids),
+                ("slot_release_guaranteed", False if weakest_attacking else None),
+                ("slot_status_if_no_block", "occupied" if weakest_attacking and cap_context.weakest_unit_id in unblocked_ids else None),
+            ),
+        )
+        if builder_debug_verbose():
+            emit_builder_debug_line(
+                engine,
+                "AI ATTACK",
+                player=player,
+                decision="attack",
+                pairs=(("rank", rank),) + contribution_pairs(score),
+            )
+    runner_up = scored_candidates[1] if len(scored_candidates) > 1 else None
+    best_score = scored_candidates[0][1] if scored_candidates else None
+    emit_builder_debug_line(
+        engine,
+        "AI ATTACK",
+        player=player,
+        decision="attack",
+        pairs=(
+            ("choose", [] if best_candidate is None else list(best_candidate.attacker_ids)),
+            ("total", 0.0 if best_score is None else best_score.total),
+            ("runner_up", "-" if runner_up is None else list(runner_up[0].attacker_ids)),
+            ("runner_up_total", 0.0 if runner_up is None else runner_up[1].total),
+            ("gap", 0.0 if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
+            ("delta_keys", "-" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
+        ),
+    )
+    if builder_debug_verbose() and builder_debug_include_fingerprints():
+        from .turn_policy import build_builder_runtime_fingerprint
+
+        before = build_builder_runtime_fingerprint(player, engine)
+        after = build_builder_runtime_fingerprint(player, engine)
+        log_builder_fingerprint(engine, player, decision="attack", before=before, after=after)
+
+
+def _candidate_row_key(candidate: BuilderAttackCandidate) -> tuple:
+    return ("attack", tuple(candidate.attacker_ids), tuple(candidate.enraged_targets))
