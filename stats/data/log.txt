@@ -1,11 +1,1296 @@
-No attackers selected.
-Turn 79: Gegner is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 0 / Life 1) for 0 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Player is active.
+Player increases resources to 1/10.
+Choose your attackers.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Creature 1 is unblocked and deals 2 damage to Enemy.
+Turn 2: Enemy is active.
+Turn 3: Player is active.
+Neue Partie gestartet.
+New game started in builder mode.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Turn 1: Player is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 1: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Player is active.
+Player increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Enemy is active.
+Enemy increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 4: Player is active.
+Player increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Enemy is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Enemy increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 6: Player is active.
+Player increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 7: Enemy is active.
+Enemy increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 8: Player is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Kampfbeginn: Nach Angreifern, Blockern und Reihenfolge koennen nur Kampfzauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Ressourcen fuer Recycle von Wutanfall. Ausgewaehlt: 0/1.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner legt Ressource 1/2 (Windschwinge).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner spielt Windschwinge.
+Recycle aufgedeckt und zurueck ins Deck gemischt: Gluthetzer.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Player creates Creature 1 (A 0 / D 0 / DMG 4 / Life 1) for 4 resource(s).
+Zug 3: Spieler ist am Zug.
+No creatures can attack. Combat is skipped and the turn ends.
+Spieler zieht eine Karte.
+Turn 9: Enemy is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner zieht 1 Karte durch den Beschwoerer.
+No creatures can block. Damage goes through automatically.
+Kampfbeginn wird automatisch uebersprungen.
+Spieler passt automatisch.
+Gegner passt automatisch.
+Windschwinge is unblocked and deals 1 damage to Spieler.
+Windgeist is unblocked and deals 1 damage to Spieler.
+Windgeist is unblocked and deals 1 damage to Spieler.
+Kampfende wird automatisch uebersprungen.
+Enemy creates Creature 2 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Spieler passt automatisch.
+No creatures can attack. Combat is skipped and the turn ends.
+Gegner passt automatisch.
+Turn 10: Player is active.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Gegner spielt Verwehung.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Luftelementar (Gegner).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Player creates Creature 3 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Enemy has no creatures to block. Damage goes through automatically.
+Creature 1 is unblocked and deals 4 damage to Enemy.
+Turn 11: Enemy is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Enemy creates Creature 4 (A 0 / D 1 / DMG 1 / Life 3) for 4 resource(s).
 Choose your attackers.
 No attackers selected.
-Turn 80: Spieler is active.
+Turn 12: Player is active.
+Player creates Creature 5 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
 Choose your attackers.
 No attackers selected.
-Turn 81: Gegner is active.
+Turn 13: Enemy is active.
+Enemy creates Creature 6 (A 1 / D 2 / DMG 1 / Life 1) for 4 resource(s).
 Choose your attackers.
 No attackers selected.
-Turn 82: Spieler is active.
+Turn 14: Player is active.
+Player creates Creature 7 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 15: Enemy is active.
+Enemy creates Creature 8 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 16: Player is active.
+Player creates Creature 9 (A 0 / D 2 / DMG 1 / Life 2) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 17: Enemy is active.
+Enemy creates Creature 10 (A 0 / D 2 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 18: Player is active.
+Player increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 19: Enemy is active.
+Enemy increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 20: Player is active.
+Player increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 21: Enemy is active.
+Enemy increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 22: Player is active.
+Player increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 23: Enemy is active.
+Enemy increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 24: Player is active.
+Player increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 25: Enemy is active.
+Enemy increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 26: Player is active.
+Player increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 27: Enemy is active.
+Enemy increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 28: Player is active.
+Player increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 29: Enemy is active.
+Enemy increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 30: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 31: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 32: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 33: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 34: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 35: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 36: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 37: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 38: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 39: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 40: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 41: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 42: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 43: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 44: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 45: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Kampfschaden zerstoert Creature 1. Creature 1 geht auf den Ablagestapel.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 wird zerstoert.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 2 Schaden zu. Creature 4 wird zerstoert.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature cap reached (5/5).
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 is unblocked and deals 2 damage to Enemy.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1, 1] = 2. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 1 Schaden zu. Creature 4 bleibt bei 1 Leben.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 2 Schaden zu. Creature 4 wird zerstoert.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Wuerfelkampf startet: Creature 1 gegen Creature 2.
+Creature 1 wuerfelt [6, 6] = 12, Creature 2 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 2 1 Schaden zu. Creature 2 wird zerstoert.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player creates Creature 1 (A 1 / D 2 / DMG 1 / Life 2) for 5 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 0 / Life 1) for 0 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Turn 2: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Turn 2: Player is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player creates Creature 1 (A 1 / D 0 / DMG 0 / Life 1) for 1 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 1: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Player is active.
+Player increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Enemy is active.
+Enemy increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 4: Player is active.
+Player increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Enemy is active.
+Enemy increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 6: Player is active.
+Player increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 7: Enemy is active.
+Enemy increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 8: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 4 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 9: Enemy is active.
+Enemy creates Creature 2 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 10: Player is active.
+Player creates Creature 3 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+Enemy has no creatures to block. Damage goes through automatically.
+Creature 1 is unblocked and deals 4 damage to Enemy.
+Turn 11: Enemy is active.
+Enemy creates Creature 4 (A 0 / D 1 / DMG 1 / Life 3) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 12: Player is active.
+Player creates Creature 5 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 13: Enemy is active.
+Enemy creates Creature 6 (A 1 / D 2 / DMG 1 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 14: Player is active.
+Player creates Creature 7 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 15: Enemy is active.
+Enemy creates Creature 8 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 16: Player is active.
+Player creates Creature 9 (A 0 / D 2 / DMG 1 / Life 2) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 17: Enemy is active.
+Enemy creates Creature 10 (A 0 / D 2 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 18: Player is active.
+Player increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 19: Enemy is active.
+Enemy increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 20: Player is active.
+Player increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 21: Enemy is active.
+Enemy increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 22: Player is active.
+Player increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 23: Enemy is active.
+Enemy increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 24: Player is active.
+Player increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 25: Enemy is active.
+Enemy increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 26: Player is active.
+Player increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 27: Enemy is active.
+Enemy increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 28: Player is active.
+Player increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 29: Enemy is active.
+Enemy increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 30: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 31: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 32: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 33: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 34: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 35: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 36: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 37: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 38: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 39: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 40: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 41: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 42: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 43: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 44: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 45: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Wuerfelkampf startet: Creature 1 gegen Creature 2.
+Creature 1 wuerfelt [] = 0, Creature 2 wuerfelt [] = 0. Creature 2 gewinnt und fuegt Creature 1 0 Schaden zu. Creature 1 bleibt bei 1 Leben.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Player is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Enemy is active.
+Enemy increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 4: Player is active.
+Player increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Enemy is active.
+Enemy increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 6: Player is active.
+Player increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 7: Enemy is active.
+Enemy increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 8: Player is active.
+Player increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 9: Enemy is active.
+Enemy creates Creature 1 (A 0 / D 0 / DMG 4 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 10: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 is unblocked and deals 2 damage to Enemy.
+Turn 2: Enemy is active.
+Turn 3: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 1: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Player is active.
+Player increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Enemy is active.
+Enemy increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 4: Player is active.
+Player increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Enemy is active.
+Enemy increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 6: Player is active.
+Player increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 7: Enemy is active.
+Enemy increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 8: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 4 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 9: Enemy is active.
+Enemy creates Creature 2 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 10: Player is active.
+Player creates Creature 3 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+Enemy has no creatures to block. Damage goes through automatically.
+Creature 1 is unblocked and deals 4 damage to Enemy.
+Turn 11: Enemy is active.
+Enemy creates Creature 4 (A 0 / D 1 / DMG 1 / Life 3) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 12: Player is active.
+Player creates Creature 5 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 13: Enemy is active.
+Enemy creates Creature 6 (A 1 / D 2 / DMG 1 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 14: Player is active.
+Player creates Creature 7 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 15: Enemy is active.
+Enemy creates Creature 8 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 16: Player is active.
+Player creates Creature 9 (A 0 / D 2 / DMG 1 / Life 2) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 17: Enemy is active.
+Enemy creates Creature 10 (A 0 / D 2 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 18: Player is active.
+Player increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 19: Enemy is active.
+Enemy increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 20: Player is active.
+Player increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 21: Enemy is active.
+Enemy increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 22: Player is active.
+Player increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 23: Enemy is active.
+Enemy increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 24: Player is active.
+Player increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 25: Enemy is active.
+Enemy increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 26: Player is active.
+Player increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 27: Enemy is active.
+Enemy increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 28: Player is active.
+Player increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 29: Enemy is active.
+Enemy increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 30: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 31: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 32: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 33: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 34: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 35: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 36: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 37: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 38: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 39: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 40: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 41: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 42: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 43: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 44: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 45: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Kampfschaden zerstoert Creature 1. Creature 1 geht auf den Ablagestapel.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 wird zerstoert.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 2 Schaden zu. Creature 4 wird zerstoert.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Creature cap reached (5/5).
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 is unblocked and deals 2 damage to Enemy.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1, 1] = 2. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 1 Schaden zu. Creature 4 bleibt bei 1 Leben.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Creature 1 wuerfelt [6, 6] = 12, Creature 3 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 3 1 Schaden zu. Creature 3 bleibt bei 1 Leben.
+Creature 2 wuerfelt [5, 5] = 10, Creature 4 wuerfelt [1] = 1. Creature 2 gewinnt und fuegt Creature 4 2 Schaden zu. Creature 4 wird zerstoert.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Wuerfelkampf startet: Creature 1 gegen Creature 2.
+Creature 1 wuerfelt [6, 6] = 12, Creature 2 wuerfelt [1] = 1. Creature 1 gewinnt und fuegt Creature 2 1 Schaden zu. Creature 2 wird zerstoert.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player creates Creature 1 (A 1 / D 2 / DMG 1 / Life 2) for 5 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 0 / Life 1) for 0 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Turn 2: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Turn 2: Player is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player creates Creature 1 (A 1 / D 0 / DMG 0 / Life 1) for 1 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+New game started in builder mode.
+Turn 1: Player is active.
+Player increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 1: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Player is active.
+Player increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Enemy is active.
+Enemy increases resources to 2/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 4: Player is active.
+Player increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Enemy is active.
+Enemy increases resources to 3/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 6: Player is active.
+Player increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 7: Enemy is active.
+Enemy increases resources to 4/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 8: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 4 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 9: Enemy is active.
+Enemy creates Creature 2 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 10: Player is active.
+Player creates Creature 3 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+Enemy has no creatures to block. Damage goes through automatically.
+Creature 1 is unblocked and deals 4 damage to Enemy.
+Turn 11: Enemy is active.
+Enemy creates Creature 4 (A 0 / D 1 / DMG 1 / Life 3) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 12: Player is active.
+Player creates Creature 5 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 13: Enemy is active.
+Enemy creates Creature 6 (A 1 / D 2 / DMG 1 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 14: Player is active.
+Player creates Creature 7 (A 0 / D 1 / DMG 3 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 15: Enemy is active.
+Enemy creates Creature 8 (A 1 / D 1 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 16: Player is active.
+Player creates Creature 9 (A 0 / D 2 / DMG 1 / Life 2) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 17: Enemy is active.
+Enemy creates Creature 10 (A 0 / D 2 / DMG 2 / Life 1) for 4 resource(s).
+Choose your attackers.
+No attackers selected.
+Turn 18: Player is active.
+Player increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 19: Enemy is active.
+Enemy increases resources to 5/10.
+Choose your attackers.
+No attackers selected.
+Turn 20: Player is active.
+Player increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 21: Enemy is active.
+Enemy increases resources to 6/10.
+Choose your attackers.
+No attackers selected.
+Turn 22: Player is active.
+Player increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 23: Enemy is active.
+Enemy increases resources to 7/10.
+Choose your attackers.
+No attackers selected.
+Turn 24: Player is active.
+Player increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 25: Enemy is active.
+Enemy increases resources to 8/10.
+Choose your attackers.
+No attackers selected.
+Turn 26: Player is active.
+Player increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 27: Enemy is active.
+Enemy increases resources to 9/10.
+Choose your attackers.
+No attackers selected.
+Turn 28: Player is active.
+Player increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 29: Enemy is active.
+Enemy increases resources to 10/10.
+Choose your attackers.
+No attackers selected.
+Turn 30: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 31: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 32: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 33: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 34: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 35: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 36: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 37: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 38: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 39: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 40: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 41: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 42: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 43: Enemy is active.
+Choose your attackers.
+No attackers selected.
+Turn 44: Player is active.
+Choose your attackers.
+No attackers selected.
+Turn 45: Enemy is active.
+New game started in builder mode.
+Turn 1: Enemy is active.
+Wuerfelkampf startet: Creature 1 gegen Creature 2.
+Creature 1 wuerfelt [] = 0, Creature 2 wuerfelt [] = 0. Creature 2 gewinnt und fuegt Creature 1 0 Schaden zu. Creature 1 bleibt bei 1 Leben.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Kampfbeginn: Nach Angreifern, Blockern und Reihenfolge koennen nur Kampfzauber gespielt werden.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Ressourcen fuer Recycle von Wutanfall. Ausgewaehlt: 0/1.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner legt Ressource 1/2 (Windschwinge).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner spielt Windschwinge.
+Recycle aufgedeckt und zurueck ins Deck gemischt: Gluthetzer.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Zug 3: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gegner zieht 1 Karte durch den Beschwoerer.
+No creatures can block. Damage goes through automatically.
+Kampfbeginn wird automatisch uebersprungen.
+Spieler passt automatisch.
+Gegner passt automatisch.
+Windschwinge is unblocked and deals 1 damage to Spieler.
+Windgeist is unblocked and deals 1 damage to Spieler.
+Windgeist is unblocked and deals 1 damage to Spieler.
+Kampfende wird automatisch uebersprungen.
+Spieler passt automatisch.
+Gegner passt automatisch.
+Zweite Hauptphase begonnen.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Gegner spielt Verwehung.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Luftelementar (Gegner).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Zug 1: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Ressourcen fuer Recycle von Himmelswende. Ausgewaehlt: 0/1.
+Bestaetige Himmelswende.
+Spieler spielt Himmelswende.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt seine Hand ab und zieht 3 Karten.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 2 Ressourcen fuer Recycle von Orkanwende. Ausgewaehlt: 0/2.
+Waehle 2 Ressourcen fuer Recycle von Orkanwende. Ausgewaehlt: 1/2.
+Bestaetige Orkanwende.
+Spieler spielt Orkanwende.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt seine Hand ab und zieht 5 Karten.
+Neue Partie gestartet.
+Gegner fuehrt einen Mulligan mit 1 Karten durch.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Rueckenwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Rueckenwind reduziert Kreaturenkosten in diesem Zug um 2.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Felswesen (Gegner).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 2 Kreatur(en) fuer Verwirbelung. Ausgewaehlt: 0/2.
+Waehle 1 Kreatur(en) fuer Verwirbelung. Ausgewaehlt: 1/2.
+Bestaetige Verwirbelung.
+Spieler spielt Verwirbelung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwirbelung nimmt auf die Haende ihrer Besitzer zurueck: Windschwinge (Spieler), Felswesen (Gegner).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreaturenkarte(n) aus deinem Ablagestapel fuer Windruf. Ausgewaehlt: 0/1.
+Bestaetige Windruf.
+Spieler spielt Windruf.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler nimmt Windschwinge aus dem Ablagestapel auf die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Spieler spielt Gluthetzer.
+Spieler spielt Windwesen.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Spieler spielt Aufwind.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Optional: choose forced blockers for Provoke attackers, then continue.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Zug 1: Spieler ist am Zug.
+Spieler zieht eine Karte.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Zug 1: Spieler ist am Zug.
+Gegner gewinnt. Spieler kann durch Ziehphase keine Karte mehr ziehen.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Feuerwelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Feuerwelle fuegt allen Kreaturen und Spielern 4 Schaden zu.
+Zauberschaden zerstoert Glutbrecher. Glutbrecher geht auf den Ablagestapel.
+Zauberschaden zerstoert Steinwesen. Steinwesen geht auf den Ablagestapel.
+Zauberschaden zerstoert Glutwesen. Glutwesen geht auf den Ablagestapel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Feuerwelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Feuerwelle fuegt allen Kreaturen und Spielern 4 Schaden zu.
+Unentschieden. Beide Spieler haben 0 oder weniger Leben.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Flammenvision.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler zieht 3 Karten.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Gluthetzer is unblocked and deals 2 damage to Gegner.
+Kampfende: Der Kampf ist beendet. Vor der zweiten Hauptphase koennen nur Kampfzauber gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Glutvision.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler zieht 2 Karten.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Hitzewelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Hitzewelle fuegt allen Kreaturen und Spielern 2 Schaden zu.
+Unentschieden. Beide Spieler haben 0 oder weniger Leben.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Hitzewelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Hitzewelle fuegt allen Kreaturen und Spielern 2 Schaden zu.
+Gegner gewinnt. Spieler hat 0 oder weniger Leben.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Hitzewelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Hitzewelle fuegt allen Kreaturen und Spielern 2 Schaden zu.
+Spieler gewinnt. Gegner hat 0 oder weniger Leben.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Hitzewelle.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Hitzewelle fuegt allen Kreaturen und Spielern 2 Schaden zu.
+Zauberschaden zerstoert Gluthetzer. Gluthetzer geht auf den Ablagestapel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Holzvorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt die oberste Karte seines Decks getappt als Ressource ins Spiel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Wuerfelkampf startet: Windschwinge gegen Felswesen.
+Kampfschaden zerstoert Windschwinge. Windschwinge geht auf den Ablagestapel.
+Windschwinge wuerfelt [1] = 1, Felswesen wuerfelt [3, 2, 4] = 9. Felswesen gewinnt und fuegt Windschwinge 1 Schaden zu. Windschwinge wird zerstoert.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Kohlevorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Spieler legt 2 Karten seines Decks getappt als Ressourcen ins Spiel.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Spieler legt Ressource 1/2 (Wassertropfen).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler spielt Kohlevorrat.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Gegner gewinnt. Spieler kann durch Kohlevorrat keine Karte mehr ziehen.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Zug 1: Gegner ist am Zug.
+Gegner beginnt und zieht im ersten Zug keine Karte.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Wuerfelkampf startet: Gluthetzer gegen Felswesen.
+Kampfschaden zerstoert Gluthetzer. Gluthetzer geht auf den Ablagestapel.
+Gluthetzer wuerfelt [6, 2, 2] = 10, Felswesen wuerfelt [5, 1, 6] = 12. Felswesen gewinnt und fuegt Gluthetzer 1 Schaden zu. Gluthetzer wird zerstoert.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Felswesen (Gegner).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Reaktionsfenster: Eine eigene Kreatur wurde als Ziel gewÃ¤hlt. Passende Zauber koennen darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Optional: choose forced blockers for Provoke attackers, then continue.
+Der Zauber ist noch nicht vollstaendig vorbereitet.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Spieler passt.
+Aufwind reduziert Kreaturenkosten in diesem Zug um 1.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Spieler zieht 1 Karte durch den Beschwoerer.
+Optional: choose forced blockers for Provoke attackers, then continue.
+Optional: choose forced blockers for Provoke attackers, then continue.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Orkangeist is unblocked and deals 1 damage to Spieler.
+Kampfende: Der Kampf ist beendet. Vor der zweiten Hauptphase koennen nur Kampfzauber gespielt werden.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Spieler ist als Naechstes mit Reagieren oder Passen am Zug.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Gegner passt.
+Spieler passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Windschwinge (Spieler).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Waehle 1 Kreatur(en) fuer Verwehung. Ausgewaehlt: 0/1.
+Bestaetige Verwehung.
+Spieler spielt Verwehung.
+Reaktionsfenster: Ein Zauber wurde gespielt. Passende Zauber koennen jetzt darauf reagieren.
+Gegner ist als Naechstes mit Reagieren oder Passen am Zug.
+Gegner passt.
+Verwehung nimmt auf die Haende ihrer Besitzer zurueck: Windschwinge (Spieler).
+Neue Partie gestartet.
+Wähle beliebige Karten für deinen einmaligen Mulligan oder behalte die Hand.
+Diese Karte kann gerade nicht gespielt werden.
+New game started in builder mode.
+Turn 1: Player is active.
+Player creates Creature 1 (A 0 / D 0 / DMG 0 / Life 1) for 0 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 2: Enemy is active.
+Enemy increases resources to 1/10.
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 3: Player is active.
+Player increases resources to 1/10.
+Choose your attackers.
+No attackers selected.
+Turn 4: Enemy is active.
+Enemy creates Creature 2 (A 0 / D 0 / DMG 1 / Life 1) for 1 resource(s).
+No creatures can attack. Combat is skipped and the turn ends.
+Turn 5: Player is active.
