@@ -49,18 +49,21 @@ from .snapshot import build_builder_snapshot
 from .turn_policy import (
     BuilderTurnDecision,
     BuilderTurnScore,
+    build_builder_runtime_fingerprint,
     build_builder_plan_dict,
     choose_builder_turn_plan,
     extract_candidate_future_value,
+    materialize_builder_turn_decision,
     plan_builder_turn,
 )
-from .turn_projection import BuilderTurnProjection, build_current_turn_projection, project_creature_action, project_resource_action
-from .turn_types import BuilderProjectedCandidate, BuilderSearchMetadata, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
+from .turn_projection import BuilderTurnProjection, build_current_turn_projection, project_ability_action, project_creature_action, project_pass_action, project_resource_action
+from .turn_types import BuilderAbilityActionCandidate, BuilderProjectedCandidate, BuilderSearchMetadata, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
 from .types import BuilderCandidateScore, BuilderCreatureCandidate, BuilderStrategicSnapshot
 
 __all__ = [
     "ABILITY_BASE_WEIGHTS",
     "BuilderAttackCandidate",
+    "BuilderAbilityActionCandidate",
     "BuilderAttackDecision",
     "BuilderAttackScore",
     "BuilderProjectedCandidate",
@@ -86,7 +89,10 @@ __all__ = [
     "TURN_LOOKAHEAD_SEARCH_BUDGET",
     "build_builder_snapshot",
     "build_builder_plan_dict",
+    "build_builder_runtime_fingerprint",
+    "materialize_builder_turn_decision",
     "build_current_turn_projection",
+    "project_ability_action",
     "build_candidate_combatant_view",
     "can_legally_be_forced_to_block",
     "can_legally_block",
@@ -118,6 +124,7 @@ __all__ = [
     "player_damage_distribution_for_combat",
     "plan_builder_turn",
     "project_creature_action",
+    "project_pass_action",
     "project_resource_action",
     "choose_builder_turn_plan",
     "score_builder_attack_candidate",

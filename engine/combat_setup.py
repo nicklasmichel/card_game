@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from engine.combat_dice import apply_life_steal_healing, apply_prepared_dice_battle
 
 from core.ai.builder import choose_builder_blocks
@@ -38,7 +39,7 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
 def can_creature_be_forced_to_block_attacker(self, blocker, attacker) -> bool:
     if blocker is None or attacker is None:
         return False
-    if attacker.has_ability(Ability.PROVOKE):
+    if attacker.has_ability(Ability.PROVOKE) or attacker.has_ability(Ability.ENRAGED):
         return True
     if getattr(blocker, "cannot_block", False):
         return False
@@ -53,7 +54,7 @@ def can_creature_be_forced_to_block_attacker(self, blocker, attacker) -> bool:
 
 
 def get_legal_enraged_targets(self, attacker) -> list:
-    if attacker is None or not attacker.has_ability(Ability.ENRAGED):
+    if attacker is None or not (attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE)):
         return []
     used_blockers = {blocker_id for blocker_id in self.block_assignments.values() if blocker_id is not None}
     legal_targets = []
@@ -67,7 +68,9 @@ def get_legal_enraged_targets(self, attacker) -> list:
 
 def set_enraged_block_assignment(self, attacker_id: int, blocker_id: int | None) -> bool:
     attacker = self.get_unit_by_id(attacker_id)
-    if attacker is None or attacker_id not in self.block_assignments or not attacker.has_ability(Ability.ENRAGED):
+    if attacker is None or attacker_id not in self.block_assignments or not (
+        attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE)
+    ):
         return False
     if blocker_id is None:
         old_blocker_id = self.block_assignments.get(attacker_id)
@@ -97,7 +100,7 @@ def ai_assign_enraged_blocks(self) -> None:
     attackers = [
         attacker
         for attacker in (self.get_unit_by_id(attacker_id) for attacker_id in self.block_assignments)
-        if attacker is not None and attacker.has_ability(Ability.ENRAGED)
+        if attacker is not None and (attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE))
     ]
     for attacker in attackers:
         blocker = self.ai.choose_enraged_block_target(attacker, self.get_legal_enraged_targets(attacker), self)
@@ -112,11 +115,11 @@ def begin_attack_declaration(self) -> None:
         return
     available_attackers = self.available_attackers(self.active_player)
     if not available_attackers:
-        self.log("No creatures can attack.")
+        self.log("No creatures can attack." if is_builder_mode() else "Keine Kreaturen koennen angreifen.")
         return
     self.phase = PHASE_DECLARE_ATTACKERS
     self.selected_attackers = []
-    self.log("Choose your attackers.")
+    self.log("Choose your attackers." if is_builder_mode() else "Waehle deine Angreifer.")
 
 
 def toggle_attacker(self, creature_id: int) -> None:
@@ -152,7 +155,7 @@ def confirm_attackers(self) -> None:
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
-        self.log("No attackers selected.")
+        self.log("No attackers selected." if is_builder_mode() else "Keine Angreifer gewaehlt.")
         self.attack_declared_this_turn = False
         self.enter_second_main_phase()
         return
@@ -184,7 +187,7 @@ def advance_after_attackers_declared(self) -> None:
     if not self.defending_player.is_human:
         self.phase = PHASE_DECLARE_BLOCKERS
         self.selected_blocker_id = None
-        if self.active_player.is_human:
+        if self.active_player.is_human and (not is_builder_mode() or BUILDER_ABILITIES_ENABLED):
             self.log("Optional: choose forced blockers for Provoke attackers, then continue.")
             return
         self.ai_assign_enraged_blocks()
@@ -282,7 +285,9 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
         return
     if blocker is None or self.get_unit_owner(blocker.unit_id) != self.defending_player:
         return
-    if attacker.unit_id not in self.block_assignments or not attacker.has_ability(Ability.ENRAGED):
+    if attacker.unit_id not in self.block_assignments or not (
+        attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE)
+    ):
         return
     current_blocker_id = self.block_assignments.get(attacker.unit_id)
     if current_blocker_id == blocker.unit_id and attacker.unit_id in self.enraged_forced_attackers:
@@ -513,7 +518,7 @@ def _apply_pending_direct_attack(self, pending) -> None:
     if attacker is None or self.get_unit_owner(attacker.unit_id) != self.active_player:
         return
     damage = self.get_creature_damage_value(attacker)
-    if not attacker.has_ability(Ability.VIGILANT):
+    if not (attacker.has_ability(Ability.VIGILANT) or attacker.has_ability(Ability.VIGILANCE)):
         attacker.tapped = True
     self.defending_player.life -= damage
     self.queue_player_damage_event(

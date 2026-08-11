@@ -13,33 +13,36 @@ from ui.style import CARD_BORDER, HIGHLIGHT, TEXT_COLOR
 def draw_enemy_area(self) -> None:
     sections = self.get_playfield_sections()
     hand_rect = sections["enemy_hand"]
-    resource_rect = sections["enemy_resources"]
     creatures_rect = sections["enemy_creatures"]
     self.draw_playfield_section_box(hand_rect, "enemy_hand")
-    self.draw_playfield_section_box(resource_rect, "enemy_resources")
     self.draw_playfield_section_box(creatures_rect, "enemy_creatures")
-    self.draw_hand(self.engine.ai_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20, interactive=False)
     if is_builder_mode():
+        resource_card_rect = self.draw_builder_resource_stack_card(
+            self.engine.ai_player,
+            hand_rect.x + 10,
+            hand_rect.y + max(0, (hand_rect.height - self.card_height) // 2),
+        )
+        hand_start_x = resource_card_rect.right + 12
+        hand_width = max(0, hand_rect.right - 20 - hand_start_x)
+        self.draw_hand(self.engine.ai_player, hand_start_x, hand_rect.y + 10, hand_width, interactive=False)
         life_text = f"Life {self.engine.ai_player.life}/{STARTING_LIFE}"
-        resources_text = f"Ressources {self.engine.ai_player.total_resources()}/10"
         life_surface = self.title_font.render(life_text, True, TEXT_COLOR)
-        resources_surface = self.font.render(resources_text, True, TEXT_COLOR)
-        text_x = hand_rect.right - 14 - max(life_surface.get_width(), resources_surface.get_width())
+        text_x = hand_rect.right - 14 - life_surface.get_width()
         life_y = hand_rect.y + 10
-        resources_y = life_y + life_surface.get_height() + 4
         self.screen.blit(life_surface, (text_x, life_y))
-        self.screen.blit(resources_surface, (text_x, resources_y))
-        total_width = max(life_surface.get_width(), resources_surface.get_width())
-        total_height = resources_y + resources_surface.get_height() - life_y
-        self.summoner_rects[self.engine.ai_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, total_width + 16, total_height + 8)
-    self.draw_resources(
-        self.engine.ai_player.resources,
-        resource_rect.x + 10,
-        resource_rect.y + 10,
-        resource_rect.width - 20,
-        player=self.engine.ai_player,
-        target_key=None,
-    )
+        self.summoner_rects[self.engine.ai_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, life_surface.get_width() + 16, life_surface.get_height() + 8)
+    else:
+        resource_rect = sections["enemy_resources"]
+        self.draw_playfield_section_box(resource_rect, "enemy_resources")
+        self.draw_hand(self.engine.ai_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20, interactive=False)
+        self.draw_resources(
+            self.engine.ai_player.resources,
+            resource_rect.x + 10,
+            resource_rect.y + 10,
+            resource_rect.width - 20,
+            player=self.engine.ai_player,
+            target_key=None,
+        )
     self.draw_creatures(
         self.engine.ai_player.battlefield,
         False,
@@ -54,21 +57,33 @@ def draw_enemy_area(self) -> None:
 def draw_player_area(self) -> None:
     sections = self.get_playfield_sections()
     creatures_rect = sections["player_creatures"]
-    resource_rect = sections["player_resources"]
     hand_rect = sections["player_hand"]
     self.player_creature_rect = creatures_rect.copy()
-    self.player_resource_rect = resource_rect.copy()
-    self.draw_playfield_section_box(resource_rect, "player_resources")
+    self.player_resource_rect = pygame.Rect(hand_rect.x + 10, hand_rect.y + max(0, (hand_rect.height - self.card_height) // 2), self.card_width, self.card_height)
     self.draw_playfield_section_box(creatures_rect, "player_creatures")
     self.draw_playfield_section_box(hand_rect, "player_hand")
-    self.draw_resources(
-        self.engine.human_player.resources,
-        resource_rect.x + 10,
-        resource_rect.y + 10,
-        resource_rect.width - 20,
-        player=self.engine.human_player,
-        target_key="player_resources",
-    )
+    if is_builder_mode():
+        resource_card_rect = self.draw_builder_resource_stack_card(
+            self.engine.human_player,
+            hand_rect.x + 10,
+            hand_rect.y + max(0, (hand_rect.height - self.card_height) // 2),
+        )
+        hand_start_x = resource_card_rect.right + 12
+        hand_width = max(0, hand_rect.right - 20 - hand_start_x)
+    else:
+        resource_rect = sections["player_resources"]
+        self.player_resource_rect = resource_rect.copy()
+        self.draw_playfield_section_box(resource_rect, "player_resources")
+        self.draw_resources(
+            self.engine.human_player.resources,
+            resource_rect.x + 10,
+            resource_rect.y + 10,
+            resource_rect.width - 20,
+            player=self.engine.human_player,
+            target_key="player_resources",
+        )
+        hand_start_x = hand_rect.x + 10
+        hand_width = hand_rect.width - 20
     display_creatures = list(self.engine.human_player.battlefield)
     if is_builder_mode() and self.engine.phase == PHASE_BUILDER_CREATURE:
         preview_creature = self.engine.get_builder_preview_creature(self.engine.human_player)
@@ -83,20 +98,14 @@ def draw_player_area(self) -> None:
         creatures_rect.width - 20,
         creatures_rect.height - 20,
     )
-    self.draw_hand(self.engine.human_player, hand_rect.x + 10, hand_rect.y + 10, hand_rect.width - 20)
+    self.draw_hand(self.engine.human_player, hand_start_x, hand_rect.y + 10, hand_width)
     if is_builder_mode():
         life_text = f"Life {self.engine.human_player.life}/{STARTING_LIFE}"
-        resources_text = f"Ressources {self.engine.human_player.total_resources()}/10"
         life_surface = self.title_font.render(life_text, True, TEXT_COLOR)
-        resources_surface = self.font.render(resources_text, True, TEXT_COLOR)
-        text_x = hand_rect.right - 14 - max(life_surface.get_width(), resources_surface.get_width())
+        text_x = hand_rect.right - 14 - life_surface.get_width()
         life_y = hand_rect.y + 10
-        resources_y = life_y + life_surface.get_height() + 4
         self.screen.blit(life_surface, (text_x, life_y))
-        self.screen.blit(resources_surface, (text_x, resources_y))
-        total_width = max(life_surface.get_width(), resources_surface.get_width())
-        total_height = resources_y + resources_surface.get_height() - life_y
-        self.summoner_rects[self.engine.human_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, total_width + 16, total_height + 8)
+        self.summoner_rects[self.engine.human_player.player_id] = pygame.Rect(text_x - 8, life_y - 4, life_surface.get_width() + 16, life_surface.get_height() + 8)
 
 
 def draw_combat_links(self) -> None:
@@ -205,6 +214,25 @@ def get_creature_screen_positions(
 def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
     side_panel_x = self.window_width - self.side_panel_width - 10
     playfield_rect = pygame.Rect(10, 10, side_panel_x - 20, self.window_height - 20)
+    if is_builder_mode():
+        section_gap = 2
+        usable_height = playfield_rect.height - section_gap * 3
+        hand_height = max(120, usable_height // 5)
+        creature_height = max(120, (usable_height - hand_height * 2) // 2)
+        remainder = usable_height - hand_height * 2 - creature_height * 2
+        enemy_hand = pygame.Rect(playfield_rect.x, playfield_rect.y, playfield_rect.width, hand_height)
+        enemy_creatures = pygame.Rect(playfield_rect.x, enemy_hand.bottom + section_gap, playfield_rect.width, creature_height)
+        player_creatures = pygame.Rect(playfield_rect.x, enemy_creatures.bottom + section_gap, playfield_rect.width, creature_height + remainder)
+        player_hand = pygame.Rect(playfield_rect.x, player_creatures.bottom + section_gap, playfield_rect.width, hand_height)
+        zero_rect = pygame.Rect(playfield_rect.x, playfield_rect.y, 0, 0)
+        return {
+            "enemy_hand": enemy_hand,
+            "enemy_resources": zero_rect,
+            "enemy_creatures": enemy_creatures,
+            "player_creatures": player_creatures,
+            "player_resources": zero_rect,
+            "player_hand": player_hand,
+        }
     section_gap = 2
     usable_height = playfield_rect.height - section_gap * 5
     section_height = usable_height // 6
@@ -234,6 +262,15 @@ def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
         "player_resources": player_resources,
         "player_hand": player_hand,
     }
+
+
+def draw_builder_resource_stack_card(self, player, x: int, y: int) -> pygame.Rect:
+    surface = self.build_resource_back_surface(self.engine.builder_resource_template().element, False)
+    badge_rect = pygame.Rect(self.card_width // 2 - 28, self.card_height // 2 - 22, 56, 44)
+    self.draw_card_badge(surface, badge_rect, str(player.total_resources()), self.font, self.get_think_progress(player))
+    rect = pygame.Rect(x, y, self.card_width, self.card_height)
+    self.screen.blit(surface, rect.topleft)
+    return rect
 
 
 def draw_polyline(self, start: tuple[int, int], end: tuple[int, int], color, via_y: int, width: int) -> None:

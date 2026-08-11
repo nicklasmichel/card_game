@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.config import STARTING_LIFE
 from core.game_mode import is_builder_mode
 from core.models import (
@@ -24,7 +25,6 @@ from core.models import (
 from stats import GameStatistics
 
 
-BUILDER_MAX_RESOURCES = 10
 BUILDER_RESOURCE_TEMPLATE_ID = "builder_resource"
 BUILDER_PREVIEW_TEMPLATE_ID = "builder_creature_preview"
 BUILDER_ABILITY_PHASE_CARD_LIMIT = 1
@@ -85,6 +85,10 @@ def builder_mode_active(self) -> bool:
     return is_builder_mode()
 
 
+def builder_abilities_enabled(self) -> bool:
+    return builder_mode_active(self) and BUILDER_ABILITIES_ENABLED
+
+
 def _builder_ability_template(self, ability: Ability) -> CardTemplate:
     template_id = f"builder_ability_{ability.name.lower()}"
     template = self.templates.get(template_id)
@@ -124,6 +128,8 @@ def get_builder_card_ability(self, card: CardInstance | None) -> Ability | None:
 
 
 def builder_draw_ability_card(self, player: PlayerState, source_name: str) -> CardInstance | None:
+    if not builder_abilities_enabled(self):
+        return None
     if not self.builder_shared_deck:
         if self.builder_shared_discard:
             self.builder_shared_deck = list(self.builder_shared_discard)
@@ -160,7 +166,7 @@ def initialize_builder_game(self) -> None:
     self.pending_builder_creature = None
     self.pending_builder_ability = None
     self.builder_creature_counter = 0
-    self.builder_shared_deck = _build_builder_shared_ability_deck(self)
+    self.builder_shared_deck = _build_builder_shared_ability_deck(self) if BUILDER_ABILITIES_ENABLED else []
     self.builder_shared_discard = []
     self.builder_ability_used_this_turn = False
     self.builder_created_this_turn_ids = set()
@@ -178,8 +184,6 @@ def initialize_builder_game(self) -> None:
         player.summoner_tapped = False
         player.turns_started = 0
         player.mulligan_used = True
-    self.builder_draw_ability_card(self.human_player, "game start")
-    self.builder_draw_ability_card(self.ai_player, "game start")
     self.starting_player_id = self.rng.choice([0, 1])
     self.active_player_index = self.starting_player_id
     self.statistics = GameStatistics(
@@ -228,11 +232,13 @@ def can_builder_add_resource(self, player: PlayerState) -> bool:
 
 
 def can_builder_open_creature_build(self, player: PlayerState) -> bool:
-    return can_take_builder_main_action(self, player)
+    return can_take_builder_main_action(self, player) and len(player.battlefield) < BUILDER_CREATURE_CAP
 
 
 def begin_builder_creature_build(self) -> bool:
     if not builder_mode_active(self) or not can_builder_open_creature_build(self, self.active_player) or not self.active_player.is_human:
+        if builder_mode_active(self) and self.active_player.is_human and len(self.active_player.battlefield) >= BUILDER_CREATURE_CAP:
+            self.log(f"Creature cap reached ({len(self.active_player.battlefield)}/{BUILDER_CREATURE_CAP}).")
         return False
     if self.active_player.available_resources() <= 0:
         creature = create_builder_creature(
@@ -327,6 +333,8 @@ def _advance_to_builder_ability_phase(self) -> None:
 
 
 def builder_has_any_ability_targets(self, player: PlayerState) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     if any(existing.current_hp > 0 for existing in player.battlefield):
         return True
     enemy = self.players[1 - player.player_id]
@@ -345,6 +353,17 @@ def advance_builder_after_ability_phase(self) -> None:
 
 
 def finish_builder_main_action(self) -> None:
+    if not builder_abilities_enabled(self):
+        self.pending_builder_creature = None
+        self.pending_builder_ability = None
+        self.selected_hand_ids.clear()
+        self.phase = PHASE_MAIN_1
+        if self.available_attackers(self.active_player):
+            self.begin_attack_declaration()
+            return
+        self.log("No creatures can attack. Combat is skipped and the turn ends.")
+        self.end_turn()
+        return
     _advance_to_builder_ability_phase(self)
     if not builder_has_any_ability_targets(self, self.active_player):
         self.log("No creatures are in play. The ability phase is skipped.")
@@ -361,6 +380,8 @@ def create_builder_creature(
     lw: int,
     abilities: frozenset[Ability] = frozenset(),
 ):
+    if len(player.battlefield) >= BUILDER_CREATURE_CAP:
+        return None
     self.builder_creature_counter += 1
     template = CardTemplate(
         template_id=f"builder_creature_{self.builder_creature_counter}",
@@ -379,7 +400,7 @@ def create_builder_creature(
     instance_id = self.make_instance_id()
     built = BattlefieldCreature.from_card(CardInstance(instance_id, template))
     built.current_hp = lw
-    built.tapped = False
+    built.tapped = True
     built.summoning_sick = True
     player.battlefield.append(built)
     return built
@@ -419,6 +440,9 @@ def get_builder_preview_creature(self, player: PlayerState) -> BattlefieldCreatu
 def confirm_builder_creature_build(self) -> bool:
     pending = self.pending_builder_creature
     if self.phase != PHASE_BUILDER_CREATURE or pending is None or not builder_creature_build_is_valid(self, pending):
+        return False
+    if len(self.active_player.battlefield) >= BUILDER_CREATURE_CAP:
+        self.log(f"Creature cap reached ({len(self.active_player.battlefield)}/{BUILDER_CREATURE_CAP}).")
         return False
     spent = pending.spent_resources
     if not builder_spend_ready_resources(self, self.active_player, spent):
@@ -475,7 +499,7 @@ def builder_pass_main_action(self, player: PlayerState) -> bool:
 
 def can_builder_use_ability_card(self, player: PlayerState) -> bool:
     return (
-        builder_mode_active(self)
+        builder_abilities_enabled(self)
         and player == self.active_player
         and self.phase == PHASE_BUILDER_ABILITY
         and not self.builder_ability_used_this_turn
@@ -484,6 +508,8 @@ def can_builder_use_ability_card(self, player: PlayerState) -> bool:
 
 
 def begin_builder_ability_use(self, card_instance_id: int) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     if not can_builder_use_ability_card(self, self.active_player):
         return False
     card = next((existing for existing in self.active_player.hand if existing.instance_id == card_instance_id), None)
@@ -502,6 +528,8 @@ def cancel_builder_ability_use(self) -> None:
 
 
 def choose_builder_ability_mode(self, mode: str, stat_name: str | None = None) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     pending = self.pending_builder_ability
     if self.phase != PHASE_BUILDER_ABILITY or pending is None:
         return False
@@ -548,6 +576,8 @@ def _can_select_builder_ability_target(self, creature: BattlefieldCreature, pend
 
 
 def select_builder_ability_target(self, creature_id: int) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     pending = self.pending_builder_ability
     if self.phase != PHASE_BUILDER_ABILITY or pending is None or pending.mode is None:
         return False
@@ -561,6 +591,8 @@ def select_builder_ability_target(self, creature_id: int) -> bool:
 
 
 def builder_pending_ability_ready(self) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     pending = self.pending_builder_ability
     if pending is None or pending.mode is None or pending.selected_target_id is None:
         return False
@@ -571,6 +603,8 @@ def builder_pending_ability_ready(self) -> bool:
 
 
 def resolve_builder_ability_use(self) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     pending = self.pending_builder_ability
     if self.phase != PHASE_BUILDER_ABILITY or pending is None or not builder_pending_ability_ready(self):
         return False
@@ -581,6 +615,8 @@ def resolve_builder_ability_use(self) -> bool:
         return False
     if pending.mode == "grant_ability":
         target.abilities = frozenset(set(target.abilities) | {granted_ability})
+        if granted_ability == Ability.HASTE and target.unit_id in self.builder_created_this_turn_ids:
+            target.tapped = False
         self.log(f"{self.active_player.name} gives {BUILDER_ABILITY_LABELS[granted_ability]} to {target.name}.")
     elif pending.mode == "add_stat":
         if pending.selected_stat == "aw":
@@ -608,6 +644,8 @@ def resolve_builder_ability_use(self) -> bool:
 
 
 def skip_builder_ability_phase(self) -> bool:
+    if not builder_abilities_enabled(self):
+        return False
     if self.phase != PHASE_BUILDER_ABILITY:
         return False
     self.pending_builder_ability = None
@@ -618,5 +656,5 @@ def skip_builder_ability_phase(self) -> bool:
 
 
 def finish_builder_turn_after_combat(self) -> None:
-    if self.attack_declared_this_turn and not _builder_should_skip_first_turn_draw(self, self.active_player):
+    if builder_abilities_enabled(self) and self.attack_declared_this_turn and not _builder_should_skip_first_turn_draw(self, self.active_player):
         self.builder_draw_ability_card(self.active_player, "Attack phase")

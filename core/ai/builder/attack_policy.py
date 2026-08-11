@@ -6,6 +6,7 @@ from itertools import combinations
 import core.config as config
 from core.models import Ability
 
+from .cap_strategy import compute_builder_cap_context
 from .combat_assignments import (
     convolve_damage_distributions,
     generate_block_assignment_tuples,
@@ -25,8 +26,13 @@ LIFESTEAL_WEIGHT = 0.8
 VIGILANCE_PRESERVATION_WEIGHT = 0.18
 GUARANTEED_LETHAL_BONUS = 1000.0
 LETHAL_PROBABILITY_WEIGHT = 12.0
-NO_ATTACK_PRESERVATION_WEIGHT = 0.08
-NO_ATTACK_PRESSURE_WEIGHT = 0.16
+NO_ATTACK_PRESERVATION_WEIGHT = 0.16
+NO_ATTACK_PRESSURE_WEIGHT = 0.24
+SUICIDE_ATTACK_SCORE_PENALTY = 5.0
+LOW_IMPACT_ATTACK_PENALTY = 1.35
+CAP_SLOT_RELEASE_WEIGHT = 0.7
+CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT = 0.9
+CAP_UNBLOCKED_PRESSURE_BONUS = 0.22
 FULL_ATTACK_ENUMERATION_THRESHOLD = 8
 ENRAGED_TARGET_LIMIT = 2
 
@@ -70,6 +76,12 @@ def evaluate_best_builder_attack(player, combat_context, search_budget=FINAL_DEC
 
 def _evaluate_best_builder_attack_details(player, combat_context, *, search_budget):
     enemy = combat_context.players[1 - player.player_id]
+    cap_context = compute_builder_cap_context(
+        player,
+        combat_context,
+        creature_cap=getattr(combat_context, "BUILDER_CREATURE_CAP", 5),
+        resource_budget=player.total_resources(),
+    )
     candidates, attack_exact, attack_pruned = _generate_builder_attack_candidates_with_metadata(player, combat_context, search_budget=search_budget)
     scored_candidates: list[tuple[BuilderAttackCandidate, BuilderAttackScore]] = []
     generated_block_assignments = 0
@@ -83,6 +95,7 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
             enemy,
             combat_context,
             search_budget=search_budget,
+            cap_context=cap_context,
         )
         scored_candidates.append((candidate, score))
         generated_block_assignments += block_metadata["generated_block_assignments"]
@@ -171,13 +184,19 @@ def generate_builder_block_assignments(
 
 def score_builder_attack_candidate(candidate: BuilderAttackCandidate, player, engine, *, search_budget=FINAL_DECISION_SEARCH_BUDGET) -> BuilderAttackScore:
     enemy = engine.players[1 - player.player_id]
-    score, _ = _score_builder_attack_candidate_details(candidate, player, enemy, engine, search_budget=search_budget)
+    cap_context = compute_builder_cap_context(
+        player,
+        engine,
+        creature_cap=getattr(engine, "BUILDER_CREATURE_CAP", 5),
+        resource_budget=player.total_resources(),
+    )
+    score, _ = _score_builder_attack_candidate_details(candidate, player, enemy, engine, search_budget=search_budget, cap_context=cap_context)
     return score
 
 
-def _score_builder_attack_candidate_details(candidate: BuilderAttackCandidate, player, enemy, engine, *, search_budget) -> tuple[BuilderAttackScore, dict]:
+def _score_builder_attack_candidate_details(candidate: BuilderAttackCandidate, player, enemy, engine, *, search_budget, cap_context) -> tuple[BuilderAttackScore, dict]:
     if not candidate.attacker_ids:
-        preservation = _score_no_attack(player, enemy, engine)
+        preservation = _score_no_attack(player, enemy, engine, cap_context)
         return (
             BuilderAttackScore(
                 player_damage=0.0,
@@ -209,7 +228,11 @@ def _score_builder_attack_candidate_details(candidate: BuilderAttackCandidate, p
         search_budget=search_budget,
         metadata=block_metadata,
     )
-    scored_assignments = [evaluate_attack_assignment(candidate, assignment, player, enemy, engine) for assignment in assignments]
+    pair_cache: dict[tuple[int, int], tuple] = {}
+    scored_assignments = [
+        evaluate_attack_assignment(candidate, assignment, player, enemy, engine, pair_cache=pair_cache, cap_context=cap_context)
+        for assignment in assignments
+    ]
     scored_assignments.sort(key=lambda score: (score.total, score.player_damage, score.enemy_kill_value, tuple(score.chosen_block_assignment)))
     return scored_assignments[0], block_metadata
 
@@ -220,6 +243,9 @@ def evaluate_attack_assignment(
     player,
     enemy,
     engine,
+    *,
+    pair_cache: dict[tuple[int, int], tuple] | None = None,
+    cap_context=None,
 ) -> BuilderAttackScore:
     assignment_map = dict(block_assignment)
     attackers = [engine.get_unit_by_id(attacker_id) for attacker_id in candidate.attacker_ids]
@@ -230,9 +256,11 @@ def evaluate_attack_assignment(
     own_creature_damage = 0.0
     enemy_kill_value = 0.0
     own_death_risk = 0.0
+    effective_own_death_penalty = 0.0
     lifesteal_value = 0.0
     board_position_value = 0.0
     vigilance_value = 0.0
+    slot_release_value = 0.0
     damage_distributions: list[dict[int, float]] = []
 
     enemy_potential_attackers = len(engine.available_attackers(enemy))
@@ -243,24 +271,43 @@ def evaluate_attack_assignment(
             player_damage += unblocked.player_damage
             lifesteal_value += unblocked.attacker_heal * LIFESTEAL_WEIGHT
             damage_distributions.append({int(unblocked.player_damage): 1.0})
+            if cap_context is not None and cap_context.at_cap and attacker.unit_id == cap_context.weakest_unit_id:
+                slot_release_value += min(cap_context.cap_pressure, unblocked.player_damage * CAP_UNBLOCKED_PRESSURE_BONUS)
         else:
             blocker = engine.get_unit_by_id(blocker_id)
             if blocker is None:
                 continue
-            estimate = estimate_builder_combat(attacker, blocker)
+            pair_key = (attacker.unit_id, blocker.unit_id)
+            cached = None if pair_cache is None else pair_cache.get(pair_key)
+            if cached is None:
+                estimate = estimate_builder_combat(attacker, blocker)
+                blocker_value = estimate_creature_board_value(blocker)
+                attacker_value = estimate_creature_board_value(attacker)
+                damage_distribution = player_damage_distribution_for_combat(attacker, estimate)
+                cached = (estimate, blocker_value, attacker_value, damage_distribution)
+                if pair_cache is not None:
+                    pair_cache[pair_key] = cached
+            estimate, blocker_value, attacker_value, damage_distribution = cached
             enemy_creature_damage += estimate.expected_damage_to_defender
             own_creature_damage += estimate.expected_damage_to_attacker
             player_damage += estimate.expected_player_damage
-            enemy_kill_value += estimate.defender_death_probability * estimate_creature_board_value(blocker)
-            own_death_risk += estimate.attacker_death_probability * estimate_creature_board_value(attacker)
+            enemy_kill_value += estimate.defender_death_probability * blocker_value
+            own_death_risk += estimate.attacker_death_probability * attacker_value
+            effective_own_death_penalty += estimate.attacker_death_probability * attacker_value
             lifesteal_value += (estimate.expected_attacker_heal - estimate.expected_defender_heal) * LIFESTEAL_WEIGHT
             board_position_value += (
-                estimate.defender_death_probability * estimate_creature_board_value(blocker)
-                - estimate.attacker_death_probability * estimate_creature_board_value(attacker)
+                estimate.defender_death_probability * blocker_value
+                - estimate.attacker_death_probability * attacker_value
             ) * 0.12
-            damage_distributions.append(player_damage_distribution_for_combat(attacker, estimate))
+            damage_distributions.append(damage_distribution)
+            if cap_context is not None and cap_context.at_cap and attacker.unit_id == cap_context.weakest_unit_id:
+                replacement_relief = estimate.attacker_death_probability * cap_context.cap_pressure
+                slot_release_value += replacement_relief * CAP_SLOT_RELEASE_WEIGHT
+                effective_own_death_penalty -= replacement_relief * CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT
         if attacker.has_ability(Ability.VIGILANT):
             vigilance_value += VIGILANCE_PRESERVATION_WEIGHT * enemy_potential_attackers
+
+    effective_own_death_penalty = max(0.0, effective_own_death_penalty or own_death_risk)
 
     guaranteed_player_damage = sum(min(distribution.keys()) for distribution in damage_distributions) if damage_distributions else 0.0
     total_damage_distribution = convolve_damage_distributions(damage_distributions)
@@ -276,12 +323,18 @@ def evaluate_attack_assignment(
         + enemy_creature_damage * ENEMY_BOARD_DAMAGE_WEIGHT
         - own_creature_damage * OWN_BOARD_DAMAGE_PENALTY
         + enemy_kill_value * ENEMY_KILL_VALUE_WEIGHT
-        - own_death_risk * OWN_DEATH_VALUE_PENALTY
+        - effective_own_death_penalty * OWN_DEATH_VALUE_PENALTY
         + lifesteal_value
         + board_position_value
         + vigilance_value
+        + slot_release_value
         + lethal_value
     )
+    if lethal_value < GUARANTEED_LETHAL_BONUS:
+        if player_damage <= 0.75 and enemy_kill_value <= own_death_risk * 0.55 and own_death_risk >= 1.0:
+            total -= SUICIDE_ATTACK_SCORE_PENALTY
+        elif player_damage <= 0.25 and enemy_kill_value <= own_death_risk * 0.85 and own_death_risk > enemy_kill_value:
+            total -= LOW_IMPACT_ATTACK_PENALTY
     return BuilderAttackScore(
         player_damage=round(player_damage, 4),
         enemy_creature_damage=round(enemy_creature_damage, 4),
@@ -407,11 +460,14 @@ def _select_top_enraged_targets(attacker, all_attackers: list, legal_targets: li
     return [blocker for _, blocker in scored]
 
 
-def _score_no_attack(player, enemy, engine) -> float:
+def _score_no_attack(player, enemy, engine, cap_context) -> float:
     ready_creatures = list(engine.available_attackers(player))
     preservation = sum(estimate_creature_board_value(creature) for creature in ready_creatures) * NO_ATTACK_PRESERVATION_WEIGHT
     pressure_guard = len(engine.available_attackers(enemy)) * NO_ATTACK_PRESSURE_WEIGHT
-    return preservation + pressure_guard
+    cap_drag = 0.0
+    if cap_context is not None and cap_context.at_cap and cap_context.cap_pressure > 0:
+        cap_drag = min(3.4, cap_context.cap_pressure * 0.36)
+    return preservation + pressure_guard - cap_drag
 
 
 def _attack_candidate_sort_key(scored_candidate: tuple[BuilderAttackCandidate, BuilderAttackScore]) -> tuple:

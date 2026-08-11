@@ -3,6 +3,7 @@ from __future__ import annotations
 import pygame
 
 from core.config import FIRE_SUMMONER_DRAW_THRESHOLD
+from core.game_mode import is_builder_mode
 from core.models import MAIN_PHASES, PHASE_REACTION
 from ui.render_helpers import blit_text_with_shadow
 from ui.style import CARD_BORDER, CARD_COLOR, ENEMY_CARD_COLOR, PLAYER_CARD_COLOR
@@ -151,7 +152,13 @@ def draw_creature_card(
 ) -> pygame.Rect:
     visually_tapped = self.is_creature_visually_tapped(creature)
     accent = PLAYER_CARD_COLOR if is_human else ENEMY_CARD_COLOR
-    stats = self.get_display_creature_stats(creature)
+    template_id = getattr(creature, "template_id", None)
+    hide_title = bool(
+        is_builder_mode()
+        and isinstance(template_id, str)
+        and (template_id.startswith("builder_creature_") or template_id == "builder_creature_preview")
+    )
+    stats = self.get_display_builder_creature_stats(creature) if hide_title else self.get_display_creature_stats(creature)
     line_one = ""
     line_two = ""
     if extra_line:
@@ -162,7 +169,7 @@ def draw_creature_card(
     if not extra_line and ability_line_two:
         line_two = ability_line_two
     surface = self.build_card_surface(
-        template_id=getattr(creature, "template_id", None),
+        template_id=template_id,
         title=creature.name,
         cost=creature.cost,
         stats=stats,
@@ -175,6 +182,8 @@ def draw_creature_card(
         tapped=visually_tapped,
         selected=selected,
         attacking=attacking,
+        hide_title=hide_title,
+        hide_cost=hide_title,
     )
     width = self.card_height if visually_tapped else self.card_width
     height = self.card_width if visually_tapped else self.card_height

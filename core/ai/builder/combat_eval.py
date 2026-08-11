@@ -5,6 +5,7 @@ from functools import lru_cache
 
 from core.models import Ability, BattlefieldCreature
 
+from .turn_projection import normalize_builder_abilities
 from .types import BuilderCreatureCandidate
 
 
@@ -63,7 +64,7 @@ def build_candidate_combatant_view(
         sw=candidate.sw,
         lw=candidate.lw,
         current_hp=candidate.lw if current_hp is None else max(0, min(candidate.lw, current_hp)),
-        abilities=frozenset(candidate.abilities),
+        abilities=normalize_builder_abilities(frozenset(candidate.abilities)),
         ready=ready,
         cannot_block=False,
         name="candidate",
@@ -94,7 +95,7 @@ def coerce_builder_combatant(subject, *, ready: bool | None = None) -> BuilderCo
             sw=subject.sw,
             lw=subject.lw,
             current_hp=subject.current_hp,
-            abilities=frozenset(subject.abilities),
+            abilities=normalize_builder_abilities(frozenset(subject.abilities)),
             ready=subject.is_ready() if ready is None else ready,
             cannot_block=getattr(subject, "cannot_block", False),
             name=subject.name,
@@ -111,7 +112,7 @@ def coerce_builder_combatant(subject, *, ready: bool | None = None) -> BuilderCo
             sw=int(subject.sw),
             lw=int(subject.lw),
             current_hp=int(subject.current_hp),
-            abilities=frozenset(subject.abilities),
+            abilities=normalize_builder_abilities(frozenset(subject.abilities)),
             ready=computed_ready,
             cannot_block=bool(getattr(subject, "cannot_block", False)),
             name=str(getattr(subject, "name", "")),

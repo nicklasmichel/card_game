@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from core.ai_logic import SimpleAI
 from cards import build_card_templates, build_test_deck, validate_deck_definitions
 from cards.registry import get_deck_templates
+from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.config import AI_DECK_NAME, ENABLE_MULLIGAN, HUMAN_DECK_NAME, STARTING_HAND_SIZE, STARTING_LIFE
 from core.game_mode import is_builder_mode
 from core.models import (
@@ -48,7 +49,6 @@ from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatis
 
 class GameEngine:
     from engine.builder import (
-        BUILDER_MAX_RESOURCES,
         _can_grant_builder_ability_to_creature,
         adjust_builder_creature_stat,
         begin_builder_creature_build,
@@ -84,6 +84,9 @@ class GameEngine:
         skip_builder_ability_phase,
         start_builder_turn,
     )
+    BUILDER_CREATURE_CAP = BUILDER_CREATURE_CAP
+    BUILDER_MAX_RESOURCES = BUILDER_MAX_RESOURCES
+
     from engine.combat import (
         advance_combat_resolution,
         advance_after_attackers_declared,

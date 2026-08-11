@@ -31,7 +31,9 @@ def make_combat_unit_snapshot(self, creature: BattlefieldCreature) -> CombatUnit
 
 
 def apply_life_steal_healing(self, creature: BattlefieldCreature, actual_damage: int) -> int:
-    if actual_damage <= 0 or creature is None or not creature.has_ability(Ability.LIFE_STEAL):
+    if actual_damage <= 0 or creature is None or not (
+        creature.has_ability(Ability.LIFE_STEAL) or creature.has_ability(Ability.LIFELINK)
+    ):
         return 0
     hp_before = creature.current_hp
     creature.current_hp = min(creature.lw, creature.current_hp + actual_damage)
@@ -236,7 +238,9 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
     loser.current_hp -= damage
     if actual_creature_damage > 0 and winner.has_ability(Ability.DEATHTOUCH):
         loser.current_hp = 0
-    attacker.tapped = attacker.tapped or not attacker.has_ability(Ability.VIGILANT)
+    attacker.tapped = attacker.tapped or not (
+        attacker.has_ability(Ability.VIGILANT) or attacker.has_ability(Ability.VIGILANCE)
+    )
     blocker.tapped = True
     self.queue_creature_damage_event(target_role, damage, winner.element)
     if battle.winner == "attacker" and battle.trample_damage > 0:

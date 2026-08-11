@@ -5,6 +5,7 @@ from typing import Callable
 
 import pygame
 
+from core.game_mode import is_builder_mode
 from core.models import CardInstance, Element
 from ui.style import CARD_BORDER
 
@@ -88,6 +89,26 @@ def load_card_art_images(self) -> dict[str, pygame.Surface]:
             stem_parts = normalized_stem.split("_", maxsplit=1)
             if template_prefix is not None and len(stem_parts) == 2:
                 image_map[f"{template_prefix}{stem_parts[1]}"] = surface
+
+    builder_ability_dir = base_dir / "builder_mode" / "abilities"
+    builder_ability_aliases = {
+        "deathtouch": ("builder_ability_deathtouch",),
+        "flying": ("builder_ability_flying",),
+        "haste": ("builder_ability_haste",),
+        "lifesteal": ("builder_ability_lifelink", "builder_ability_life_steal"),
+        "trample": ("builder_ability_trample",),
+        "vigilance": ("builder_ability_vigilance", "builder_ability_vigilant"),
+        "provoke": ("builder_ability_provoke", "builder_ability_enraged"),
+    }
+    if builder_ability_dir.exists():
+        for image_path in builder_ability_dir.glob("*.png"):
+            surface = pygame.image.load(str(image_path)).convert_alpha()
+            normalized_stem = normalize_asset_stem(image_path.stem).lower()
+            image_map[image_path.stem] = surface
+            image_map[normalized_stem] = surface
+            for template_id in builder_ability_aliases.get(normalized_stem, ()):
+                image_map[template_id] = surface
+
     for template_id, template in getattr(self.engine, "templates", {}).items():
         normalized_name = normalize_card_art_name(template.name)
         if normalized_name in image_map:
@@ -175,7 +196,13 @@ def build_preview_deck_surface(self, player) -> pygame.Surface:
 
 def build_preview_creature_surface(self, creature, is_human: bool, extra_line: str = "", attacking: bool = False) -> pygame.Surface:
     accent = (98, 151, 109) if is_human else (177, 98, 98)
-    stats = self.get_display_creature_stats(creature)
+    template_id = getattr(creature, "template_id", None)
+    hide_title = bool(
+        is_builder_mode()
+        and isinstance(template_id, str)
+        and (template_id.startswith("builder_creature_") or template_id == "builder_creature_preview")
+    )
+    stats = self.get_display_builder_creature_stats(creature) if hide_title else self.get_display_creature_stats(creature)
     line_one = ""
     line_two = extra_line
     ability_line_one, ability_line_two = self.get_card_ability_lines_from_creature(creature)
@@ -186,7 +213,7 @@ def build_preview_creature_surface(self, creature, is_human: bool, extra_line: s
     return self.render_scaled_card_surface(
         2.0,
         lambda: self.build_card_surface(
-            template_id=getattr(creature, "template_id", None),
+            template_id=template_id,
             title=creature.name,
             cost=creature.cost,
             stats=stats,
@@ -199,6 +226,8 @@ def build_preview_creature_surface(self, creature, is_human: bool, extra_line: s
             tapped=False,
             selected=False,
             attacking=attacking,
+            hide_title=hide_title,
+            hide_cost=hide_title,
         ),
     )
 

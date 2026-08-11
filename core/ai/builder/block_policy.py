@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import core.config as config
 from core.models import Ability
 
+from .cap_strategy import compute_builder_cap_context
 from .combat_assignments import (
     convolve_damage_distributions,
     generate_block_assignment_tuples,
@@ -29,6 +30,7 @@ ENEMY_CREATURE_DAMAGE_WEIGHT = 0.18
 OWN_CREATURE_DAMAGE_PENALTY = 0.14
 BOARD_PRESERVATION_WEIGHT = 0.16
 FLYING_BLOCKER_PRESERVATION_WEIGHT = 0.22
+CAP_SLOT_RELEASE_WEIGHT = 0.6
 
 
 @dataclass(frozen=True)
@@ -78,11 +80,18 @@ def generate_builder_block_candidates(defending_player, engine) -> list[BuilderB
     return sorted(candidates, key=lambda candidate: candidate.assignments)
 
 
-def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_player, engine) -> BuilderBlockScore:
+def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_player, engine, *, cap_context=None) -> BuilderBlockScore:
     attackers = get_declared_attackers_for_defender(defending_player, engine)
     blockers = get_available_blockers_for_defender(defending_player, engine)
     assignments = dict(candidate.assignments)
     blocker_lookup = {blocker.unit_id: blocker for blocker in blockers}
+    if cap_context is None:
+        cap_context = compute_builder_cap_context(
+            defending_player,
+            engine,
+            creature_cap=getattr(engine, "BUILDER_CREATURE_CAP", 5),
+            resource_budget=defending_player.total_resources(),
+        )
 
     damage_without_blocks = 0.0
     baseline_distributions: list[dict[int, float]] = []
@@ -97,6 +106,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     enemy_lifesteal_value = 0.0
     trample_damage_taken = 0.0
     flying_scarcity_bonus = 0.0
+    slot_release_value = 0.0
 
     own_flying_blockers = [blocker for blocker in blockers if blocker.has_ability(Ability.FLYING)]
     enemy_flying_threats = [
@@ -134,6 +144,8 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         own_lifesteal_value += estimate.expected_defender_heal
         enemy_lifesteal_value += estimate.expected_attacker_heal
         current_distributions.append(player_damage_distribution_for_combat(attacker, estimate))
+        if cap_context.at_cap and blocker.unit_id == cap_context.weakest_unit_id:
+            slot_release_value += estimate.defender_death_probability * cap_context.cap_pressure * CAP_SLOT_RELEASE_WEIGHT
 
         if (
             blocker.has_ability(Ability.FLYING)
@@ -153,7 +165,11 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     baseline_lethal_probability = sum(probability for damage, probability in baseline_distribution.items() if damage >= life_total)
 
     prevented_player_damage = max(0.0, damage_without_blocks - expected_player_damage_taken)
-    board_preservation = (enemy_kill_value - own_death_value) * BOARD_PRESERVATION_WEIGHT + flying_scarcity_bonus
+    board_preservation = (
+        (enemy_kill_value - own_death_value) * BOARD_PRESERVATION_WEIGHT
+        + flying_scarcity_bonus
+        + slot_release_value
+    )
     lethal_prevention = 0.0
     if guaranteed_lethal:
         lethal_prevention -= LETHAL_PREVENTION_BONUS * 2
@@ -195,7 +211,16 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
 
 def choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
     candidates = generate_builder_block_candidates(defending_player, engine)
-    scored = [(candidate, score_builder_block_candidate(candidate, defending_player, engine)) for candidate in candidates]
+    cap_context = compute_builder_cap_context(
+        defending_player,
+        engine,
+        creature_cap=getattr(engine, "BUILDER_CREATURE_CAP", 5),
+        resource_budget=defending_player.total_resources(),
+    )
+    scored = [
+        (candidate, score_builder_block_candidate(candidate, defending_player, engine, cap_context=cap_context))
+        for candidate in candidates
+    ]
     scored.sort(key=_block_candidate_sort_key, reverse=True)
     if scored:
         best_candidate, best_score = scored[0]

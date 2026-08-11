@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from statistics import mean
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.models import Ability, BattlefieldCreature
 
 from .combat_eval import (
@@ -62,11 +63,27 @@ DEFENSIVE_PREVENTED_DAMAGE_WEIGHT = 1.1
 DEFENSIVE_KILL_WEIGHT = 0.8
 DEFENSIVE_SURVIVAL_WEIGHT = 0.7
 DEFENSIVE_DEATH_PENALTY = 0.95
+DEFENSIVE_BREAKPOINT_KILL_WEIGHT = 1.1
+DEFENSIVE_CONTEST_WEIGHT = 0.65
+DEFENSIVE_UNRESOLVED_THREAT_PENALTY = 0.95
+DEFENSIVE_STALL_ONLY_PENALTY = 1.3
+DEFENSIVE_LOW_DEFENSE_PENALTY = 0.8
 IMMEDIATE_LETHAL_BONUS_WEIGHT = 0.7
 EVASION_IMMEDIATE_WEIGHT = 1.0
 EVASION_FUTURE_WEIGHT = 0.55
 FUTURE_LIFE_STEAL_BASELINE = 0.18
 UNUSED_RESOURCE_WEIGHT = 0.18
+FRAGILE_DAMAGE_SHELL_PENALTY = -2.2
+ZERO_CONTACT_SHELL_PENALTY = -1.4
+ZERO_IMPACT_SHELL_PENALTY = -2.6
+BALANCED_BODY_BONUS = 0.55
+TRADE_BODY_BONUS = 0.4
+OPEN_HAND_GLASS_CANNON_PENALTY = -1.5
+ZERO_OFFENSE_WALL_PENALTY = -1.35
+LOW_CONTACT_BODY_PENALTY = -0.9
+SOFT_WALL_UNRESOLVED_THREAT_PENALTY = -1.1
+LOW_DAMAGE_BREAKPOINT_PENALTY = -0.85
+DEFENSIVE_CONTACT_BONUS = 0.65
 
 
 def estimate_creature_board_value(creature: BattlefieldCreature) -> float:
@@ -104,6 +121,7 @@ def score_builder_creature_candidate(
         + synergy
         + board_fit
         + survivability
+        + _score_shell_quality(candidate, snapshot)
         + matchup["immediate_pressure"]
         + matchup["matchup_offense"]
         + matchup["matchup_defense"]
@@ -142,6 +160,8 @@ def _score_raw_stats(candidate: BuilderCreatureCandidate) -> float:
 
 
 def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:
+    if not BUILDER_ABILITIES_ENABLED:
+        return 0.0
     score = sum(ABILITY_BASE_WEIGHTS.get(ability, 0.0) for ability in candidate.abilities)
     offense = candidate.aw + candidate.sw
     defense = candidate.vw + candidate.lw
@@ -155,7 +175,7 @@ def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrat
         if snapshot.enemy_flying_count == 0:
             score += 0.25
         else:
-            score -= min(0.18, snapshot.enemy_flying_count * 0.06)
+            score -= min(1.4, snapshot.enemy_flying_count * 0.45 + candidate.sw * 0.08)
 
     if Ability.ENRAGED in candidate.abilities and snapshot.enemy_creature_count > 0:
         score += min(0.45, snapshot.enemy_creature_count * 0.08 + candidate.sw * 0.05)
@@ -228,6 +248,11 @@ def _score_board_fit(candidate: BuilderCreatureCandidate, snapshot: BuilderStrat
             score += 0.3
     if snapshot.enemy_creature_count > 0 and snapshot.enemy_total_current_hp <= snapshot.enemy_creature_count * 2:
         score += candidate.sw * 0.1
+    if snapshot.enemy_has_board and candidate.sw >= 1:
+        one_life_targets = max(0, snapshot.enemy_creature_count * 2 - snapshot.enemy_total_current_hp)
+        score += min(0.9, one_life_targets * 0.18 + candidate.sw * 0.04)
+    if snapshot.enemy_has_board and candidate.vw >= 1 and candidate.sw >= 1:
+        score += min(0.75, candidate.vw * 0.1 + candidate.sw * 0.12)
     if snapshot.board_value_difference >= 2.5:
         score += min(0.6, defense * 0.06)
     elif snapshot.board_value_difference <= -2.5:
@@ -243,6 +268,51 @@ def _score_survivability(candidate: BuilderCreatureCandidate, snapshot: BuilderS
         score += FUTURE_LIFE_STEAL_BASELINE + max(0, candidate.lw - 1) * 0.08
     if snapshot.enemy_has_board:
         score += min(0.6, snapshot.enemy_total_aw * 0.03)
+        if candidate.vw <= 1 and snapshot.enemy_total_aw >= max(4, snapshot.enemy_creature_count * 3):
+            score -= 0.45 + max(0, candidate.lw - 2) * 0.04
+        if candidate.sw == 0 and snapshot.enemy_total_current_hp <= snapshot.enemy_creature_count * 2:
+            score -= 0.35
+    return score
+
+
+def _score_shell_quality(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:
+    offense = candidate.aw + candidate.sw
+    defense = candidate.vw + candidate.lw
+    score = 0.0
+    if candidate.sw >= 3 and candidate.aw == 0 and candidate.vw == 0 and candidate.lw <= 2:
+        score += FRAGILE_DAMAGE_SHELL_PENALTY
+        if BUILDER_ABILITIES_ENABLED and snapshot.enemy_hand_count > 0:
+            score += OPEN_HAND_GLASS_CANNON_PENALTY
+    elif candidate.sw >= 3 and candidate.aw == 0 and candidate.lw <= 2:
+        score += ZERO_CONTACT_SHELL_PENALTY
+    if candidate.aw == 0 and candidate.vw == 0 and candidate.sw == 0:
+        score += ZERO_IMPACT_SHELL_PENALTY
+    if candidate.aw == 0 and candidate.sw == 0 and candidate.vw >= 1 and candidate.lw >= 4:
+        pressure = snapshot.enemy_total_sw + snapshot.enemy_potential_attacker_count * 0.75
+        if pressure < 4.0:
+            score += ZERO_OFFENSE_WALL_PENALTY
+        if snapshot.enemy_has_board:
+            score += SOFT_WALL_UNRESOLVED_THREAT_PENALTY
+    if candidate.aw == 0 and candidate.sw >= 4 and candidate.lw <= 2:
+        score += LOW_CONTACT_BODY_PENALTY
+    if snapshot.enemy_has_board and candidate.sw == 0 and candidate.vw <= 1 and candidate.lw >= 5:
+        score -= 1.35
+    if snapshot.enemy_has_board and candidate.sw >= 1 and candidate.vw >= 1:
+        score += DEFENSIVE_CONTACT_BONUS
+    if snapshot.enemy_has_board and candidate.sw == 0 and snapshot.enemy_total_current_hp <= snapshot.enemy_creature_count * 2:
+        score += LOW_DAMAGE_BREAKPOINT_PENALTY
+    if candidate.aw >= 1 and candidate.vw >= 1 and candidate.sw >= 1 and candidate.lw >= 2:
+        score += BALANCED_BODY_BONUS
+    if candidate.aw >= 1 and candidate.vw >= 2 and candidate.lw >= 3:
+        score += TRADE_BODY_BONUS
+    if snapshot.enemy_has_board and candidate.vw == 0 and candidate.lw <= 1:
+        score -= 0.9
+    if not snapshot.enemy_has_board and candidate.sw >= 3 and candidate.aw >= 1:
+        score += 0.35
+    if offense == 0 and defense <= 2:
+        score -= 1.1
+    if candidate.aw == 0 and candidate.sw > 0 and candidate.vw == 0 and candidate.lw <= 2 and snapshot.enemy_creature_count > 0:
+        score -= 0.85
     return score
 
 
@@ -369,11 +439,27 @@ def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list) -> dict[
     for enemy in legal_attackers:
         estimate = estimate_builder_combat(enemy, candidate_view)
         prevented_damage = max(0.0, enemy.sw - estimate.expected_player_damage)
+        kill_breakpoint = 0.0
+        if getattr(enemy, "current_hp", 0) > 0:
+            kill_breakpoint = min(1.0, candidate_view.sw / max(1, enemy.current_hp))
+        contest_ratio = min(1.3, candidate_view.vw / max(1, enemy.aw))
+        unresolved_threat = (1.0 - estimate.attacker_death_probability) * (
+            enemy.sw * DEFENSIVE_UNRESOLVED_THREAT_PENALTY + enemy.aw * 0.18
+        )
+        stall_only_penalty = 0.0
+        if candidate_view.sw == 0:
+            stall_only_penalty += DEFENSIVE_STALL_ONLY_PENALTY * max(0.35, 1.0 - estimate.attacker_death_probability)
+        if candidate_view.vw <= 1 and enemy.aw >= 4:
+            stall_only_penalty += DEFENSIVE_LOW_DEFENSE_PENALTY
         score = (
             prevented_damage * DEFENSIVE_PREVENTED_DAMAGE_WEIGHT
             + estimate.attacker_death_probability * DEFENSIVE_KILL_WEIGHT
+            + kill_breakpoint * estimate.attacker_death_probability * DEFENSIVE_BREAKPOINT_KILL_WEIGHT
+            + contest_ratio * DEFENSIVE_CONTEST_WEIGHT
             + (1.0 - estimate.defender_death_probability) * DEFENSIVE_SURVIVAL_WEIGHT
             - estimate.defender_death_probability * DEFENSIVE_DEATH_PENALTY
+            - unresolved_threat
+            - stall_only_penalty
         )
         summaries.append(
             {
@@ -424,7 +510,7 @@ def _evaluate_evasion(
     immediate_legal_blockers = [blocker for blocker in immediate_enemy_blockers if can_legally_block(candidate_immediate, blocker, require_ready=True)]
     if future_legal_blockers:
         if candidate_future.has_ability(Ability.FLYING):
-            contested_penalty = -(1.15 + min(0.95, len(future_legal_blockers) * 0.35 + candidate_future.sw * 0.1))
+            contested_penalty = -(2.0 + min(1.3, len(future_legal_blockers) * 0.45 + candidate_future.sw * 0.12))
             return {"score": contested_penalty}
         return {"score": 0.0}
 
@@ -441,4 +527,4 @@ def _score_unused_resources(candidate: BuilderCreatureCandidate, available_resou
     if available_resources is None:
         return 0.0
     unused = max(0, available_resources - candidate.cost)
-    return unused * UNUSED_RESOURCE_WEIGHT
+    return -(unused * UNUSED_RESOURCE_WEIGHT)

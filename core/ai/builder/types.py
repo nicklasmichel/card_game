@@ -13,6 +13,8 @@ class BuilderStrategicSnapshot:
     own_ready_resources: int
     enemy_total_resources: int
     enemy_ready_resources: int
+    own_hand_count: int
+    enemy_hand_count: int
     own_creature_count: int
     enemy_creature_count: int
     own_board_value: float
@@ -42,18 +44,17 @@ class BuilderCreatureCandidate:
     vw: int
     sw: int
     lw: int
-    abilities: frozenset[Ability]
     cost: int
+    abilities: frozenset[Ability] = frozenset()
     generation_reason: str = "generated"
 
     @property
-    def signature(self) -> tuple[int, int, int, int, tuple[str, ...]]:
+    def signature(self) -> tuple[int, int, int, int]:
         return (
             self.aw,
             self.vw,
             self.sw,
             self.lw,
-            tuple(sorted(ability.value for ability in self.abilities)),
         )
 
 

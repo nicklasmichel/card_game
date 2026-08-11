@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import List
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from engine.builder import BUILDER_ABILITY_LABELS
+from core.ai.builder import build_builder_runtime_fingerprint, materialize_builder_turn_decision
 from core.game_mode import is_builder_mode
 from core.models import (
     Ability,
@@ -188,6 +191,13 @@ def prepare_ai_turn_action(self) -> bool:
                     },
                 }
                 return True
+        if planner_decision.action_candidate.action_kind in {"continue", "pass"}:
+            self.pending_ai_action = {
+                "kind": "to_combat" if self.available_attackers(self.active_player) else "end_turn",
+                "description": "Enemy enters combat." if self.available_attackers(self.active_player) else "Enemy ends the turn.",
+                "turn_decision": planner_decision,
+            }
+            return True
         action = self.ai.choose_builder_runtime_main_action(self.active_player, self)
         if action == "resource" and self.can_builder_add_resource(self.active_player):
             self.pending_ai_action = {"kind": "builder_add_resource", "description": "Enemy increases resources."}
@@ -201,14 +211,48 @@ def prepare_ai_turn_action(self) -> bool:
         return True
 
     if is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY:
-        action = self.ai.choose_builder_runtime_ability_action(self.active_player, self)
-        if action is None:
+        if not BUILDER_ABILITIES_ENABLED:
             self.pending_ai_action = {
                 "kind": "to_combat" if self.available_attackers(self.active_player) else "end_turn",
                 "description": "Enemy enters combat." if self.available_attackers(self.active_player) else "Enemy ends the turn.",
             }
             return True
-        self.pending_ai_action = {"kind": "builder_use_ability", "description": "Enemy uses an ability card.", "ability_action": action}
+        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
+        planned_ability = planner_decision.ability_action
+        if planned_ability.action_kind == "skip":
+            planned_attack_ids = tuple(planner_decision.predicted_attack_decision.candidate.attacker_ids) if planner_decision.predicted_attack_decision is not None else tuple()
+            self.pending_ai_action = {
+                "kind": "to_combat" if planned_attack_ids else "end_turn",
+                "description": "Enemy enters combat." if planned_attack_ids else "Enemy ends the turn.",
+                "turn_decision": planner_decision,
+            }
+            return True
+        self.pending_ai_action = {
+            "kind": "builder_use_ability",
+            "description": "Enemy uses an ability card.",
+            "ability_action": {
+                "card_id": planned_ability.card_instance_id,
+                "mode": planned_ability.action_kind,
+                "target_id": planned_ability.target_id,
+                "stat": planned_ability.selected_stat,
+            },
+            "turn_decision": planner_decision,
+        }
+        return True
+
+    if is_builder_mode() and self.phase == PHASE_DECLARE_ATTACKERS and not self.active_player.is_human:
+        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
+        attack_decision = planner_decision.predicted_attack_decision
+        attacker_ids = list(attack_decision.candidate.attacker_ids) if attack_decision is not None else []
+        lookup = {creature.unit_id: creature for creature in self.available_attackers(self.active_player)}
+        attackers = [lookup[attacker_id] for attacker_id in attacker_ids if attacker_id in lookup]
+        attacker_names = ", ".join(attacker.name for attacker in attackers)
+        self.pending_ai_action = {
+            "kind": "declare_attackers",
+            "description": "Enemy does not attack." if not attackers else f"Enemy attacks with: {attacker_names}.",
+            "attacker_ids": [attacker.unit_id for attacker in attackers],
+            "turn_decision": planner_decision,
+        }
         return True
 
     if self.phase in {PHASE_MAIN_1, PHASE_MAIN_2}:
@@ -332,14 +376,17 @@ def execute_prepared_ai_action(self) -> None:
         return
     if kind == "builder_create_creature":
         plan = action.get("plan", {})
-        creature = self.create_builder_creature(
-            self.active_player,
-            aw=int(plan.get("aw", 0)),
-            vw=int(plan.get("vw", 0)),
-            sw=int(plan.get("sw", 0)),
-            lw=int(plan.get("lw", 1)),
-            abilities=frozenset(),
-        ) if self.builder_spend_ready_resources(self.active_player, int(plan.get("cost", 0))) else None
+        creature = None
+        if self.can_builder_open_creature_build(self.active_player):
+            if self.builder_spend_ready_resources(self.active_player, int(plan.get("cost", 0))):
+                creature = self.create_builder_creature(
+                    self.active_player,
+                    aw=int(plan.get("aw", 0)),
+                    vw=int(plan.get("vw", 0)),
+                    sw=int(plan.get("sw", 0)),
+                    lw=int(plan.get("lw", 1)),
+                    abilities=frozenset(),
+                )
         if creature is not None:
             self.builder_created_this_turn_ids.add(creature.unit_id)
             self.active_player.main_action_used_this_turn = True
@@ -351,15 +398,42 @@ def execute_prepared_ai_action(self) -> None:
                 f"for {int(plan.get('cost', 0))} resource(s)."
             )
             self.finish_builder_main_action()
+            turn_decision = action.get("turn_decision")
+            if turn_decision is not None and turn_decision.action_candidate.creature_candidate is not None:
+                synthetic_id = next(
+                    (
+                        attacker_id
+                        for attacker_id in getattr(turn_decision.predicted_attack_decision.candidate, "attacker_ids", ())
+                        if attacker_id < 0
+                    ),
+                    None,
+                )
+                target_id = turn_decision.ability_action.target_id
+                if synthetic_id is None and target_id is not None and target_id < 0:
+                    synthetic_id = target_id
+                if synthetic_id is not None:
+                    materialized = materialize_builder_turn_decision(
+                        turn_decision,
+                        synthetic_unit_id=synthetic_id,
+                        actual_unit_id=creature.unit_id,
+                        post_main_signature=build_builder_runtime_fingerprint(self.active_player, self),
+                    )
+                    setattr(self.ai, "_last_builder_turn_decision", materialized)
         if hasattr(self.ai, "_mark_turn_plan_step_completed"):
             self.ai._mark_turn_plan_step_completed("builder_create_creature")
         return
     if kind == "builder_use_ability":
+        if not BUILDER_ABILITIES_ENABLED:
+            return
         ability_action = action.get("ability_action", {})
         if self.begin_builder_ability_use(int(ability_action.get("card_id", -1))):
             self.choose_builder_ability_mode(ability_action.get("mode", ""), ability_action.get("stat"))
             self.select_builder_ability_target(int(ability_action.get("target_id", -1)))
             self.resolve_builder_ability_use()
+            turn_decision = action.get("turn_decision")
+            if turn_decision is not None:
+                updated = replace(turn_decision, post_ability_signature=build_builder_runtime_fingerprint(self.active_player, self))
+                setattr(self.ai, "_last_builder_turn_decision", updated)
         return
     if kind == "cast_spell":
         card = next((card for card in self.ai_player.hand if card.instance_id == action["card_id"]), None)
@@ -504,7 +578,9 @@ def handle_click(self, area: str, item_id: int) -> None:
             attacker = self.get_unit_by_id(item_id)
             if attacker is None or self.get_unit_owner(item_id) != self.active_player:
                 return
-            if item_id not in self.block_assignments or not attacker.has_ability(Ability.ENRAGED):
+            if item_id not in self.block_assignments or not (
+                attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE)
+            ):
                 return
             if self.selected_attack_target_id == item_id:
                 self.selected_attack_target_id = None
@@ -566,14 +642,22 @@ def check_for_game_over(self) -> None:
         return
     if len(dead_players) == 2:
         self.phase = PHASE_GAME_OVER
-        self.game_over_text = "Draw. Both players have 0 or less life."
+        self.game_over_text = (
+            "Draw. Both players have 0 or less life."
+            if is_builder_mode()
+            else "Unentschieden. Beide Spieler haben 0 oder weniger Leben."
+        )
         self.log(self.game_over_text)
         self.persist_game_results_once()
         return
     loser = dead_players[0]
     winner = self.players[1 - loser.player_id]
     self.phase = PHASE_GAME_OVER
-    self.game_over_text = f"{winner.name} wins. {loser.name} has 0 or less life."
+    self.game_over_text = (
+        f"{winner.name} wins. {loser.name} has 0 or less life."
+        if is_builder_mode()
+        else f"{winner.name} gewinnt. {loser.name} hat 0 oder weniger Leben."
+    )
     self.log(self.game_over_text)
     self.persist_game_results_once()
 
@@ -617,6 +701,8 @@ def current_prompt(self) -> str:
     if is_builder_mode() and self.phase == PHASE_BUILDER_CREATURE:
         return "Distribute ready resources across the new creature's stats."
     if is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY:
+        if not BUILDER_ABILITIES_ENABLED:
+            return "Attack or end the turn."
         if not self.builder_ability_used_this_turn:
             return "Optionally use exactly one ability card."
         return "Attack or end the turn."
@@ -653,7 +739,7 @@ def current_prompt(self) -> str:
     if self.phase == PHASE_DECLARE_ATTACKERS:
         return "Choose your attackers." if is_builder_mode() else "Waehle deine Angreifer."
     if self.phase == PHASE_DECLARE_BLOCKERS:
-        if self.active_player.is_human and self.selected_attack_target_id is not None:
+        if (not is_builder_mode() or BUILDER_ABILITIES_ENABLED) and self.active_player.is_human and self.selected_attack_target_id is not None:
             attacker = self.get_unit_by_id(self.selected_attack_target_id)
             if attacker is not None:
                 return f"Provoke: choose a legal blocker for {attacker.name}, or click the creature again to cancel."
@@ -661,7 +747,7 @@ def current_prompt(self) -> str:
             blocker = self.get_unit_by_id(self.selected_blocker_id)
             if blocker is not None:
                 return f"{blocker.name} is selected as blocker. Choose an attacker."
-        if self.active_player.is_human:
+        if (not is_builder_mode() or BUILDER_ABILITIES_ENABLED) and self.active_player.is_human:
             return "Optional: choose forced blockers for Provoke attackers, then continue."
         return "Choose at most one blocker for each attacker."
     if self.phase == PHASE_REACTION:
@@ -713,6 +799,10 @@ def get_button_specs(self) -> List[ButtonSpec]:
         return buttons
 
     if is_builder_mode() and self.phase == PHASE_BUILDER_ABILITY and self.active_player.is_human:
+        if not BUILDER_ABILITIES_ENABLED:
+            if self.available_attackers(self.active_player):
+                return [ButtonSpec("To combat", True, "to_combat"), ButtonSpec("End turn", True, "end_turn")]
+            return [ButtonSpec("End turn", True, "end_turn")]
         buttons: list[ButtonSpec] = []
         pending = self.pending_builder_ability
         if not self.builder_ability_used_this_turn:
@@ -754,8 +844,16 @@ def get_button_specs(self) -> List[ButtonSpec]:
     buttons: List[ButtonSpec] = []
     if is_builder_mode() and self.phase == PHASE_MAIN_1:
         if not self.active_player.main_action_used_this_turn:
-            buttons.append(ButtonSpec("Resource", self.can_builder_add_resource(self.active_player), "builder_add_resource"))
-            buttons.append(ButtonSpec("Creature", self.can_builder_open_creature_build(self.active_player), "builder_open_creature"))
+            resource_enabled = self.can_builder_add_resource(self.active_player)
+            creature_enabled = self.can_builder_open_creature_build(self.active_player)
+            if resource_enabled or creature_enabled:
+                buttons.append(ButtonSpec("Resource", resource_enabled, "builder_add_resource"))
+                buttons.append(ButtonSpec("Creature", creature_enabled, "builder_open_creature"))
+            elif self.available_attackers(self.active_player):
+                buttons.append(ButtonSpec("To combat", True, "to_combat"))
+                buttons.append(ButtonSpec("End turn", True, "end_turn"))
+            else:
+                buttons.append(ButtonSpec("End turn", True, "end_turn"))
             return buttons
         return buttons
     if self.phase == PHASE_MAIN_1:

@@ -69,6 +69,15 @@ def get_display_creature_stats(self, creature) -> tuple[str, str, str, str]:
     return str(display_aw), str(display_vw), str(current_lw), str(display_sw)
 
 
+def get_display_builder_creature_stats(self, creature) -> tuple[str, str, str, str]:
+    display_aw = self.engine.get_creature_attack_value(creature)
+    display_vw = self.engine.get_creature_defense_value(creature)
+    current_lw = self.engine.get_creature_current_lw(creature)
+    max_lw = getattr(creature, "lw", current_lw)
+    display_sw = self.engine.get_creature_damage_value(creature)
+    return str(display_aw), str(display_vw), str(display_sw), f"{current_lw}/{max_lw}"
+
+
 def get_display_template_stats(self, template) -> tuple[str, str, str, str]:
     if hasattr(self, "engine"):
         max_lw = self.engine.get_template_max_lw(template)

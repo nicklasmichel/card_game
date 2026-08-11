@@ -4,6 +4,7 @@ from typing import List
 
 import pygame
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from engine.builder import BUILDER_ABILITY_LABELS
 from core.game_mode import is_builder_mode
 from core.models import (
@@ -38,7 +39,7 @@ def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_BUILDER_CREATURE:
         return "Build creature"
     if phase == PHASE_BUILDER_ABILITY:
-        return "Ability"
+        return "Combat" if not BUILDER_ABILITIES_ENABLED else "Ability"
     if phase == PHASE_MAIN_1:
         if is_builder_mode():
             return "Build"
@@ -82,8 +83,6 @@ def get_action_panel_prompt(self) -> str:
             return ""
         return "Continue to the ability phase."
     if is_builder_mode() and self.engine.phase == PHASE_BUILDER_ABILITY:
-        if not self.engine.builder_ability_used_this_turn:
-            return "Optionally choose exactly one ability card and its mode."
         return "Attack or end the turn."
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         return "Distribute ready resources across the new creature's stats."
@@ -168,10 +167,15 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
             f"Enemy Life: {self.engine.ai_player.life}",
             f"Player Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
             f"Enemy Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
-            f"Shared Deck/Discard: {len(self.engine.builder_shared_deck)}/{len(self.engine.builder_shared_discard)}",
-            f"Player Hand: {len(self.engine.human_player.hand)}",
-            f"Enemy Hand: {len(self.engine.ai_player.hand)}",
         ]
+        if BUILDER_ABILITIES_ENABLED:
+            lines.extend(
+                [
+                    f"Shared Deck/Discard: {len(self.engine.builder_shared_deck)}/{len(self.engine.builder_shared_discard)}",
+                    f"Player Hand: {len(self.engine.human_player.hand)}",
+                    f"Enemy Hand: {len(self.engine.ai_player.hand)}",
+                ]
+            )
     else:
         lines = [
             f"Zug: {self.engine.turn_number}",
@@ -378,7 +382,7 @@ def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
             )
         )
         return sections
-    if self.engine.phase == PHASE_BUILDER_ABILITY and self.engine.pending_builder_ability is not None:
+    if BUILDER_ABILITIES_ENABLED and self.engine.phase == PHASE_BUILDER_ABILITY and self.engine.pending_builder_ability is not None:
         pending = self.engine.pending_builder_ability
         card = next((existing for existing in self.engine.active_player.hand if existing.instance_id == pending.card_instance_id), None)
         sections.append(

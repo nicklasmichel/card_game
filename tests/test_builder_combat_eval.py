@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import core.config as config
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.ai.builder import (
     build_builder_snapshot,
     can_legally_be_forced_to_block,
@@ -159,7 +160,8 @@ class BuilderCombatEvalTests(unittest.TestCase):
         )
 
         self.assertGreater(no_flying_score.evasion, flying_score.evasion)
-        self.assertGreater(no_flying_score.total, flying_score.total)
+        if BUILDER_ABILITIES_ENABLED:
+            self.assertGreater(no_flying_score.total, flying_score.total)
 
     def test_enraged_prefers_better_forced_matchup_and_respects_flying_legality(self) -> None:
         weak_ground = self.make_builder_creature(0, aw=1, vw=0, sw=1, lw=1, ready=True)

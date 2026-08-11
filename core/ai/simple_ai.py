@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from random import Random
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.ai.builder import choose_builder_attackers as choose_builder_attackers_v2
 from core.ai.builder import choose_builder_creature_plan as choose_builder_creature_plan_v2
 from core.ai.builder import choose_builder_main_action as choose_builder_main_action_v2
@@ -357,6 +358,8 @@ class HeuristicStrategicAI(CommonAIMixin):
 
     def choose_builder_runtime_main_action(self, player: PlayerState, engine) -> str:
         enemy = engine.players[1 - player.player_id]
+        if len(player.battlefield) >= engine.BUILDER_CREATURE_CAP:
+            return "resource" if engine.can_builder_add_resource(player) else "pass"
         if player.total_resources() < 3 and player.total_resources() < engine.BUILDER_MAX_RESOURCES:
             return "resource" if engine.can_builder_add_resource(player) else "creature"
         if not player.battlefield and enemy.battlefield and player.available_resources() >= 1:
@@ -413,6 +416,8 @@ class HeuristicStrategicAI(CommonAIMixin):
         return {"aw": aw, "vw": vw, "sw": sw, "lw": lw, "cost": cost}
 
     def choose_builder_runtime_ability_action(self, player: PlayerState, engine) -> dict | None:
+        if not BUILDER_ABILITIES_ENABLED:
+            return None
         if not player.hand:
             return None
         enemy = engine.players[1 - player.player_id]

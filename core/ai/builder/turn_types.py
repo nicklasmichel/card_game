@@ -17,6 +17,16 @@ class BuilderTurnActionCandidate:
 
 
 @dataclass(frozen=True)
+class BuilderAbilityActionCandidate:
+    action_kind: str
+    card_instance_id: int | None = None
+    card_ability: Ability | None = None
+    target_id: int | None = None
+    selected_stat: str | None = None
+    generation_reason: str = "generated"
+
+
+@dataclass(frozen=True)
 class BuilderSearchMetadata:
     exact_search: bool
     generated_attack_candidates: int
@@ -29,6 +39,11 @@ class BuilderSearchMetadata:
 
 @dataclass(frozen=True)
 class BuilderTurnScore:
+    terminal: float
+    board_value: float
+    resource_value: float
+    card_value: float
+    draw_value: float
     creature_future_value: float
     resource_growth_value: float
     immediate_combat_delta: float
@@ -38,6 +53,7 @@ class BuilderTurnScore:
     end_of_turn_readiness: float
     survival_urgency: float
     lethal_value: float
+    ability_value: float
     risk_adjustment: float
     total: float
     baseline_attack_score: float = 0.0
@@ -49,9 +65,12 @@ class BuilderTurnScore:
 @dataclass(frozen=True)
 class BuilderTurnDecision:
     action_candidate: BuilderTurnActionCandidate
+    ability_action: BuilderAbilityActionCandidate
     score: BuilderTurnScore
     predicted_attack_decision: object | None
     state_signature: tuple
+    post_main_signature: tuple
+    post_ability_signature: tuple
 
 
 @dataclass(frozen=True)
@@ -100,4 +119,3 @@ class BuilderProjectedCandidate:
     static_score: BuilderCandidateScore
     future_value: float
     shortlist_reasons: tuple[str, ...] = field(default_factory=tuple)
-

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.models import Ability, PlayerState
 
 from .scoring import estimate_creature_board_value
@@ -28,6 +29,16 @@ def build_builder_snapshot(player: PlayerState, engine) -> BuilderStrategicSnaps
     own_ready_attacker_count = len(engine.available_attackers(player))
     enemy_potential_attacker_count = len(engine.available_attackers(enemy))
 
+    own_hand_count = 0
+    enemy_hand_count = 0
+    if BUILDER_ABILITIES_ENABLED:
+        own_hand_count = len(getattr(player, "hand", ()))
+        enemy_hand_count = len(getattr(enemy, "hand", ()))
+        if not hasattr(player, "hand") and hasattr(engine, "hand_signature") and getattr(engine, "player_id", None) == player.player_id:
+            own_hand_count = len(engine.hand_signature)
+        if not hasattr(enemy, "hand") and hasattr(engine, "hand_signature") and getattr(engine, "player_id", None) == enemy.player_id:
+            enemy_hand_count = len(engine.hand_signature)
+
     return BuilderStrategicSnapshot(
         own_life=player.life,
         enemy_life=enemy.life,
@@ -35,6 +46,8 @@ def build_builder_snapshot(player: PlayerState, engine) -> BuilderStrategicSnaps
         own_ready_resources=player.available_resources(),
         enemy_total_resources=enemy.total_resources(),
         enemy_ready_resources=enemy.available_resources(),
+        own_hand_count=own_hand_count,
+        enemy_hand_count=enemy_hand_count,
         own_creature_count=len(own_creatures),
         enemy_creature_count=len(enemy_creatures),
         own_board_value=round(own_board_value, 3),

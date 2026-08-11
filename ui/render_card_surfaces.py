@@ -75,6 +75,8 @@ def build_card_surface(
     selected: bool,
     attacking: bool = False,
     center_title_only: bool = False,
+    hide_title: bool = False,
+    hide_cost: bool = False,
 ) -> pygame.Surface:
     if template_id is None:
         raise ValueError(f"Full-art rendering requires a template_id for card '{title}'.")
@@ -91,6 +93,8 @@ def build_card_surface(
         selected,
         attacking,
         center_title_only,
+        hide_title,
+        hide_cost,
     )
 
 
@@ -107,6 +111,8 @@ def build_full_art_card_surface(
     selected: bool,
     attacking: bool,
     center_title_only: bool,
+    hide_title: bool,
+    hide_cost: bool,
 ) -> pygame.Surface:
     s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
     image = self.card_art_images.get(template_id)
@@ -122,6 +128,8 @@ def build_full_art_card_surface(
             tapped=tapped,
             selected=selected,
             center_title_only=center_title_only,
+            hide_title=hide_title,
+            hide_cost=hide_cost,
         )
 
     base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
@@ -134,9 +142,10 @@ def build_full_art_card_surface(
     base.blit(scaled, (0, 0))
 
     stat_pairs: tuple[tuple[str, tuple[int, int, int]], tuple[str, tuple[int, int, int]]] | None = None
-    if stats is not None:
-        aw_text, vw_text, lw_text, sw_text = stats
-        lw_text_color = (255, 142, 142) if lw_text == "0" else (255, 255, 255)
+    is_builder_creature = template_id.startswith("builder_creature_") or template_id == "builder_creature_preview"
+    if stats is not None and not is_builder_creature:
+        aw_text, vw_text, sw_text, lw_text = stats
+        lw_text_color = (255, 142, 142) if lw_text.startswith("0/") else (255, 255, 255)
         stat_pairs = (
             (f"{aw_text}/{vw_text}", (255, 255, 255)),
             (f"{sw_text}/{lw_text}", lw_text_color if sw_text == "0" else (255, 255, 255)),
@@ -155,10 +164,10 @@ def build_full_art_card_surface(
         title_surface = title_font.render(title_text, True, (255, 255, 255))
         title_rect = title_surface.get_rect(center=(self.card_width // 2, self.card_height // 2))
         blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), title_rect.x, title_rect.y)
-    else:
+    elif not hide_title:
         title_text = self.fit_text(title_font, title, max(s(24), cost_x - s(12)))
         blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), header_y + s(3))
-    if cost_text and not center_title_only:
+    if cost_text and not center_title_only and not hide_cost:
         blit_text_with_shadow(base, number_font, cost_text, (255, 255, 255), cost_x, header_y + s(3))
     if center_title_only:
         if selected:
@@ -182,7 +191,19 @@ def build_full_art_card_surface(
         rule_y += rule_line_height
 
     footer_y = self.card_height - s(14)
-    if stat_pairs:
+    if is_builder_creature and stats is not None:
+        aw_text, vw_text, sw_text, lw_text = stats
+        stat_font = number_font
+        top_y = s(10)
+        bottom_y = self.card_height - s(34)
+        blit_text_with_shadow(base, stat_font, aw_text, (255, 255, 255), s(10), top_y)
+        vw_width = stat_font.size(vw_text)[0]
+        blit_text_with_shadow(base, stat_font, vw_text, (255, 255, 255), self.card_width - s(10) - vw_width, top_y)
+        blit_text_with_shadow(base, stat_font, sw_text, (255, 255, 255), s(10), bottom_y)
+        life_color = (255, 142, 142) if lw_text.startswith("0/") else (255, 255, 255)
+        lw_width = stat_font.size(lw_text)[0]
+        blit_text_with_shadow(base, stat_font, lw_text, life_color, self.card_width - s(10) - lw_width, bottom_y)
+    elif stat_pairs:
         stat_font = number_font
         stat_y = self.card_height - s(34)
         left_text, left_color = stat_pairs[0]
@@ -209,6 +230,8 @@ def build_generic_card_surface(
     tapped: bool,
     selected: bool,
     center_title_only: bool = False,
+    hide_title: bool = False,
+    hide_cost: bool = False,
 ) -> pygame.Surface:
     s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
     base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
@@ -229,9 +252,10 @@ def build_generic_card_surface(
         title_surface = title_font.render(title_text, True, (255, 255, 255))
         title_rect = title_surface.get_rect(center=(self.card_width // 2, self.card_height // 2))
         blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), title_rect.x, title_rect.y)
-    else:
+    elif not hide_title:
         blit_text_with_shadow(base, title_font, title_text, (255, 255, 255), s(10), s(10))
-    if cost_text and cost_text != "0" and not center_title_only:
+    is_builder_creature = hide_title and hide_cost
+    if cost_text and cost_text != "0" and not center_title_only and not hide_cost:
         cost_width = number_font.size(cost_text)[0]
         blit_text_with_shadow(base, number_font, cost_text, (255, 255, 255), self.card_width - s(10) - cost_width, s(8))
     if center_title_only:
@@ -253,13 +277,24 @@ def build_generic_card_surface(
         rules_y += body_font.get_height() + s(1)
 
     if stats is not None:
-        aw_text, vw_text, lw_text, sw_text = stats
-        stat_y = self.card_height - s(34)
-        left_text = f"{aw_text}/{vw_text}"
-        right_text = f"{sw_text}/{lw_text}"
-        blit_text_with_shadow(base, number_font, left_text, (255, 255, 255), s(10), stat_y)
-        right_width = number_font.size(right_text)[0]
-        blit_text_with_shadow(base, number_font, right_text, (255, 255, 255), self.card_width - s(10) - right_width, stat_y)
+        aw_text, vw_text, sw_text, lw_text = stats
+        if is_builder_creature:
+            top_y = s(10)
+            bottom_y = self.card_height - s(34)
+            blit_text_with_shadow(base, number_font, aw_text, (255, 255, 255), s(10), top_y)
+            vw_width = number_font.size(vw_text)[0]
+            blit_text_with_shadow(base, number_font, vw_text, (255, 255, 255), self.card_width - s(10) - vw_width, top_y)
+            blit_text_with_shadow(base, number_font, sw_text, (255, 255, 255), s(10), bottom_y)
+            life_color = (255, 142, 142) if lw_text.startswith("0/") else (255, 255, 255)
+            lw_width = number_font.size(lw_text)[0]
+            blit_text_with_shadow(base, number_font, lw_text, life_color, self.card_width - s(10) - lw_width, bottom_y)
+        else:
+            stat_y = self.card_height - s(34)
+            left_text = f"{aw_text}/{vw_text}"
+            right_text = f"{sw_text}/{lw_text}"
+            blit_text_with_shadow(base, number_font, left_text, (255, 255, 255), s(10), stat_y)
+            right_width = number_font.size(right_text)[0]
+            blit_text_with_shadow(base, number_font, right_text, (255, 255, 255), self.card_width - s(10) - right_width, stat_y)
 
     if selected:
         pygame.draw.rect(base, HIGHLIGHT, outer_rect, max(1, s(3)), border_radius=s(8))

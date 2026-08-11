@@ -213,26 +213,34 @@ def request_combat_transition(self) -> None:
     if self.phase not in {PHASE_MAIN_1, PHASE_BUILDER_ABILITY}:
         return
     if not self.active_player.battlefield:
-        self.log("Combat is skipped automatically. No friendly creatures are in play.")
+        self.log(
+            "Combat is skipped automatically. No friendly creatures are in play."
+            if is_builder_mode()
+            else "Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel."
+        )
         self.enter_second_main_phase()
         return
     if self.available_attackers(self.active_player):
         self.begin_main_phase_priority_window(PHASE_MAIN_1, self.begin_attack_declaration)
         return
-    self.log("No creatures can attack. Combat cannot begin.")
+    self.log("No creatures can attack. Combat cannot begin." if is_builder_mode() else "Keine Kreaturen koennen angreifen.")
 
 
 def enter_combat_or_second_main(self) -> None:
     if self.phase not in {PHASE_MAIN_1, PHASE_BUILDER_ABILITY}:
         return
     if not self.active_player.battlefield:
-        self.log("Combat is skipped automatically. No friendly creatures are in play.")
+        self.log(
+            "Combat is skipped automatically. No friendly creatures are in play."
+            if is_builder_mode()
+            else "Kampfphase wird automatisch uebersprungen. Keine eigenen Kreaturen im Spiel."
+        )
         self.enter_second_main_phase()
         return
     if self.available_attackers(self.active_player):
         self.begin_attack_declaration()
         return
-    self.log("No creatures can attack. Combat cannot begin.")
+    self.log("No creatures can attack. Combat cannot begin." if is_builder_mode() else "Keine Kreaturen koennen angreifen.")
 
 
 def auto_resolve_human_no_blockers_if_needed(self) -> None:

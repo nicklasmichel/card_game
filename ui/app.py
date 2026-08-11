@@ -51,6 +51,7 @@ from ui.card_rendering import (
     draw_summoner_life_circle,
     fit_text,
     get_card_preview_ability_details,
+    get_display_builder_creature_stats,
     get_display_creature_stats,
     get_display_template_stats,
     get_ability_names,
@@ -81,6 +82,7 @@ from ui.assets import (
 from ui.layout import (
     blit_text,
     draw_arrowhead,
+    draw_builder_resource_stack_card,
     draw_buttons,
     draw_combat_links,
     draw_creatures,
@@ -155,6 +157,7 @@ class TcgPrototypeApp:
     blit_text_to_surface = blit_text_to_surface
     blit_centered_text_to_surface = blit_centered_text_to_surface
     fit_text = fit_text
+    get_display_builder_creature_stats = get_display_builder_creature_stats
     get_display_creature_stats = get_display_creature_stats
     get_display_template_stats = get_display_template_stats
     get_card_preview_ability_details = get_card_preview_ability_details
@@ -181,6 +184,7 @@ class TcgPrototypeApp:
     get_playfield_sections = get_playfield_sections
     draw_polyline = draw_polyline
     draw_arrowhead = draw_arrowhead
+    draw_builder_resource_stack_card = draw_builder_resource_stack_card
     draw_link_marker = draw_link_marker
     draw_resources = draw_resources
     draw_creatures = draw_creatures
@@ -316,6 +320,9 @@ class TcgPrototypeApp:
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
+        if is_builder_mode():
+            hand_rect = sections["player_hand"] if player.player_id == self.engine.human_player.player_id else sections["enemy_hand"]
+            return pygame.Rect(hand_rect.right - self.card_width - 18, hand_rect.y + 8, self.card_width, self.card_height)
         resource_rect = sections["player_resources"] if player.player_id == self.engine.human_player.player_id else sections["enemy_resources"]
         start_x = resource_rect.x + 10
         available_width = resource_rect.width - 20

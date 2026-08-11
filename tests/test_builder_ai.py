@@ -103,16 +103,16 @@ class BuilderAITests(unittest.TestCase):
             vw=1,
             sw=2,
             lw=3,
-            abilities=frozenset({Ability.FLYING, Ability.TRAMPLE}),
-            cost=9,
+            abilities=frozenset(),
+            cost=7,
         )
 
-        self.assertEqual(candidate_cost(aw=2, vw=1, sw=2, lw=3, abilities_count=2), 9)
+        self.assertEqual(candidate_cost(aw=2, vw=1, sw=2, lw=3, abilities_count=2), 7)
         self.assertTrue(is_legal_builder_candidate(candidate, 9))
 
     def test_candidate_legality_rejects_invalid_values_and_budget_overflow(self) -> None:
-        valid = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.HASTE}), cost=5)
-        overflow = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.HASTE}), cost=6)
+        valid = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset(), cost=4)
+        overflow = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset(), cost=5)
         invalid_life = BuilderCreatureCandidate(aw=0, vw=0, sw=0, lw=0, abilities=frozenset(), cost=0)
         invalid_cost = BuilderCreatureCandidate(aw=1, vw=0, sw=0, lw=1, abilities=frozenset(), cost=0)
 
@@ -138,73 +138,24 @@ class BuilderAITests(unittest.TestCase):
         self.assertTrue(any(candidate.vw >= 4 for candidate in candidates))
         self.assertTrue(any(candidate.sw >= 4 for candidate in candidates))
         self.assertTrue(any(candidate.lw >= 5 for candidate in candidates))
-        self.assertTrue(any({Ability.HASTE, Ability.TRAMPLE}.issubset(candidate.abilities) for candidate in candidates))
-        self.assertTrue(any({Ability.VIGILANT, Ability.LIFE_STEAL}.issubset(candidate.abilities) for candidate in candidates))
+        self.assertTrue(all(not candidate.abilities for candidate in candidates))
         self.assertTrue(any(candidate.cost < 10 for candidate in candidates))
 
-    def test_scoring_rewards_contextual_ability_value(self) -> None:
-        candidate_trample_low = BuilderCreatureCandidate(aw=1, vw=0, sw=0, lw=1, abilities=frozenset({Ability.TRAMPLE}), cost=2)
-        candidate_trample_high = BuilderCreatureCandidate(aw=1, vw=0, sw=4, lw=1, abilities=frozenset({Ability.TRAMPLE}), cost=6)
-        candidate_lifesteal_low = BuilderCreatureCandidate(aw=0, vw=0, sw=0, lw=3, abilities=frozenset({Ability.LIFE_STEAL}), cost=3)
-        candidate_lifesteal_high = BuilderCreatureCandidate(aw=0, vw=0, sw=4, lw=3, abilities=frozenset({Ability.LIFE_STEAL}), cost=7)
-
-        empty_snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
-        no_flying_score = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=2, abilities=frozenset({Ability.FLYING}), cost=6),
-            empty_snapshot,
-            available_resources=6,
-            enemy_creatures=list(self.engine.human_player.battlefield),
-        )
-
-        self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, abilities=(Ability.FLYING,), ready=True)
-        self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, abilities=(Ability.FLYING,), ready=True)
-        crowded_flying_snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
-        many_flying_score = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=2, abilities=frozenset({Ability.FLYING}), cost=6),
-            crowded_flying_snapshot,
-            available_resources=6,
-            enemy_creatures=list(self.engine.human_player.battlefield),
-        )
+    def test_scoring_rewards_relevant_vanilla_stats_and_penalizes_bad_shells(self) -> None:
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        glass = BuilderCreatureCandidate(aw=0, vw=0, sw=5, lw=1, abilities=frozenset(), cost=5)
+        balanced = BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=3, abilities=frozenset(), cost=7)
+        wall = BuilderCreatureCandidate(aw=0, vw=2, sw=0, lw=5, abilities=frozenset(), cost=6)
 
         self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
-        board_snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
-        empty_board_snapshot = build_builder_snapshot(self.engine.human_player, self.engine)
-        empty_board_score = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=2, abilities=frozenset({Ability.ENRAGED}), cost=6),
-            empty_board_snapshot,
-            available_resources=6,
-            enemy_creatures=list(self.engine.ai_player.battlefield),
-        )
-        board_score = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=2, abilities=frozenset({Ability.ENRAGED}), cost=6),
-            board_snapshot,
-            available_resources=6,
-            enemy_creatures=list(self.engine.human_player.battlefield),
-        )
-        vigilant_low = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=0, vw=0, sw=0, lw=1, abilities=frozenset({Ability.VIGILANT}), cost=1),
-            board_snapshot,
-            available_resources=4,
-            enemy_creatures=list(self.engine.human_player.battlefield),
-        )
-        vigilant_good = score_builder_creature_candidate(
-            BuilderCreatureCandidate(aw=2, vw=2, sw=1, lw=3, abilities=frozenset({Ability.VIGILANT}), cost=8),
-            board_snapshot,
-            available_resources=8,
-            enemy_creatures=list(self.engine.human_player.battlefield),
-        )
+        pressure_snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
 
-        self.assertGreater(
-            score_builder_creature_candidate(candidate_trample_high, empty_snapshot, available_resources=6).total,
-            score_builder_creature_candidate(candidate_trample_low, empty_snapshot, available_resources=2).total,
-        )
-        self.assertGreater(
-            score_builder_creature_candidate(candidate_lifesteal_high, empty_snapshot, available_resources=7).total,
-            score_builder_creature_candidate(candidate_lifesteal_low, empty_snapshot, available_resources=3).total,
-        )
-        self.assertGreater(no_flying_score.total, many_flying_score.total)
-        self.assertGreater(board_score.total, empty_board_score.total)
-        self.assertGreater(vigilant_good.total, vigilant_low.total)
+        glass_score = score_builder_creature_candidate(glass, snapshot, available_resources=5)
+        balanced_score = score_builder_creature_candidate(balanced, snapshot, available_resources=7)
+        wall_score = score_builder_creature_candidate(wall, pressure_snapshot, available_resources=6)
+
+        self.assertGreater(balanced_score.total, glass_score.total)
+        self.assertLess(wall_score.total, balanced_score.total)
 
     def test_synergy_build_scores_above_bad_ability_stack(self) -> None:
         snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
