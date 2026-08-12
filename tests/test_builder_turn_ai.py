@@ -478,7 +478,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.set_builder_resources(self.engine.ai_player, 5)
         self.set_builder_resources(self.engine.human_player, 4)
         for _ in range(4):
-            self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
+            self.make_builder_creature(1, aw=0, vw=1, sw=0, lw=2, ready=True)
         self.make_builder_creature(0, aw=0, vw=1, sw=1, lw=2, ready=True)
 
         decision = plan_builder_turn(self.engine.ai_player, self.engine)

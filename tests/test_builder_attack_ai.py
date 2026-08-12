@@ -12,8 +12,9 @@ from core.ai.builder import (
     generate_builder_block_assignments,
     score_builder_attack_candidate,
 )
+from core.ai.builder.turn_policy import choose_builder_turn_plan
 from core.game_logic import GameEngine
-from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
+from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
 
 
 class BuilderAttackAITests(unittest.TestCase):
@@ -213,6 +214,76 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertEqual(candidate.attacker_ids, (attacker.unit_id,))
         self.assertGreaterEqual(score.guaranteed_player_damage, 3)
+
+    def test_turn_plan_enumerates_all_five_attacker_subsets_for_immediate_lethal(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.human_player.life = 4
+        attackers = [
+            self.make_builder_creature(1, aw=0, vw=1, sw=sw, lw=1, ready=True)
+            for sw in (2, 2, 1, 1, 2)
+        ]
+        for _ in range(2):
+            self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        decision = choose_builder_turn_plan(self.engine.ai_player, self.engine)
+        predicted = decision.predicted_attack_decision
+
+        self.assertIsNotNone(predicted)
+        self.assertTrue(predicted.search_metadata.exact_search)
+        self.assertEqual(predicted.search_metadata.generated_attack_candidates, 32)
+        self.assertEqual(
+            predicted.candidate.attacker_ids,
+            tuple(attacker.unit_id for attacker in attackers),
+        )
+        self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
+
+    def test_main_action_build_detects_fifth_haste_attack_as_immediate_lethal(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 2)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.human_player.life = 4
+        for sw in (2, 2, 1, 1):
+            self.make_builder_creature(1, aw=0, vw=1, sw=sw, lw=1, ready=True)
+        for _ in range(2):
+            self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        decision = choose_builder_turn_plan(self.engine.ai_player, self.engine)
+        predicted = decision.predicted_attack_decision
+
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertIsNotNone(decision.action_candidate.creature_candidate)
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertIsNotNone(predicted)
+        self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
+        self.assertIn(predicted.candidate.attacker_ids[-1], predicted.candidate.attacker_ids)
+
+    def test_attack_phase_reuses_lethal_plan_consistently(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.human_player.life = 4
+        attackers = [
+            self.make_builder_creature(1, aw=0, vw=1, sw=sw, lw=1, ready=True)
+            for sw in (2, 2, 1, 1, 2)
+        ]
+        for _ in range(2):
+            self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        main_phase = choose_builder_turn_plan(self.engine.ai_player, self.engine)
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        attack_phase = choose_builder_turn_plan(self.engine.ai_player, self.engine)
+
+        self.assertEqual(
+            main_phase.predicted_attack_decision.candidate.attacker_ids,
+            tuple(attacker.unit_id for attacker in attackers),
+        )
+        self.assertEqual(
+            attack_phase.predicted_attack_decision.candidate.attacker_ids,
+            main_phase.predicted_attack_decision.candidate.attacker_ids,
+        )
+        self.assertGreaterEqual(attack_phase.predicted_attack_decision.score.guaranteed_player_damage, 4.0)
 
     def test_attack_decision_is_deterministic(self) -> None:
         self.make_builder_creature(1, aw=2, vw=1, sw=3, lw=2, ready=True)

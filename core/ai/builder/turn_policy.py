@@ -914,17 +914,19 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
 def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDecision, snapshot) -> float:
     attacked_ids = set(predicted_attack.candidate.attacker_ids)
     enemy_pressure = max(0.6, snapshot.enemy_potential_attacker_count * 0.32 + snapshot.enemy_total_sw * 0.08 + snapshot.enemy_flying_count * 0.25)
+    projected_counter_attackers = _projected_counterattack_units(projection, predicted_attack)
     total = 0.0
     for unit in projection.own_units:
         if unit.unit_id in attacked_ids:
             ready_for_defense = unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE)
         else:
             ready_for_defense = not unit.tapped
-        if ready_for_defense:
+        legally_relevant_blocker = _can_affect_projected_counterattack(unit, projected_counter_attackers)
+        if ready_for_defense and legally_relevant_blocker:
             total += estimate_creature_board_value(unit) * 0.05 * enemy_pressure
         if ready_for_defense and (unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE)):
             total += 0.22
-        if unit.unit_id == projection.hypothetical_unit_id and not unit.tapped and unit.vw > 0:
+        if unit.unit_id == projection.hypothetical_unit_id and not unit.tapped and legally_relevant_blocker:
             total += 0.18 + unit.vw * 0.05 + unit.current_hp * 0.03
         if unit.unit_id == projection.hypothetical_unit_id and unit.tapped:
             total -= TAPPED_NEW_BODY_PENALTY
@@ -949,6 +951,8 @@ def _score_future_offense_value(snapshot, projection, predicted_attack, projecte
 def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context, horizon: BuilderHorizonReport) -> float:
     if projected_candidate is None or snapshot.own_creature_count != BUILDER_CREATURE_CAP - 1:
         return 0.0
+    if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
+        return 0.0
     if horizon.own_next_attack_lethal or horizon.coverage_prevents_repeated_lethal:
         return 0.0
     superior_future_gap = _estimate_future_slot_advantage(snapshot, projection, projected_candidate)
@@ -966,6 +970,19 @@ def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, p
     if predicted_attack.score.counter_lethal_risk > 0.0:
         wait_probability *= 0.2
     discounted_gap = superior_future_gap * wait_probability * max(0.15, 1.0 - min(0.8, release_probability))
+    if (
+        cap_context.at_cap
+        and pressure <= 3.0
+        and predicted_attack.score.counter_lethal_risk <= 0.0
+        and predicted_attack.score.guaranteed_player_damage < max(4.0, snapshot.enemy_life * 0.75)
+    ):
+        discounted_gap += cap_context.replacement_value * 0.7
+        if (
+            projected_candidate.candidate.aw == 0
+            and projected_candidate.candidate.sw <= 2
+            and projected_candidate.candidate.vw <= 2
+        ):
+            discounted_gap += projected_candidate.future_value * max(0.0, 0.32 - pressure * 0.06)
     if pressure <= 4.0 and horizon.own_next_attack_damage < max(4.0, snapshot.enemy_life * 0.5) and horizon.second_attack_damage <= 1.0:
         discounted_gap += projected_candidate.future_value * max(0.0, 0.65 - pressure * 0.07)
     return -discounted_gap
@@ -1064,7 +1081,12 @@ def _score_action_survival_urgency(snapshot, projection, predicted_attack, actio
     expected_damage = predicted_attack.score.projected_counter_damage
     lethal_risk = predicted_attack.score.counter_lethal_risk
     life_after = projection.own_life - expected_damage
-    legal_blockers = sum(1 for unit in projection.own_units if not unit.tapped and unit.vw > 0)
+    projected_counter_attackers = _projected_counterattack_units(projection, predicted_attack)
+    legal_blockers = sum(
+        1
+        for unit in projection.own_units
+        if not unit.tapped and unit.vw > 0 and _can_affect_projected_counterattack(unit, projected_counter_attackers)
+    )
     if expected_damage <= 0.0 and lethal_risk <= 0.0:
         stability = legal_blockers * 0.12 + max(0.0, life_after - 2.0) * 0.05
         if action_kind == "pass":
@@ -1325,6 +1347,25 @@ def _score_terminal_projection(projection, predicted_attack: BuilderAttackDecisi
     return 0.0
 
 
+def _projected_counterattack_units(projection, predicted_attack: BuilderAttackDecision):
+    attacker_ids = tuple(predicted_attack.score.projected_counter_attackers)
+    if not attacker_ids:
+        return ()
+    return tuple(
+        attacker
+        for attacker in (projection.get_unit_by_id(attacker_id) for attacker_id in attacker_ids)
+        if attacker is not None and attacker.sw > 0
+    )
+
+
+def _can_affect_projected_counterattack(unit, projected_counter_attackers) -> bool:
+    if getattr(unit, "vw", 0) <= 0 or getattr(unit, "tapped", False):
+        return False
+    if not projected_counter_attackers:
+        return True
+    return any(can_legally_block(attacker, unit, require_ready=True) for attacker in projected_counter_attackers)
+
+
 def _stats_role_bonus(candidate, snapshot) -> float:
     score = 0.0
     if candidate.aw >= 1 and candidate.sw >= 2:
@@ -1478,7 +1519,11 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
         ),
     )
     ranked = shortlisted if shortlisted else frontier
-    static_ranked = all_candidates if all_candidates else ranked
+    static_ranked = sorted(
+        all_candidates if all_candidates else ranked,
+        key=lambda current: (current.static_score.total, current.candidate.key),
+        reverse=True,
+    )
     displayed = list(ranked[:top_n])
     if selected_signature is not None and all(candidate.candidate.key != selected_signature for candidate in displayed):
         selected = next((candidate for candidate in ranked if candidate.candidate.key == selected_signature), None)
@@ -1691,13 +1736,14 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("runner_up", "-" if runner_up is None else runner_up.action_candidate.action_kind),
             (
                 "runner_up_stats",
-                None if runner_up is None or runner_up.action_candidate.creature_candidate is None
+                "N/A" if runner_up is None
+                else None if runner_up.action_candidate.creature_candidate is None
                 else f"{runner_up.action_candidate.creature_candidate.aw}/{runner_up.action_candidate.creature_candidate.vw}/{runner_up.action_candidate.creature_candidate.sw}/{runner_up.action_candidate.creature_candidate.lw}",
             ),
-            ("runner_up_total", 0.0 if runner_up is None else runner_up.score.selection_score),
-            ("runner_up_selection_score", 0.0 if runner_up is None else runner_up.score.selection_score),
-            ("gap", gap),
-            ("delta_keys", "-" if runner_up is None else score_delta_keys(best.score, runner_up.score)),
+            ("runner_up_total", "N/A" if runner_up is None else runner_up.score.selection_score),
+            ("runner_up_selection_score", "N/A" if runner_up is None else runner_up.score.selection_score),
+            ("gap", "N/A" if runner_up is None else gap),
+            ("delta_keys", "N/A" if runner_up is None else score_delta_keys(best.score, runner_up.score)),
             ("planned_attack", [] if best.predicted_attack_decision is None else list(best.predicted_attack_decision.candidate.attacker_ids)),
             ("selection_reason", "max_selection_score"),
         ),

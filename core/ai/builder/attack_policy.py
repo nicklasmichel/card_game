@@ -299,9 +299,10 @@ def _generate_builder_attack_candidates_with_metadata(player, engine, *, search_
     available_attackers = list(engine.available_attackers(player))
     enemy_battlefield = list(engine.players[1 - player.player_id].battlefield)
     exact_upper_bound = estimate_attack_candidate_upper_bound(available_attackers, enemy_battlefield)
+    exact_cap_threshold = max(search_budget.max_exact_attack_candidates, 2 ** BUILDER_CREATURE_CAP)
     if (
         len(available_attackers) <= FULL_ATTACK_ENUMERATION_THRESHOLD
-        and exact_upper_bound <= search_budget.max_exact_attack_candidates
+        and exact_upper_bound <= exact_cap_threshold
     ):
         candidates = _generate_exhaustive_attack_candidates(available_attackers, enemy_battlefield)
         return candidates, True, 0
