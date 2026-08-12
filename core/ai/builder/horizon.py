@@ -9,9 +9,10 @@ from core.models import Ability
 from .attack_policy import BuilderAttackCandidate, BuilderAttackDecision, evaluate_best_builder_attack
 from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
 from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
+from .scoring import score_builder_creature_candidate
 from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
 from .snapshot import build_builder_snapshot
-from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action
+from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action, project_resource_action
 from .turn_types import BuilderTurnActionCandidate
 
 HORIZON_BUILD_LIMIT = 4
@@ -202,12 +203,13 @@ def _build_horizon_lines(enemy_turn_projection: BuilderTurnProjection, known_ene
                     include_counterattack=False,
                     debug_output=False,
                 )
+            relevant_threat_ids = _identify_relevant_future_threats(projected_state, known_enemy_attackers)
             timeline, first_damage, second_damage, second_lethal, coverage_ready_turn, coverage_prevents, must_hold, cumulative = _analyze_known_enemy_timeline(
                 projected_state,
                 attack_decision.candidate,
                 chosen_blocks,
                 next_turn_projection,
-                known_enemy_attackers=known_enemy_attackers,
+                known_enemy_attackers=relevant_threat_ids,
             )
             enemy_future_blockers = _legal_blocker_map(next_turn_projection, own_next_attack.candidate.attacker_ids)
             lines.append(
@@ -233,34 +235,98 @@ def _build_horizon_lines(enemy_turn_projection: BuilderTurnProjection, known_ene
 
 def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjection):
     yield "pass", project_pass_action(enemy_turn_projection)
+    if enemy_turn_projection.own_total_resources < 10:
+        yield "resource", project_resource_action(enemy_turn_projection)
     if len(enemy_turn_projection.own_units) >= BUILDER_CREATURE_CAP:
         return
     counter_player = enemy_turn_projection.players[enemy_turn_projection.player_id]
     snapshot = build_builder_snapshot(counter_player, enemy_turn_projection)
-    legal_haste_builds = [
+    legal_builds = [
         candidate
         for candidate in generate_builder_creature_candidates(snapshot, enemy_turn_projection.own_ready_resources)
-        if candidate.has_haste and is_legal_builder_candidate(candidate, enemy_turn_projection.own_ready_resources)
+        if is_legal_builder_candidate(candidate, enemy_turn_projection.own_ready_resources)
     ]
-    legal_haste_builds.sort(
-        key=lambda candidate: (
-            candidate.sw,
-            candidate.aw,
-            candidate.vw,
-            candidate.lw,
-            candidate.key,
-        ),
-        reverse=True,
-    )
-    for candidate in legal_haste_builds[:HORIZON_BUILD_LIMIT]:
+    selected: dict[tuple, tuple[str, object]] = {}
+
+    def consider(label: str, candidate) -> None:
+        if candidate is None:
+            return
+        selected.setdefault(candidate.key, (label, candidate))
+
+    if legal_builds:
+        scored = [
+            (
+                score_builder_creature_candidate(
+                    candidate,
+                    snapshot,
+                    available_resources=enemy_turn_projection.own_ready_resources,
+                    enemy_creatures=list(enemy_turn_projection.enemy_units),
+                    own_creatures=list(enemy_turn_projection.own_units),
+                ).total,
+                candidate,
+            )
+            for candidate in legal_builds
+        ]
+        scored.sort(key=lambda row: (row[0], row[1].sw, row[1].aw, row[1].vw, row[1].lw, row[1].key), reverse=True)
+        consider("build_best", scored[0][1])
+        consider(
+            "build_haste",
+            next((candidate for _, candidate in scored if candidate.has_haste), None),
+        )
+        consider(
+            "build_flying",
+            max(
+                (candidate for candidate in legal_builds if candidate.has_ability(Ability.FLYING)),
+                key=lambda candidate: (
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.vw,
+                    candidate.lw,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+        consider(
+            "build_delayed",
+            next((candidate for _, candidate in scored if not candidate.has_haste and candidate.sw >= 3), None),
+        )
+        consider(
+            "build_defense",
+            max(
+                legal_builds,
+                key=lambda candidate: (
+                    candidate.vw + candidate.lw,
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+    ordered_candidates = list(selected.values())[:HORIZON_BUILD_LIMIT]
+    for label, candidate in ordered_candidates:
         action = BuilderTurnActionCandidate(
             action_kind="creature",
             creature_candidate=candidate,
             projected_total_resources=enemy_turn_projection.own_total_resources,
             projected_ready_resources=max(0, enemy_turn_projection.own_ready_resources - candidate.cost),
-            generation_reason="horizon_haste",
+            generation_reason=label,
         )
-        yield "build_haste", project_creature_action(enemy_turn_projection, action)
+        yield label, project_creature_action(enemy_turn_projection, action)
+
+
+def _identify_relevant_future_threats(projected_state: BuilderTurnProjection, known_enemy_attackers: tuple[int, ...]) -> tuple[int, ...]:
+    seen = set(known_enemy_attackers)
+    for unit in projected_state.own_units:
+        if unit.unit_id in seen:
+            continue
+        if unit.has_ability(Ability.FLYING) and unit.sw > 0:
+            seen.add(unit.unit_id)
+            continue
+        if unit.sw >= 5:
+            seen.add(unit.unit_id)
+    return tuple(sorted(seen))
 
 
 def _empty_attack_decision(*, search_exact: bool) -> BuilderAttackDecision:

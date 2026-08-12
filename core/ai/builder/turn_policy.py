@@ -61,6 +61,8 @@ BOARD_SLOT_OPPORTUNITY_WEIGHT = 0.65
 HASTE_IMMEDIATE_WEIGHT = 0.7
 FLYING_OFFENSE_WEIGHT = 0.35
 FLYING_COVERAGE_WEIGHT = 0.45
+CURVE_DELAY_WEIGHT = 0.95
+ROLE_NOVELTY_WEIGHT = 0.45
 PASS_ACTION_PENALTY = 0.35
 SUICIDE_ATTACK_PENALTY = 4.6
 GLASS_CANNON_PENALTY = 2.4
@@ -83,6 +85,7 @@ REMOVE_BLOCKER_WEIGHT = 0.0
 OPEN_HAND_REMOVAL_RISK_PENALTY = 0.0
 NONLETHAL_GLASS_ABILITY_PENALTY = 0.0
 _FUTURE_SLOT_VALUE_CACHE: dict[tuple, float] = {}
+_BUDGET_FRONTIER_CACHE: dict[tuple, tuple[float, str]] = {}
 
 
 @dataclass(frozen=True)
@@ -253,6 +256,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
     if builder_debug_verbose():
         log_builder_state(engine, player, decision="main", snapshot=snapshot)
     base_projection = build_current_turn_projection(player, engine)
+    frontier_context = _build_frontier_context(snapshot, base_projection)
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
@@ -278,6 +282,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
                     fallback_used=fallback_used,
                     skip_hold_value=0.0,
                     horizon_cache=horizon_cache,
+                    frontier_context=frontier_context,
                     engine=engine,
                     player=player,
                 )
@@ -296,6 +301,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
                 horizon_cache=horizon_cache,
                 source_signature=runtime_signature,
                 fallback_used=fallback_used,
+                frontier_context=frontier_context,
             )
         )
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
@@ -317,6 +323,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             snapshot=snapshot,
         )
     base_projection = build_current_turn_projection(player, engine)
+    frontier_context = _build_frontier_context(snapshot, base_projection)
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
@@ -342,6 +349,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             fallback_used=False,
             skip_hold_value=0.0,
             horizon_cache=horizon_cache,
+            frontier_context=frontier_context,
             engine=engine,
             player=player,
         )
@@ -358,6 +366,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
         horizon_cache=horizon_cache,
         source_signature=runtime_signature,
         fallback_used=False,
+        frontier_context=frontier_context,
         allow_ability=allow_ability,
     )
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
@@ -412,6 +421,7 @@ def _evaluate_ability_plans_for_projection(
     horizon_cache: dict[tuple, BuilderHorizonReport],
     source_signature: tuple,
     fallback_used: bool,
+    frontier_context: tuple[float, str, float, str, float, str],
     allow_ability: bool = True,
 ) -> list[BuilderTurnDecision]:
     if not BUILDER_ABILITIES_ENABLED:
@@ -431,6 +441,7 @@ def _evaluate_ability_plans_for_projection(
                 fallback_used=fallback_used,
                 skip_hold_value=0.0,
                 horizon_cache=horizon_cache,
+                frontier_context=frontier_context,
                 engine=engine,
                 player=player,
             )
@@ -458,6 +469,7 @@ def _evaluate_ability_plans_for_projection(
             fallback_used=fallback_used,
             skip_hold_value=skip_hold_value,
             horizon_cache=horizon_cache,
+            frontier_context=frontier_context,
             engine=engine,
             player=player,
         )
@@ -604,6 +616,7 @@ def _build_action_decision(
     fallback_used: bool,
     skip_hold_value: float,
     horizon_cache: dict[tuple, BuilderHorizonReport],
+    frontier_context: tuple[float, str, float, str, float, str],
     engine,
     player,
 ) -> BuilderTurnDecision:
@@ -644,6 +657,27 @@ def _build_action_decision(
     flying_offense_value = _score_flying_offense_value(snapshot, projection, predicted_attack, projected_candidate) * FLYING_OFFENSE_WEIGHT
     flying_coverage_raw = _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate, horizon)
     flying_coverage_value = flying_coverage_raw * FLYING_COVERAGE_WEIGHT
+    (
+        best_build_value_now,
+        best_build_stats_now,
+        best_build_value_r_plus_1,
+        best_build_stats_r_plus_1,
+        best_build_value_r_plus_2,
+        best_build_stats_r_plus_2,
+    ) = frontier_context
+    curve_delay_raw = _score_curve_delay(
+        snapshot,
+        projection,
+        predicted_attack,
+        projected_candidate,
+        best_build_value_now,
+        best_build_value_r_plus_1,
+        best_build_value_r_plus_2,
+    )
+    curve_delay_value = -curve_delay_raw * CURVE_DELAY_WEIGHT
+    role_novelty_raw = _score_role_novelty(snapshot, projection, predicted_attack, projected_candidate)
+    role_novelty_value = role_novelty_raw * ROLE_NOVELTY_WEIGHT
+    projected_slot_tenure = _estimate_projected_slot_tenure(snapshot, projection, predicted_attack, projected_candidate)
     ability_value = _score_ability_action_value(
         ability_action,
         main_projection,
@@ -678,6 +712,8 @@ def _build_action_decision(
         + haste_immediate_value
         + flying_offense_value
         + flying_coverage_value
+        + curve_delay_value
+        + role_novelty_value
         + risk
     )
     selection_score = total
@@ -744,6 +780,18 @@ def _build_action_decision(
             flying_coverage_value,
         ),
         (
+            "curve_delay",
+            curve_delay_raw,
+            -CURVE_DELAY_WEIGHT,
+            curve_delay_value,
+        ),
+        (
+            "role_novelty",
+            role_novelty_raw,
+            ROLE_NOVELTY_WEIGHT,
+            role_novelty_value,
+        ),
+        (
             "ability",
             _score_ability_action_value(
                 ability_action,
@@ -784,6 +832,15 @@ def _build_action_decision(
         haste_immediate_value=round(haste_immediate_value, 4),
         flying_offense_value=round(flying_offense_value, 4),
         flying_coverage_value=round(flying_coverage_value, 4),
+        curve_delay_value=round(curve_delay_value, 4),
+        role_novelty_value=round(role_novelty_value, 4),
+        projected_slot_tenure=round(projected_slot_tenure, 4),
+        best_build_value_now=round(best_build_value_now, 4),
+        best_build_value_r_plus_1=round(best_build_value_r_plus_1, 4),
+        best_build_value_r_plus_2=round(best_build_value_r_plus_2, 4),
+        best_build_stats_now=best_build_stats_now,
+        best_build_stats_r_plus_1=best_build_stats_r_plus_1,
+        best_build_stats_r_plus_2=best_build_stats_r_plus_2,
         selection_score=round(selection_score, 4),
         total=round(total, 4),
         baseline_attack_score=round(baseline_attack.score.total, 4),
@@ -864,7 +921,7 @@ def _attack_cache_key(projection) -> tuple:
 
 
 def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], ready_resources: int) -> list[BuilderProjectedCandidate]:
-    if ready_resources <= 4:
+    if len(projected_candidates) <= 16:
         return projected_candidates
     selected: dict[tuple, BuilderProjectedCandidate] = {}
 
@@ -900,15 +957,27 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         ),
         reverse=True,
     )
+    by_haste = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_haste],
+        key=_projected_candidate_sort_key,
+        reverse=True,
+    )
+    by_flying = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_ability(Ability.FLYING)],
+        key=_projected_candidate_sort_key,
+        reverse=True,
+    )
 
-    take(by_future, 20, "future")
-    take(by_damage, 8, "damage")
-    take(by_attack, 6, "attack")
-    take(by_defense, 8, "defense")
-    take(by_hybrid, 6, "hybrid")
+    take(by_future, 8 if ready_resources <= 4 else 12, "future")
+    take(by_damage, 4 if ready_resources <= 4 else 6, "damage")
+    take(by_attack, 4 if ready_resources <= 4 else 5, "attack")
+    take(by_defense, 4 if ready_resources <= 4 else 6, "defense")
+    take(by_hybrid, 3 if ready_resources <= 4 else 4, "hybrid")
+    take(by_haste, 4, "haste")
+    take(by_flying, 4, "flying")
     shortlisted = list(selected.values())
     shortlisted.sort(key=_projected_candidate_sort_key, reverse=True)
-    return shortlisted[:32]
+    return shortlisted[:16 if ready_resources <= 4 else 24]
 
 
 def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDecision, snapshot) -> float:
@@ -994,8 +1063,10 @@ def _score_haste_immediate_value(snapshot, projection, predicted_attack, project
     new_unit_id = projection.hypothetical_unit_id
     value = 0.0
     if new_unit_id is not None and new_unit_id in predicted_attack.candidate.attacker_ids:
-        value += predicted_attack.score.player_damage * 0.65
-        value += predicted_attack.score.enemy_kill_value * 0.28
+        new_unit = projection.get_unit_by_id(new_unit_id)
+        if new_unit is not None:
+            value += estimate_unblocked_attack(new_unit).player_damage * 0.65
+            value += new_unit.sw * 0.08
         if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
             value += 2.2
     return value
@@ -1074,6 +1145,193 @@ def _estimate_future_slot_advantage(snapshot, projection, projected_candidate) -
         cached = best_future_value
         _FUTURE_SLOT_VALUE_CACHE[cache_key] = cached
     return max(0.0, cached - projected_candidate.future_value)
+
+
+def _best_frontier_build_value(snapshot, projection, budget: int, required_ability: Ability | None = None) -> tuple[float, str]:
+    if budget <= 0:
+        return 0.0, "-"
+    cache_key = (
+        budget,
+        getattr(required_ability, "value", "-"),
+        tuple(_projection_unit_signature(unit) for unit in projection.own_units),
+        tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
+    )
+    cached = _BUDGET_FRONTIER_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    adjusted_snapshot = replace(
+        snapshot,
+        own_total_resources=budget,
+        own_ready_resources=budget,
+        resource_difference=budget - snapshot.enemy_total_resources,
+    )
+    legal = [
+        candidate
+        for candidate in generate_builder_creature_candidates(adjusted_snapshot, budget)
+        if is_legal_builder_candidate(candidate, budget)
+        and (required_ability is None or candidate.has_ability(required_ability))
+    ]
+    best_value = 0.0
+    best_stats = "-"
+    for candidate in legal:
+        static_score = score_builder_creature_candidate(
+            candidate,
+            adjusted_snapshot,
+            available_resources=budget,
+            enemy_creatures=list(projection.enemy_units),
+            own_creatures=list(projection.own_units),
+        )
+        future_value = extract_candidate_future_value(static_score, candidate, adjusted_snapshot)
+        if future_value > best_value:
+            best_value = future_value
+            best_stats = f"{candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw}/{getattr(candidate.builder_ability, 'value', '-').lower()}"
+    result = (round(best_value, 4), best_stats)
+    _BUDGET_FRONTIER_CACHE[cache_key] = result
+    return result
+
+
+def _build_frontier_context(snapshot, projection) -> tuple[float, str, float, str, float, str]:
+    best_now, best_now_stats = _best_frontier_build_value(snapshot, projection, projection.own_total_resources)
+    best_r1, best_r1_stats = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 1))
+    best_r2, best_r2_stats = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 2))
+    return (
+        best_now,
+        best_now_stats,
+        best_r1,
+        best_r1_stats,
+        best_r2,
+        best_r2_stats,
+    )
+
+
+def _estimate_projected_slot_tenure(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    if projected_candidate is None:
+        return 0.0
+    candidate = projected_candidate.candidate
+    tenure = 1.0
+    if candidate.aw == 0 and candidate.sw <= 1:
+        tenure += 1.2
+    if candidate.vw >= 1 or candidate.lw >= 3:
+        tenure += 0.8
+    if snapshot.own_creature_count >= BUILDER_CREATURE_CAP - 1:
+        tenure += 0.7
+    if projection.hypothetical_unit_id in predicted_attack.candidate.attacker_ids and predicted_attack.score.enemy_kill_value > 0.0:
+        tenure -= 0.8
+    if candidate.has_ability(Ability.FLYING):
+        tenure -= 0.3
+    return max(0.0, tenure)
+
+
+def _score_role_novelty(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    if projected_candidate is None:
+        return 0.0
+    candidate = projected_candidate.candidate
+    similar_units = 0
+    own_flying = sum(1 for unit in projection.own_units if unit.has_ability(Ability.FLYING))
+    own_zero_attack = sum(1 for unit in projection.own_units if unit.aw == 0 and unit.sw <= 1)
+    for unit in projection.own_units:
+        same_ability = candidate.builder_ability is not None and unit.has_ability(candidate.builder_ability)
+        similar_stats = abs(unit.aw - candidate.aw) <= 1 and abs(unit.vw - candidate.vw) <= 1 and abs(unit.sw - candidate.sw) <= 1
+        if same_ability and similar_stats:
+            similar_units += 1
+    novelty = 0.0
+    if candidate.has_ability(Ability.FLYING) and own_flying == 0:
+        novelty += 1.8 if snapshot.enemy_flying_count > 0 or snapshot.enemy_total_resources >= 5 else 0.8
+    if candidate.sw >= 2 and predicted_attack.score.guaranteed_player_damage > 0.0:
+        novelty += 0.5
+    if candidate.aw == 0 and candidate.sw == 0 and snapshot.enemy_potential_attacker_count == 0:
+        novelty -= 1.2
+    if candidate.has_haste and predicted_attack.score.player_damage <= 0.0 and candidate.sw == 0:
+        novelty -= 1.4
+    if own_zero_attack >= 2 and candidate.aw == 0 and candidate.sw <= 1:
+        novelty -= 0.8
+    novelty -= similar_units * 0.45
+    return novelty
+
+
+def _score_curve_delay(
+    snapshot,
+    projection,
+    predicted_attack,
+    projected_candidate,
+    best_build_value_now: float,
+    best_build_value_r_plus_1: float,
+    best_build_value_r_plus_2: float,
+) -> float:
+    if projected_candidate is None:
+        return 0.0
+    candidate = projected_candidate.candidate
+    tactical_impact = (
+        max(0.0, predicted_attack.score.guaranteed_player_damage)
+        + max(0.0, projected_candidate.static_score.matchup_defense)
+        + max(0.0, projected_candidate.static_score.immediate_pressure)
+    )
+    must_act_now = (
+        predicted_attack.score.counter_lethal_risk > 0.0
+        or predicted_attack.score.projected_counter_damage >= max(1.0, projection.own_life - 1.0)
+    )
+    if must_act_now and tactical_impact > 0.0:
+        return 0.0
+    future_gap = max(0.0, best_build_value_r_plus_1 - max(projected_candidate.future_value, best_build_value_now * 0.7))
+    future_gap += max(0.0, best_build_value_r_plus_2 - best_build_value_r_plus_1) * 0.35
+    if snapshot.own_creature_count >= BUILDER_CREATURE_CAP - 1:
+        future_gap += _estimate_projected_slot_tenure(snapshot, projection, predicted_attack, projected_candidate) * 0.55
+    if candidate.aw == 0 and candidate.sw == 0:
+        future_gap += 1.2
+    elif candidate.aw == 0 and candidate.sw <= 1 and predicted_attack.score.player_damage <= 0.0:
+        future_gap += 0.8
+    safe_state = predicted_attack.score.counter_lethal_risk <= 0.0 and predicted_attack.score.projected_counter_damage < max(2.0, projection.own_life - 3.0)
+    if safe_state:
+        future_gap *= 1.1
+    dampener = max(0.15, 1.0 - min(0.82, tactical_impact * 0.22))
+    return future_gap * dampener
+
+
+def evaluate_builder_next_main_value(projection) -> tuple[float, str, str]:
+    player = projection.players[projection.player_id]
+    snapshot = build_builder_snapshot(player, projection)
+    cap_context = compute_builder_cap_context(
+        player,
+        projection,
+        creature_cap=BUILDER_CREATURE_CAP,
+        resource_budget=projection.own_total_resources,
+    )
+    best_now, best_now_stats = _best_frontier_build_value(snapshot, projection, projection.own_total_resources)
+    best_flying_now, best_flying_stats = _best_frontier_build_value(snapshot, projection, projection.own_total_resources, Ability.FLYING)
+    best_r1, _ = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 1))
+    best_r2, _ = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 2))
+
+    best_value = -PASS_ACTION_PENALTY
+    best_action = "pass"
+    best_stats = "-"
+    must_answer_now = snapshot.enemy_potential_attacker_count > 0 and snapshot.own_life <= max(4, snapshot.enemy_total_sw)
+
+    if len(projection.own_units) < BUILDER_CREATURE_CAP:
+        build_value = best_now
+        build_stats = best_now_stats
+        if snapshot.enemy_flying_count > 0 and not any(unit.has_ability(Ability.FLYING) for unit in projection.own_units):
+            if best_flying_now > 0.0:
+                build_value = best_flying_now + 5.0
+                build_stats = best_flying_stats
+            else:
+                build_value -= 2.5
+        if build_value > best_value:
+            best_value = build_value
+            best_action = "creature"
+            best_stats = build_stats
+
+    if projection.own_total_resources < 10:
+        curve_value = max(0.0, best_r1 - best_now) + max(0.0, best_r2 - best_r1) * 0.35
+        resource_value = curve_value + max(0.0, 1.4 - projection.own_total_resources * 0.18)
+        if cap_context.at_cap:
+            resource_value -= cap_context.replacement_value * 1.25 + cap_context.cap_pressure
+        if must_answer_now:
+            resource_value -= 1.8
+        if resource_value > best_value:
+            best_value = resource_value
+            best_action = "resource"
+            best_stats = "-"
+    return round(best_value, 4), best_action, best_stats
 
 
 def _score_action_survival_urgency(snapshot, projection, predicted_attack, action_kind: str) -> float:
@@ -1586,10 +1844,10 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
                 ("static_runner_up", "N/A" if static_runner_up is None else f"{static_runner_up.candidate.aw}/{static_runner_up.candidate.vw}/{static_runner_up.candidate.sw}/{static_runner_up.candidate.lw}"),
                 ("static_runner_up_total", "N/A" if static_runner_up is None else static_runner_up.static_score.total),
                 ("static_gap", "N/A" if static_runner_up is None else round(static_best.static_score.total - static_runner_up.static_score.total, 4)),
-                ("shortlist_best", f"{shortlist_best.candidate.aw}/{shortlist_best.candidate.vw}/{shortlist_best.candidate.sw}/{shortlist_best.candidate.lw}"),
-                ("shortlist_best_total", shortlist_best.static_score.total),
-                ("dynamic_best", f"{dynamic_best.candidate.aw}/{dynamic_best.candidate.vw}/{dynamic_best.candidate.sw}/{dynamic_best.candidate.lw}"),
-                ("dynamic_best_selection_score", decision.score.selection_score if selected_signature is not None else "N/A"),
+                ("shortlist_rank_best", f"{shortlist_best.candidate.aw}/{shortlist_best.candidate.vw}/{shortlist_best.candidate.sw}/{shortlist_best.candidate.lw}"),
+                ("shortlist_rank_best_total", shortlist_best.static_score.total),
+                ("selected_build", f"{dynamic_best.candidate.aw}/{dynamic_best.candidate.vw}/{dynamic_best.candidate.sw}/{dynamic_best.candidate.lw}"),
+                ("selected_build_selection_score", decision.score.selection_score if selected_signature is not None else "N/A"),
                 ("chosen_build", f"{dynamic_best.candidate.aw}/{dynamic_best.candidate.vw}/{dynamic_best.candidate.sw}/{dynamic_best.candidate.lw}"),
                 ("ability", getattr(dynamic_best.candidate.builder_ability, "value", "-")),
                 ("ability_cost", 0),
@@ -1598,7 +1856,7 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
                 ("enters_tapped", dynamic_best.candidate.enters_tapped),
                 ("chosen_static_total", dynamic_best.static_score.total),
                 ("chosen_vs_static_best_delta", round(dynamic_best.static_score.total - static_best.static_score.total, 4)),
-                ("selection_reason", "static_best" if dynamic_best.candidate.key == static_best.candidate.key else ("shortlist_best" if dynamic_best.candidate.key == shortlist_best.candidate.key else "dynamic_turn_selection")),
+                ("selection_reason", "static_best" if dynamic_best.candidate.key == static_best.candidate.key else ("shortlist_rank_best" if dynamic_best.candidate.key == shortlist_best.candidate.key else "dynamic_turn_selection")),
             ),
         )
 
@@ -1694,6 +1952,15 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("haste_immediate_value", current.score.haste_immediate_value),
             ("flying_offense", current.score.flying_offense_value),
             ("flying_coverage", current.score.flying_coverage_value),
+            ("curve_delay", current.score.curve_delay_value),
+            ("role_novelty", current.score.role_novelty_value),
+            ("projected_slot_tenure", current.score.projected_slot_tenure),
+            ("best_build_value_now", current.score.best_build_value_now),
+            ("best_build_stats_now", current.score.best_build_stats_now),
+            ("best_build_value_r_plus_1", current.score.best_build_value_r_plus_1),
+            ("best_build_stats_r_plus_1", current.score.best_build_stats_r_plus_1),
+            ("best_build_value_r_plus_2", current.score.best_build_value_r_plus_2),
+            ("best_build_stats_r_plus_2", current.score.best_build_stats_r_plus_2),
             ("lethal_value", current.score.lethal_value),
             ("risk_adjustment", current.score.risk_adjustment),
         ]

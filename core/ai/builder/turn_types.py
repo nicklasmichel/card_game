@@ -65,6 +65,15 @@ class BuilderTurnScore:
     flying_coverage_value: float
     selection_score: float
     total: float
+    curve_delay_value: float = 0.0
+    role_novelty_value: float = 0.0
+    projected_slot_tenure: float = 0.0
+    best_build_value_now: float = 0.0
+    best_build_value_r_plus_1: float = 0.0
+    best_build_value_r_plus_2: float = 0.0
+    best_build_stats_now: str = "-"
+    best_build_stats_r_plus_1: str = "-"
+    best_build_stats_r_plus_2: str = "-"
     baseline_attack_score: float = 0.0
     projected_attack_score: float = 0.0
     search_was_exact: bool = True

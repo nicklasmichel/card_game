@@ -200,7 +200,10 @@ def select_scored_rows(scored_rows: list[tuple[object, object]], *, top_n: int, 
 def turn_score_gap(decisions: list) -> tuple[float, object | None]:
     if len(decisions) < 2:
         return 0.0, None
-    return round(decisions[0].score.selection_score - decisions[1].score.selection_score, builder_debug_precision()), decisions[1]
+    precision = builder_debug_precision()
+    displayed_best = round(decisions[0].score.selection_score, precision)
+    displayed_runner_up = round(decisions[1].score.selection_score, precision)
+    return round(displayed_best - displayed_runner_up, precision), decisions[1]
 
 
 def score_delta_keys(primary_score, secondary_score, *, limit: int = 3) -> str:

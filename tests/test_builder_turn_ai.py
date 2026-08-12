@@ -18,6 +18,7 @@ from core.ai.builder import (
 from core.ai.builder.cap_strategy import compute_builder_cap_context
 from core.ai.builder.snapshot import build_builder_snapshot
 from core.ai.builder.search_budget import FINAL_DECISION_SEARCH_BUDGET
+from core.ai.builder.turn_policy import evaluate_builder_next_main_value
 from core.ai.builder.turn_types import BuilderTurnActionCandidate
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, ResourceCard
@@ -473,6 +474,60 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "resource")
+
+    def test_regression_curve_after_first_valid_haste_prefers_resource_over_redundant_second_body(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 2)
+        self.set_builder_resources(self.engine.human_player, 3)
+        self.engine.ai_player.life = 18
+        self.make_builder_creature(1, aw=0, vw=0, sw=2, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "resource")
+
+    def test_regression_full_weak_board_values_open_response_slot_against_future_flyer(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 5)
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 20
+        self.make_builder_creature(1, aw=0, vw=0, sw=2, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+        flyer = self.make_builder_creature(0, aw=0, vw=1, sw=5, lw=1, ready=False, abilities=(Ability.FLYING,))
+
+        open_projection = build_current_turn_projection(self.engine.ai_player, self.engine)
+        open_value, open_action, open_stats = evaluate_builder_next_main_value(open_projection)
+
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+        full_projection = build_current_turn_projection(self.engine.ai_player, self.engine)
+        full_value, full_action, _ = evaluate_builder_next_main_value(full_projection)
+
+        self.assertEqual(open_action, "creature")
+        self.assertIn("flying", open_stats)
+        self.assertLess(full_value, open_value)
+        self.assertIsNotNone(flyer)
+
+    def test_horizon_includes_delayed_high_damage_flying_build_from_enemy_frontier(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 5)
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 20
+        self.make_builder_creature(1, aw=0, vw=0, sw=2, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        predicted_attack = evaluate_best_builder_attack(base.players[base.player_id], base)
+        report = evaluate_main_action_horizon(base, predicted_attack)
+
+        self.assertEqual(report.defense_response_main_action, "build_flying")
+        self.assertTrue(report.known_enemy_attack_timeline)
+        self.assertEqual(report.known_enemy_attack_timeline[0].first_attack_damage, 0.0)
+        self.assertEqual(report.known_enemy_attack_timeline[0].second_attack_damage, 5.0)
+        self.assertEqual(report.second_attack_damage, 5.0)
 
     def test_safe_state_can_prefer_resource_over_redundant_fifth_creature(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 5)

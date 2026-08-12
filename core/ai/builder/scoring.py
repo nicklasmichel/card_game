@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from functools import lru_cache
+from itertools import combinations
 from statistics import mean
 
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.models import Ability, BattlefieldCreature
 
 from .combat_eval import (
+    BuilderCombatantView,
     build_candidate_combatant_view,
     can_legally_be_forced_to_block,
     can_legally_block,
@@ -314,22 +317,22 @@ def _score_candidate_matchups(
     future_enemy_blockers = [coerce_builder_combatant(creature, ready=True) for creature in enemy_creatures]
     immediate_enemy_blockers = [coerce_builder_combatant(creature) for creature in enemy_creatures]
     enemy_attackers = [coerce_builder_combatant(creature, ready=True) for creature in enemy_creatures]
+    own_blockers = [coerce_builder_combatant(creature) for creature in own_creatures]
 
     offensive = _evaluate_offensive_matchups(candidate_future, future_enemy_blockers, prefer_forced=Ability.ENRAGED in candidate.abilities)
-    defensive = _evaluate_defensive_matchups(candidate_future, enemy_attackers)
-    immediate_defense = _evaluate_immediate_defense(candidate_immediate, enemy_attackers)
+    immediate_defense = _evaluate_marginal_immediate_defense(candidate_immediate, enemy_attackers, own_blockers)
     immediate = _evaluate_immediate_pressure(candidate_immediate, snapshot, immediate_enemy_blockers)
     evasion = _evaluate_evasion(candidate_future, candidate_immediate, snapshot, future_enemy_blockers, immediate_enemy_blockers)
 
     return {
         "matchup_offense": offensive["score"],
-        "matchup_defense": defensive["score"] + immediate_defense["score"],
+        "matchup_defense": immediate_defense["score"],
         "immediate_pressure": immediate["score"],
         "evasion": evasion["score"],
         "expected_player_damage": offensive["expected_player_damage"] + immediate["expected_player_damage"],
         "expected_heal": offensive["expected_heal"] + immediate["expected_heal"],
-        "kill_pressure": offensive["kill_pressure"] + defensive["kill_pressure"] + immediate_defense["kill_pressure"],
-        "death_risk": offensive["death_risk"] + defensive["death_risk"] + immediate_defense["death_risk"],
+        "kill_pressure": offensive["kill_pressure"] + immediate_defense["kill_pressure"],
+        "death_risk": offensive["death_risk"] + immediate_defense["death_risk"],
     }
 
 
@@ -354,17 +357,16 @@ def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer
         }
 
     blocker_estimates = [_offensive_matchup_summary(candidate_view, blocker) for blocker in legal_normal_blockers]
-    worst_score = min(summary["score"] for summary in blocker_estimates)
-    average_score = mean(summary["score"] for summary in blocker_estimates)
-    offense_score = worst_score * MATCHUP_WORST_CASE_WEIGHT + average_score * MATCHUP_AVERAGE_WEIGHT
     chosen_summary = min(blocker_estimates, key=lambda summary: summary["score"])
+    offense_score = chosen_summary["score"]
 
     if prefer_forced and legal_forced_blockers:
         forced_summaries = [_offensive_matchup_summary(candidate_view, blocker) for blocker in legal_forced_blockers]
         best_forced = max(forced_summaries, key=lambda summary: summary["score"])
-        offense_score = max(offense_score, best_forced["score"], unblocked_score)
-        chosen_summary = best_forced if best_forced["score"] >= max(offense_score, unblocked_score) else chosen_summary
-        if unblocked_score >= best_forced["score"] and unblocked_score >= offense_score:
+        best_forced_score = max(best_forced["score"], unblocked_score)
+        if best_forced_score > offense_score:
+            offense_score = best_forced_score
+        if unblocked_score >= best_forced["score"] and unblocked_score >= chosen_summary["score"]:
             chosen_summary = {
                 "score": unblocked_score,
                 "expected_player_damage": unblocked.player_damage,
@@ -372,7 +374,8 @@ def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer
                 "kill_pressure": 0.0,
                 "death_risk": 0.0,
             }
-            offense_score = unblocked_score
+        elif best_forced["score"] >= chosen_summary["score"]:
+            chosen_summary = best_forced
 
     return {
         "score": offense_score,
@@ -498,6 +501,26 @@ def _evaluate_immediate_defense(candidate_view, enemy_attackers: list) -> dict[s
     }
 
 
+def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, own_blockers: list) -> dict[str, float]:
+    if not candidate_view.has_ability(Ability.HASTE):
+        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
+    baseline_damage = _optimal_enemy_damage(enemy_attackers, own_blockers)
+    with_candidate_damage = _optimal_enemy_damage(enemy_attackers, own_blockers + [candidate_view])
+    marginal_prevented = max(0.0, baseline_damage - with_candidate_damage)
+    if marginal_prevented <= 0.0:
+        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
+    defensive = _evaluate_immediate_defense(candidate_view, enemy_attackers)
+    score = marginal_prevented * DEFENSIVE_PREVENTED_DAMAGE_WEIGHT
+    if baseline_damage > 0.0:
+        score += max(0.0, defensive["kill_pressure"])
+        score += max(0.0, defensive["death_risk"]) * 0.35
+    return {
+        "score": score,
+        "kill_pressure": defensive["kill_pressure"],
+        "death_risk": defensive["death_risk"],
+    }
+
+
 def _evaluate_evasion(
     candidate_future,
     candidate_immediate,
@@ -527,3 +550,92 @@ def _score_unused_resources(candidate: BuilderCreatureCandidate, available_resou
         return 0.0
     unused = max(0, available_resources - candidate.cost)
     return -(unused * UNUSED_RESOURCE_WEIGHT)
+
+
+def _combatant_signature(subject) -> tuple:
+    view = coerce_builder_combatant(subject)
+    return (
+        view.aw,
+        view.vw,
+        view.sw,
+        view.lw,
+        view.current_hp,
+        view.ready,
+        view.cannot_block,
+        tuple(sorted(ability.value for ability in view.abilities)),
+    )
+
+
+def _view_from_signature(signature: tuple) -> BuilderCombatantView:
+    aw, vw, sw, lw, current_hp, ready, cannot_block, abilities = signature
+    return BuilderCombatantView(
+        aw=aw,
+        vw=vw,
+        sw=sw,
+        lw=lw,
+        current_hp=current_hp,
+        ready=ready,
+        cannot_block=cannot_block,
+        abilities=frozenset(Ability(name) for name in abilities),
+        name="cached",
+    )
+
+
+def _optimal_enemy_damage(enemy_attackers: list, own_blockers: list) -> float:
+    attacker_signatures = tuple(sorted(_combatant_signature(attacker) for attacker in enemy_attackers if coerce_builder_combatant(attacker).sw > 0))
+    blocker_signatures = tuple(sorted(_combatant_signature(blocker) for blocker in own_blockers if coerce_builder_combatant(blocker).vw > 0))
+    if not attacker_signatures:
+        return 0.0
+    return _optimal_enemy_damage_cached(attacker_signatures, blocker_signatures)
+
+
+@lru_cache(maxsize=None)
+def _optimal_enemy_damage_cached(attacker_signatures: tuple, blocker_signatures: tuple) -> float:
+    attackers = [_view_from_signature(signature) for signature in attacker_signatures]
+    blockers = [_view_from_signature(signature) for signature in blocker_signatures]
+    best_damage = 0.0
+    for size in range(len(attackers) + 1):
+        for attack_group in combinations(attackers, size):
+            damage = _worst_case_player_damage_for_attack_group(list(attack_group), blockers)
+            if damage > best_damage:
+                best_damage = damage
+    return best_damage
+
+
+def _worst_case_player_damage_for_attack_group(attack_group: list[BuilderCombatantView], blockers: list[BuilderCombatantView]) -> float:
+    if not attack_group:
+        return 0.0
+    worst_damage = float("inf")
+    for assignment in _enumerate_block_assignments(attack_group, blockers, 0, {}, set()):
+        damage = 0.0
+        for attacker in attack_group:
+            blocker = assignment.get(id(attacker))
+            if blocker is None:
+                damage += estimate_unblocked_attack(attacker).player_damage
+            else:
+                damage += estimate_builder_combat(attacker, blocker).expected_player_damage
+        worst_damage = min(worst_damage, damage)
+    return 0.0 if worst_damage == float("inf") else worst_damage
+
+
+def _enumerate_block_assignments(
+    attackers: list[BuilderCombatantView],
+    blockers: list[BuilderCombatantView],
+    index: int,
+    current: dict[int, BuilderCombatantView],
+    used_blockers: set[int],
+):
+    if index >= len(attackers):
+        yield dict(current)
+        return
+    attacker = attackers[index]
+    yield from _enumerate_block_assignments(attackers, blockers, index + 1, current, used_blockers)
+    for blocker in blockers:
+        blocker_token = id(blocker)
+        if blocker_token in used_blockers:
+            continue
+        if not can_legally_block(attacker, blocker, require_ready=True):
+            continue
+        current[id(attacker)] = blocker
+        yield from _enumerate_block_assignments(attackers, blockers, index + 1, current, used_blockers | {blocker_token})
+        current.pop(id(attacker), None)

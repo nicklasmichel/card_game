@@ -359,6 +359,30 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertEqual(score.projected_counter_main_action, "build_haste")
         self.assertGreater(score.projected_counter_damage, 0.0)
 
+    def test_opponent_can_choose_no_block_to_keep_ai_weak_body_trapped_at_cap(self) -> None:
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.ai_player.is_human = False
+        self.set_builder_resources(self.engine.ai_player, 3)
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.engine.ai_player.life = 12
+        self.engine.human_player.life = 20
+        weak = self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=0, sw=2, lw=1, ready=False, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=1, ready=False, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=False, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=False, abilities=(Ability.HASTE,))
+        blocker = self.make_builder_creature(0, aw=0, vw=1, sw=1, lw=3, ready=True)
+
+        score = score_builder_attack_candidate(
+            BuilderAttackCandidate(attacker_ids=(weak.unit_id,)),
+            self.engine.ai_player,
+            self.engine,
+        )
+
+        self.assertEqual(score.chosen_block_assignment, ())
+        self.assertIsNotNone(blocker)
+
     def test_attack_selection_can_hold_back_partial_blockers(self) -> None:
         hold_back = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)
         attacker = self.make_builder_creature(1, aw=3, vw=0, sw=3, lw=2, ready=True)
