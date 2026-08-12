@@ -55,6 +55,15 @@ class BuilderTurnScore:
     lethal_value: float
     ability_value: float
     risk_adjustment: float
+    expected_enemy_followup_damage: float
+    enemy_lethal_risk: float
+    survival_buffer: float
+    future_offense_value: float
+    board_slot_opportunity_cost: float
+    haste_immediate_value: float
+    flying_offense_value: float
+    flying_coverage_value: float
+    selection_score: float
     total: float
     baseline_attack_score: float = 0.0
     projected_attack_score: float = 0.0

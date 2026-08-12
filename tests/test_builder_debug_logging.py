@@ -13,12 +13,12 @@ class BuilderDebugLoggingTests(unittest.TestCase):
     def setUp(self) -> None:
         patcher = patch.multiple(
             config,
-            BUILDER_AI_DEBUG=0,
-            BUILDER_AI_DEBUG_TOP_N=3,
-            BUILDER_AI_DEBUG_BUILD_TOP_N=3,
-            BUILDER_AI_DEBUG_FLOAT_PRECISION=2,
-            BUILDER_AI_DEBUG_INCLUDE_WEIGHTS=1,
-            BUILDER_AI_DEBUG_INCLUDE_FINGERPRINTS=1,
+            AI_DEBUG=0,
+            AI_DEBUG_TOP_N=3,
+            AI_DEBUG_BUILD_TOP_N=3,
+            AI_DEBUG_FLOAT_PRECISION=2,
+            AI_DEBUG_INCLUDE_WEIGHTS=1,
+            AI_DEBUG_INCLUDE_FINGERPRINTS=1,
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -64,11 +64,11 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         return creature
 
     def set_debug(self, level: int, *, top_n: int = 3, build_top_n: int = 3, include_weights: int = 1, include_fingerprints: int = 1) -> None:
-        config.BUILDER_AI_DEBUG = level
-        config.BUILDER_AI_DEBUG_TOP_N = top_n
-        config.BUILDER_AI_DEBUG_BUILD_TOP_N = build_top_n
-        config.BUILDER_AI_DEBUG_INCLUDE_WEIGHTS = include_weights
-        config.BUILDER_AI_DEBUG_INCLUDE_FINGERPRINTS = include_fingerprints
+        config.AI_DEBUG = level
+        config.AI_DEBUG_TOP_N = top_n
+        config.AI_DEBUG_BUILD_TOP_N = build_top_n
+        config.AI_DEBUG_INCLUDE_WEIGHTS = include_weights
+        config.AI_DEBUG_INCLUDE_FINGERPRINTS = include_fingerprints
 
     def debug_lines(self, logs: list[str], prefix: str | None = None) -> list[str]:
         lines = [line for line in logs if line.startswith("[AI ") or line.startswith("[RUNTIME]")]

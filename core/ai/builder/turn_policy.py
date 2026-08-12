@@ -54,6 +54,11 @@ RESOURCE_LOW_LEVEL_BONUS = 1.7
 RESOURCE_CAP_DECAY = 0.28
 BOARD_VALUE_WEIGHT = 0.22
 RISK_PENALTY_WEIGHT = 0.26
+FUTURE_OFFENSE_WEIGHT = 0.45
+BOARD_SLOT_OPPORTUNITY_WEIGHT = 0.65
+HASTE_IMMEDIATE_WEIGHT = 0.7
+FLYING_OFFENSE_WEIGHT = 0.35
+FLYING_COVERAGE_WEIGHT = 0.45
 PASS_ACTION_PENALTY = 0.35
 SUICIDE_ATTACK_PENALTY = 4.6
 GLASS_CANNON_PENALTY = 2.4
@@ -612,8 +617,16 @@ def _build_action_decision(
     )
     immediate_combat_delta = (predicted_attack.score.total - baseline_attack.score.total) * TURN_WEIGHTS.immediate_combat_delta
     end_of_turn_readiness = _score_end_of_turn_readiness(projection, predicted_attack, snapshot) * TURN_WEIGHTS.ready_defense
-    survival_urgency = _score_action_survival_urgency(snapshot, projection, action_candidate.action_kind) * TURN_WEIGHTS.survival_urgency
+    survival_urgency = _score_action_survival_urgency(snapshot, projection, predicted_attack, action_candidate.action_kind) * TURN_WEIGHTS.survival_urgency
     board_value = _score_board_projection_value(projection) * TURN_WEIGHTS.board_value
+    expected_enemy_followup_damage = predicted_attack.score.projected_counter_damage
+    enemy_lethal_risk = predicted_attack.score.counter_lethal_risk
+    survival_buffer = projection.own_life - expected_enemy_followup_damage
+    future_offense_value = _score_future_offense_value(snapshot, projection, predicted_attack, projected_candidate) * FUTURE_OFFENSE_WEIGHT
+    board_slot_opportunity_cost = _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context) * BOARD_SLOT_OPPORTUNITY_WEIGHT
+    haste_immediate_value = _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate) * HASTE_IMMEDIATE_WEIGHT
+    flying_offense_value = _score_flying_offense_value(snapshot, projection, predicted_attack, projected_candidate) * FLYING_OFFENSE_WEIGHT
+    flying_coverage_value = _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate) * FLYING_COVERAGE_WEIGHT
     ability_value = _score_ability_action_value(
         ability_action,
         main_projection,
@@ -643,8 +656,14 @@ def _build_action_decision(
         + board_value
         + draw_value
         + card_value
+        + future_offense_value
+        + board_slot_opportunity_cost
+        + haste_immediate_value
+        + flying_offense_value
+        + flying_coverage_value
         + risk
     )
+    selection_score = total
     debug_contributions = (
         ("terminal", terminal, 1.0, terminal),
         ("board_value", _score_board_projection_value(projection), TURN_WEIGHTS.board_value, board_value),
@@ -672,11 +691,41 @@ def _build_action_decision(
         ),
         (
             "survival_urgency",
-            _score_action_survival_urgency(snapshot, projection, action_candidate.action_kind),
+            _score_action_survival_urgency(snapshot, projection, predicted_attack, action_candidate.action_kind),
             TURN_WEIGHTS.survival_urgency,
             survival_urgency,
         ),
         ("lethal", predicted_attack.score.lethal_value, 1.0, predicted_attack.score.lethal_value),
+        (
+            "future_offense",
+            _score_future_offense_value(snapshot, projection, predicted_attack, projected_candidate),
+            FUTURE_OFFENSE_WEIGHT,
+            future_offense_value,
+        ),
+        (
+            "slot_opportunity",
+            _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context),
+            BOARD_SLOT_OPPORTUNITY_WEIGHT,
+            board_slot_opportunity_cost,
+        ),
+        (
+            "haste_immediate",
+            _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate),
+            HASTE_IMMEDIATE_WEIGHT,
+            haste_immediate_value,
+        ),
+        (
+            "flying_offense",
+            _score_flying_offense_value(snapshot, projection, predicted_attack, projected_candidate),
+            FLYING_OFFENSE_WEIGHT,
+            flying_offense_value,
+        ),
+        (
+            "flying_coverage",
+            _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate),
+            FLYING_COVERAGE_WEIGHT,
+            flying_coverage_value,
+        ),
         (
             "ability",
             _score_ability_action_value(
@@ -710,6 +759,15 @@ def _build_action_decision(
         lethal_value=round(predicted_attack.score.lethal_value, 4),
         ability_value=round(ability_value, 4),
         risk_adjustment=round(risk, 4),
+        expected_enemy_followup_damage=round(expected_enemy_followup_damage, 4),
+        enemy_lethal_risk=round(enemy_lethal_risk, 4),
+        survival_buffer=round(survival_buffer, 4),
+        future_offense_value=round(future_offense_value, 4),
+        board_slot_opportunity_cost=round(board_slot_opportunity_cost, 4),
+        haste_immediate_value=round(haste_immediate_value, 4),
+        flying_offense_value=round(flying_offense_value, 4),
+        flying_coverage_value=round(flying_coverage_value, 4),
+        selection_score=round(selection_score, 4),
         total=round(total, 4),
         baseline_attack_score=round(baseline_attack.score.total, 4),
         projected_attack_score=round(predicted_attack.score.total, 4),
@@ -733,7 +791,8 @@ def _build_action_decision(
 
 
 def _evaluate_attack_cached(projection, cache: dict[tuple, BuilderAttackDecision]) -> BuilderAttackDecision:
-    cached = cache.get(projection.state_signature)
+    cache_key = _attack_cache_key(projection)
+    cached = cache.get(cache_key)
     if cached is not None:
         return cached
     decision = evaluate_best_builder_attack(
@@ -741,8 +800,20 @@ def _evaluate_attack_cached(projection, cache: dict[tuple, BuilderAttackDecision
         projection,
         search_budget=TURN_LOOKAHEAD_SEARCH_BUDGET,
     )
-    cache[projection.state_signature] = decision
+    cache[cache_key] = decision
     return decision
+
+
+def _attack_cache_key(projection) -> tuple:
+    return (
+        projection.player_id,
+        projection.enemy_id,
+        projection.own_life,
+        projection.enemy_life,
+        projection.available_attacker_ids,
+        tuple(_projection_unit_signature(unit) for unit in projection.own_units),
+        tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
+    )
 
 
 def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], ready_resources: int) -> list[BuilderProjectedCandidate]:
@@ -813,6 +884,93 @@ def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDeci
     return total
 
 
+def _score_future_offense_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    own_pressure = sum(unit.sw + unit.aw * 0.35 for unit in projection.own_units)
+    ready_pressure = sum(
+        unit.sw + unit.aw * 0.25
+        for unit in projection.own_units
+        if unit.is_ready() or unit.unit_id in predicted_attack.candidate.attacker_ids
+    )
+    evasive_pressure = sum(unit.sw for unit in projection.own_units if unit.has_ability(Ability.FLYING))
+    enemy_block_mass = sum(unit.vw + unit.current_hp * 0.22 for unit in projection.enemy_units)
+    trample_pressure = sum(unit.sw * 0.18 for unit in projection.own_units if unit.has_ability(Ability.TRAMPLE))
+    if own_pressure <= 0.0:
+        return -2.8
+    path_score = ready_pressure * 0.22 + evasive_pressure * 0.32 + trample_pressure - enemy_block_mass * 0.08
+    if sum(1 for unit in projection.own_units if unit.sw > 0) <= 1 and own_pressure < enemy_block_mass * 0.55:
+        path_score -= 1.1
+    return path_score
+
+
+def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context) -> float:
+    if projected_candidate is None or snapshot.own_creature_count != BUILDER_CREATURE_CAP - 1:
+        return 0.0
+    candidate = projected_candidate.candidate
+    future_slot_value = cap_context.replacement_value + cap_context.cap_pressure * 0.55
+    immediate_role_value = 0.0
+    if candidate.has_ability(Ability.FLYING) and snapshot.enemy_flying_count > snapshot.own_flying_count:
+        immediate_role_value += 1.15
+    if predicted_attack.score.counter_lethal_risk > 0.0 and candidate.has_haste and candidate.vw > 0:
+        immediate_role_value += 1.4
+    if predicted_attack.score.lethal_probability > 0.0 or predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
+        immediate_role_value += 1.8
+    immediate_role_value += candidate.sw * 0.18 + candidate.aw * 0.12
+    redundancy_penalty = 0.0
+    if candidate.aw == 0 and candidate.sw == 0:
+        redundancy_penalty += 0.9
+    if candidate.has_haste and candidate.vw > 0:
+        ready_haste_blockers = sum(
+            1
+            for unit in projection.own_units
+            if not unit.tapped and unit.vw > 0 and unit.has_ability(Ability.HASTE)
+        )
+        redundancy_penalty += max(0, ready_haste_blockers - 1) * 0.55
+    return immediate_role_value - future_slot_value - redundancy_penalty
+
+
+def _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    if projected_candidate is None or not projected_candidate.candidate.has_haste:
+        return 0.0
+    new_unit_id = projection.hypothetical_unit_id
+    value = 0.0
+    if new_unit_id is not None and new_unit_id in predicted_attack.candidate.attacker_ids:
+        value += predicted_attack.score.player_damage * 0.65
+        value += predicted_attack.score.enemy_kill_value * 0.28
+        if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
+            value += 2.2
+    if projected_candidate.candidate.vw > 0:
+        prevented = max(0.0, snapshot.enemy_total_sw - predicted_attack.score.projected_counter_damage)
+        value += prevented * 0.22 + projected_candidate.candidate.vw * 0.14
+    return value
+
+
+def _score_flying_offense_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    if projected_candidate is None or not projected_candidate.candidate.has_ability(Ability.FLYING):
+        return 0.0
+    enemy_flying_blockers = sum(1 for unit in projection.enemy_units if unit.has_ability(Ability.FLYING))
+    value = projected_candidate.candidate.sw * (0.24 if enemy_flying_blockers == 0 else 0.08)
+    if predicted_attack.candidate.attacker_ids and projection.hypothetical_unit_id in predicted_attack.candidate.attacker_ids:
+        value += predicted_attack.score.player_damage * 0.2
+    return value
+
+
+def _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
+    current_ready_flying_blockers = sum(
+        1 for unit in projection.own_units if unit.has_ability(Ability.FLYING) and not unit.tapped and unit.vw > 0
+    )
+    future_flying_threat = max(0.0, snapshot.enemy_total_resources - 2) * 0.18 + snapshot.enemy_flying_count * 0.7
+    coverage_gap = future_flying_threat - current_ready_flying_blockers
+    value = -max(0.0, coverage_gap) * 0.6
+    if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
+        if projected_candidate.candidate.has_haste:
+            value += 0.9
+        elif snapshot.enemy_flying_count == 0:
+            value += 0.35
+    if predicted_attack.score.projected_counter_damage <= 0.0 and snapshot.enemy_flying_count <= 0:
+        value *= 0.45
+    return value
+
+
 def _base_survival_pressure(snapshot) -> float:
     pressure = (
         max(0.0, snapshot.enemy_total_sw - snapshot.own_total_current_hp * 0.25)
@@ -826,17 +984,22 @@ def _base_survival_pressure(snapshot) -> float:
     return pressure
 
 
-def _score_action_survival_urgency(snapshot, projection, action_kind: str) -> float:
+def _score_action_survival_urgency(snapshot, projection, predicted_attack, action_kind: str) -> float:
     pressure = _base_survival_pressure(snapshot)
-    if action_kind == "resource":
-        return -pressure * 0.95
-    if action_kind == "pass":
-        return -pressure * 1.1
-    defensive_value = sum(
-        estimate_creature_board_value(unit) * (0.08 if not unit.tapped and unit.vw > 0 else 0.02)
-        for unit in projection.own_units
-    )
-    return defensive_value * max(0.3, pressure * 0.12)
+    expected_damage = predicted_attack.score.projected_counter_damage
+    lethal_risk = predicted_attack.score.counter_lethal_risk
+    life_after = projection.own_life - expected_damage
+    legal_blockers = sum(1 for unit in projection.own_units if not unit.tapped and unit.vw > 0)
+    if expected_damage <= 0.0 and lethal_risk <= 0.0:
+        stability = legal_blockers * 0.16 + max(0.0, life_after - 2.0) * 0.04
+        if action_kind == "pass":
+            stability -= 0.25
+        return stability
+    damage_penalty = expected_damage * (0.42 + max(0.0, 5.0 - life_after) * 0.08)
+    lethal_penalty = lethal_risk * (8.0 + max(0.0, 3.0 - life_after) * 1.2)
+    blocker_relief = legal_blockers * 0.18
+    resource_tax = 0.45 if action_kind == "resource" and expected_damage > 0.0 else 0.7 if action_kind == "pass" else 0.0
+    return blocker_relief - damage_penalty - lethal_penalty - resource_tax - pressure * 0.03
 
 
 def _score_board_projection_value(projection) -> float:
@@ -1139,8 +1302,9 @@ def _projected_candidate_sort_key(projected: BuilderProjectedCandidate) -> tuple
 def _turn_decision_sort_key(decision: BuilderTurnDecision) -> tuple:
     candidate = decision.action_candidate
     return (
-        decision.score.total,
+        decision.score.selection_score,
         decision.score.lethal_value,
+        -decision.score.enemy_lethal_risk,
         -decision.score.expected_own_death_value,
         decision.score.expected_enemy_kill_value,
         1 if decision.ability_action.action_kind != "skip" else 0,
@@ -1265,7 +1429,7 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
                 ("enters_tapped", projected.candidate.enters_tapped),
                 ("cost", projected.candidate.cost),
                 ("unused", max(0, snapshot.own_ready_resources - projected.candidate.cost)),
-                ("total", score.total),
+                ("static_total", score.total),
                 ("future", projected.future_value),
                 ("raw", score.raw_stats),
                 ("abilities", score.abilities),
@@ -1300,8 +1464,11 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
                 ("haste_cost", best.candidate.haste_cost),
                 ("enters_tapped", best.candidate.enters_tapped),
                 ("total", best.static_score.total),
+                ("static_total", best.static_score.total),
                 ("runner_up", "-" if runner_up is None else f"{runner_up.candidate.aw}/{runner_up.candidate.vw}/{runner_up.candidate.sw}/{runner_up.candidate.lw}"),
                 ("runner_up_total", 0.0 if runner_up is None else runner_up.static_score.total),
+                ("runner_up_static_total", 0.0 if runner_up is None else runner_up.static_score.total),
+                ("static_gap", 0.0 if runner_up is None else round(best.static_score.total - runner_up.static_score.total, 4)),
                 ("gap", 0.0 if runner_up is None else round(best.static_score.total - runner_up.static_score.total, 4)),
             ),
         )
@@ -1362,7 +1529,8 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
         pairs = [
             ("rank", rank),
             ("candidate", action.action_kind),
-            ("total", current.score.total),
+            ("selection_score", current.score.selection_score),
+            ("turn_total", current.score.total),
             ("attack", [] if attack is None else list(attack.candidate.attacker_ids)),
             ("board_value", current.score.board_value),
             ("resource_value", current.score.resource_value),
@@ -1374,6 +1542,14 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("expected_own_death_value", current.score.expected_own_death_value),
             ("end_of_turn_readiness", current.score.end_of_turn_readiness),
             ("survival_urgency", current.score.survival_urgency),
+            ("expected_enemy_damage", current.score.expected_enemy_followup_damage),
+            ("enemy_lethal_risk", current.score.enemy_lethal_risk),
+            ("survival_buffer", current.score.survival_buffer),
+            ("future_offense_value", current.score.future_offense_value),
+            ("board_slot_opportunity_cost", current.score.board_slot_opportunity_cost),
+            ("haste_immediate_value", current.score.haste_immediate_value),
+            ("flying_offense", current.score.flying_offense_value),
+            ("flying_coverage", current.score.flying_coverage_value),
             ("lethal_value", current.score.lethal_value),
             ("risk_adjustment", current.score.risk_adjustment),
         ]
@@ -1410,17 +1586,21 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
         pairs=(
             ("choose", best.action_candidate.action_kind),
             ("choose_stats", None if best.action_candidate.creature_candidate is None else f"{best.action_candidate.creature_candidate.aw}/{best.action_candidate.creature_candidate.vw}/{best.action_candidate.creature_candidate.sw}/{best.action_candidate.creature_candidate.lw}"),
-            ("total", best.score.total),
+            ("total", best.score.selection_score),
+            ("selection_score", best.score.selection_score),
+            ("turn_total", best.score.total),
             ("runner_up", "-" if runner_up is None else runner_up.action_candidate.action_kind),
             (
                 "runner_up_stats",
                 None if runner_up is None or runner_up.action_candidate.creature_candidate is None
                 else f"{runner_up.action_candidate.creature_candidate.aw}/{runner_up.action_candidate.creature_candidate.vw}/{runner_up.action_candidate.creature_candidate.sw}/{runner_up.action_candidate.creature_candidate.lw}",
             ),
-            ("runner_up_total", 0.0 if runner_up is None else runner_up.score.total),
+            ("runner_up_total", 0.0 if runner_up is None else runner_up.score.selection_score),
+            ("runner_up_selection_score", 0.0 if runner_up is None else runner_up.score.selection_score),
             ("gap", gap),
             ("delta_keys", "-" if runner_up is None else score_delta_keys(best.score, runner_up.score)),
             ("planned_attack", [] if best.predicted_attack_decision is None else list(best.predicted_attack_decision.candidate.attacker_ids)),
+            ("selection_reason", "max_selection_score"),
         ),
     )
     if builder_debug_verbose() and builder_debug_include_fingerprints():

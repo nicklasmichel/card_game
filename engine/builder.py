@@ -262,7 +262,10 @@ def begin_builder_creature_build(self) -> bool:
         if builder_mode_active(self) and self.active_player.is_human and len(self.active_player.battlefield) >= BUILDER_CREATURE_CAP:
             self.log(f"Creature cap reached ({len(self.active_player.battlefield)}/{BUILDER_CREATURE_CAP}).")
         return False
-    self.pending_builder_creature = PendingBuilderCreatureBuild(available_resources=self.active_player.available_resources())
+    self.pending_builder_creature = PendingBuilderCreatureBuild(
+        available_resources=self.active_player.available_resources(),
+        selected_ability=Ability.HASTE,
+    )
     self.phase = PHASE_BUILDER_CREATURE
     return True
 
@@ -312,7 +315,13 @@ def builder_creature_build_is_valid(self, pending: PendingBuilderCreatureBuild |
         return False
     if current.selected_ability is None:
         return False
-    return current.spent_resources <= current.available_resources and current.lw >= 1 and current.aw >= 0 and current.vw >= 0 and current.sw >= 0
+    return (
+        current.spent_resources == current.available_resources
+        and current.lw >= 1
+        and current.aw >= 0
+        and current.vw >= 0
+        and current.sw >= 0
+    )
 
 
 def builder_remaining_ready_resources(self, pending: PendingBuilderCreatureBuild | None = None) -> int:

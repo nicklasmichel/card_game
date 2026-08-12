@@ -46,7 +46,7 @@ def score_builder_resource_action(snapshot, resource_limit: int) -> float:
 
 
 def _debug_builder_decision(engine, snapshot, scored_candidates, resource_score: float, decision: str) -> None:
-    if not getattr(config, "BUILDER_AI_DEBUG", 0):
+    if not getattr(config, "AI_DEBUG", getattr(config, "BUILDER_AI_DEBUG", 0)):
         return
     logger = getattr(engine, "debug_log", None) or engine.log
     logger(

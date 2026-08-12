@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from core.models import Ability, CardInstance, PHASE_BUILDER_ABILITY, PHASE_DICE_BATTLE, PHASE_GAME_OVER
+from core.models import Ability, CardInstance, PHASE_BUILDER_ABILITY, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_GAME_OVER
 
 
 def get_selected_hand_card(self) -> Optional[CardInstance]:
@@ -42,7 +42,8 @@ def handle_action(self, action: str) -> None:
         return
     if self.phase == PHASE_GAME_OVER:
         return
-    if not self.active_player.is_human and self.phase not in {PHASE_DICE_BATTLE}:
+    human_defense_response = self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human
+    if not self.active_player.is_human and self.phase not in {PHASE_DICE_BATTLE} and not human_defense_response:
         return
 
     if action == "builder_add_resource":

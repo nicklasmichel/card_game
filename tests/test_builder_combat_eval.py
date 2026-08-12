@@ -59,11 +59,21 @@ class BuilderCombatEvalTests(unittest.TestCase):
         one_vs_one = estimate_dice_win_probabilities(1, 1)
         two_vs_two = estimate_dice_win_probabilities(2, 2)
 
-        self.assertAlmostEqual(one_vs_one.attacker_win_probability, 0.5, places=8)
-        self.assertAlmostEqual(one_vs_one.defender_win_probability, 0.5, places=8)
+        self.assertAlmostEqual(
+            one_vs_one.attacker_win_probability - one_vs_one.defender_win_probability,
+            one_vs_one.raw_tie_probability,
+            places=8,
+        )
         self.assertAlmostEqual(one_vs_one.raw_tie_probability, 1 / 6, places=8)
-        self.assertAlmostEqual(two_vs_two.attacker_win_probability, 0.5, places=8)
-        self.assertAlmostEqual(two_vs_two.defender_win_probability, 0.5, places=8)
+        self.assertGreater(one_vs_one.attacker_win_probability, one_vs_one.defender_win_probability)
+        self.assertAlmostEqual(one_vs_one.attacker_win_probability + one_vs_one.defender_win_probability, 1.0, places=8)
+        self.assertAlmostEqual(
+            two_vs_two.attacker_win_probability - two_vs_two.defender_win_probability,
+            two_vs_two.raw_tie_probability,
+            places=8,
+        )
+        self.assertGreater(two_vs_two.attacker_win_probability, two_vs_two.defender_win_probability)
+        self.assertAlmostEqual(two_vs_two.attacker_win_probability + two_vs_two.defender_win_probability, 1.0, places=8)
 
     def test_dice_win_probabilities_reflect_larger_and_smaller_pools(self) -> None:
         attacker_favored = estimate_dice_win_probabilities(3, 1)
@@ -75,11 +85,15 @@ class BuilderCombatEvalTests(unittest.TestCase):
     def test_zero_dice_special_cases_are_explicit(self) -> None:
         attacker_zero = estimate_dice_win_probabilities(0, 2)
         defender_zero = estimate_dice_win_probabilities(2, 0)
+        zero_vs_zero = estimate_dice_win_probabilities(0, 0)
 
         self.assertEqual(attacker_zero.attacker_win_probability, 0.0)
         self.assertEqual(attacker_zero.defender_win_probability, 1.0)
         self.assertEqual(defender_zero.attacker_win_probability, 1.0)
         self.assertEqual(defender_zero.defender_win_probability, 0.0)
+        self.assertEqual(zero_vs_zero.attacker_win_probability, 1.0)
+        self.assertEqual(zero_vs_zero.defender_win_probability, 0.0)
+        self.assertEqual(zero_vs_zero.raw_tie_probability, 1.0)
 
     def test_combat_damage_and_death_probability_use_effective_damage(self) -> None:
         attacker = build_candidate_combatant_view(

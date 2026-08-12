@@ -23,7 +23,7 @@ RAW_STAT_WEIGHTS = {
 }
 
 ABILITY_BASE_WEIGHTS = {
-    Ability.HASTE: 0.35,
+    Ability.HASTE: 0.08,
     Ability.FLYING: 0.45,
     Ability.ENRAGED: 0.35,
     Ability.TRAMPLE: 0.25,
@@ -163,11 +163,6 @@ def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrat
     score = sum(ABILITY_BASE_WEIGHTS.get(ability, 0.0) for ability in candidate.abilities)
     offense = candidate.aw + candidate.sw
     defense = candidate.vw + candidate.lw
-
-    if Ability.HASTE in candidate.abilities:
-        score += min(0.55, offense * 0.08)
-        if snapshot.enemy_life <= 5:
-            score += 0.25
 
     if Ability.FLYING in candidate.abilities:
         if snapshot.enemy_flying_count == 0:

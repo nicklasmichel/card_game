@@ -95,13 +95,12 @@ def _resolve_battle_rounds(
     *,
     apply_result: bool,
 ) -> None:
-    max_rounds = 1000
     if self.get_creature_attack_value(attacker) <= 0 and self.get_creature_defense_value(blocker) <= 0:
         battle.attacker_rolls = []
         battle.blocker_rolls = []
         battle.attack_sum = 0
         battle.defense_sum = 0
-        battle.winner = "blocker"
+        battle.winner = "attacker"
         battle.creature_damage = 0
         battle.history.append(
             DiceRoundRecord(
@@ -110,40 +109,25 @@ def _resolve_battle_rounds(
                 blocker_rolls=[],
                 attack_sum=0,
                 defense_sum=0,
-                outcome_text="Beide Seiten haben 0 Wuerfel. Kein Kampfschaden.",
+                outcome_text="Beide Seiten haben 0 Wuerfel. Der Angreifer gewinnt den Gleichstand. Kein Kampfschaden.",
             )
         )
         battle.resolution_complete = True
         if apply_result:
             _apply_battle_result(self, battle, attacker, blocker)
         return
-    while battle.reroll_count < max_rounds:
-        battle.attacker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
-        battle.blocker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_defense_value(blocker)))]
-        battle.attack_sum = sum(battle.attacker_rolls)
-        battle.defense_sum = sum(battle.blocker_rolls)
-        if battle.attack_sum == battle.defense_sum:
-            battle.history.append(
-                DiceRoundRecord(
-                    round_number=battle.reroll_count + 1,
-                    attacker_rolls=list(battle.attacker_rolls),
-                    blocker_rolls=list(battle.blocker_rolls),
-                    attack_sum=battle.attack_sum,
-                    defense_sum=battle.defense_sum,
-                    outcome_text="Gleichstand - beide Seiten wuerfeln erneut.",
-                )
-            )
-            battle.reroll_count += 1
-            continue
-        _finalize_battle_rolls(self, battle, attacker, blocker)
-        if apply_result:
-            _apply_battle_result(self, battle, attacker, blocker)
-        return
-    raise RuntimeError("Combat reroll guard reached unexpectedly")
+    battle.attacker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
+    battle.blocker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_defense_value(blocker)))]
+    battle.attack_sum = sum(battle.attacker_rolls)
+    battle.defense_sum = sum(battle.blocker_rolls)
+    _finalize_battle_rolls(self, battle, attacker, blocker)
+    if apply_result:
+        _apply_battle_result(self, battle, attacker, blocker)
+    return
 
 
 def _finalize_battle_rolls(self, battle: PendingDiceBattle, attacker: BattlefieldCreature, blocker: BattlefieldCreature) -> None:
-    if battle.attack_sum > battle.defense_sum:
+    if battle.attack_sum >= battle.defense_sum:
         winner = attacker
         loser = blocker
         battle.winner = "attacker"

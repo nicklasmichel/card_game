@@ -40,15 +40,18 @@ def run(self) -> None:
 
         self.consume_visual_events()
         if not self.paused:
+            self.engine.poll_ai_thinking()
             if not self.engine.has_pending_ai_action():
-                self.engine.prepare_ai_turn_action()
+                self.engine.start_ai_thinking()
         self.engine.auto_resolve_human_no_blockers_if_needed()
         self.engine.resolve_stalled_dice_battle_if_needed()
+        self.engine.flush_log_file_writes(max_lines=24)
         if self.engine.exit_requested:
             running = False
         self.draw()
         self.clock.tick_busy_loop(FPS)
 
+    self.engine.flush_log_file_writes()
     pygame.quit()
 
 

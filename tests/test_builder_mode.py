@@ -84,13 +84,11 @@ class BuilderModeTests(unittest.TestCase):
         self.assertFalse(self.engine.can_builder_add_resource(player))
         self.assertFalse(self.engine.builder_add_resource(player))
 
-    def test_creature_build_with_zero_resources_requires_choosing_one_free_ability(self) -> None:
+    def test_creature_build_with_zero_resources_uses_default_haste_and_can_confirm(self) -> None:
         player = self.engine.human_player
         self.assertTrue(self.engine.can_builder_open_creature_build(player))
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.assertEqual(len(player.battlefield), 0)
-        self.assertFalse(self.engine.confirm_builder_creature_build())
-        self.choose_builder_ability(Ability.HASTE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         self.assertEqual((creature.aw, creature.vw, creature.sw, creature.lw, creature.current_hp), (0, 0, 0, 1, 1))
@@ -242,6 +240,22 @@ class BuilderModeTests(unittest.TestCase):
         self.assertIn(f"{blocker.name} wird zerstoert.", results[0])
         self.assertFalse(any("Kampfschaden zerstoert" in message for message in self.engine.log_messages))
 
+    def test_builder_single_duel_tie_goes_to_attacker_without_reroll(self) -> None:
+        attacker = self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
+        blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        with patch.object(self.engine.rng, "randint", side_effect=[4, 4]):
+            self.engine.start_dice_battle(attacker.unit_id, blocker.unit_id)
+
+        battle = self.engine.pending_dice_battle
+        self.assertIsNotNone(battle)
+        self.assertEqual(battle.attack_sum, 4)
+        self.assertEqual(battle.defense_sum, 4)
+        self.assertEqual(battle.winner, "attacker")
+        self.assertEqual(battle.reroll_count, 0)
+        self.assertEqual(len(battle.history), 1)
+        self.assertIn("gewinnt", battle.history[0].outcome_text)
+
     def test_builder_multiple_blocked_combats_log_each_duel_once_in_stable_order(self) -> None:
         attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
         attacker_two = self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True)
@@ -358,7 +372,7 @@ class BuilderModeTests(unittest.TestCase):
         self.assertEqual(labels, ["Add Resource", "Build Creature"])
 
     def test_builder_main_phase_label_uses_main(self) -> None:
-        self.assertEqual(get_overview_phase_label(PHASE_MAIN_1), "Main")
+        self.assertEqual(get_overview_phase_label(PHASE_MAIN_1), "Main Phase")
 
     def test_builder_creature_stat_buttons_use_requested_order_and_labels(self) -> None:
         player = self.engine.human_player
@@ -393,7 +407,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
-        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.engine.adjust_builder_creature_stat("aw", 1)
         preview = self.engine.get_builder_preview_creature(player)
         self.assertIsNotNone(preview)
         self.assertTrue(preview.has_ability(Ability.HASTE))
@@ -411,7 +425,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("vw", 1)
-        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.engine.adjust_builder_creature_stat("lw", 1)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True)
@@ -424,7 +438,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
-        self.engine.toggle_builder_creature_ability(Ability.HASTE)
+        self.engine.adjust_builder_creature_stat("aw", 1)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         self.engine.active_player_index = player.player_id
@@ -456,6 +470,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
+        self.engine.adjust_builder_creature_stat("aw", 1)
         self.choose_builder_ability(Ability.VIGILANCE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
@@ -470,6 +485,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
+        self.engine.adjust_builder_creature_stat("aw", 1)
         self.build_pending_creature(Ability.VIGILANCE)
         creature = player.battlefield[-1]
 
@@ -551,6 +567,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
+        self.engine.adjust_builder_creature_stat("aw", 1)
         self.choose_builder_ability(Ability.FLYING)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]

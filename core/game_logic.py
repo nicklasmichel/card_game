@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from random import Random
+from threading import Lock
 from typing import Dict, List, Optional
 
 from core.ai_logic import SimpleAI
@@ -113,9 +114,13 @@ class GameEngine:
         get_button_specs,
         handle_click,
         has_pending_ai_action,
+        is_ai_thinking,
         persist_game_results_once,
+        poll_ai_thinking,
         prepare_ai_turn_action,
         process_ai_turn,
+        start_ai_thinking,
+        cancel_ai_thinking,
     )
     from engine.flow import (
         auto_resolve_human_no_blockers_if_needed,
@@ -163,6 +168,7 @@ class GameEngine:
         self.phase = PHASE_MAIN_1
         self.game_over_text = ""
         self.log_messages: List[str] = []
+        self.pending_log_file_lines: List[str] = []
         self.game_over_summary_lines: List[str] = []
         self.results_path = GAME_RESULTS_PATH
         self.creature_results_path = CREATURE_RESULTS_PATH
@@ -192,6 +198,12 @@ class GameEngine:
         self.combat_id_counter = 0
         self.ai_turn_initialized = False
         self.pending_ai_action: Optional[dict] = None
+        self.ai_thinking = False
+        self.ai_think_result: Optional[dict] = None
+        self.ai_think_error: Optional[str] = None
+        self.ai_think_thread = None
+        self.ai_think_token = 0
+        self.ai_think_lock = Lock()
         self.pending_builder_creature: Optional[PendingBuilderCreatureBuild] = None
         self.pending_builder_ability: Optional[PendingBuilderAbilityUse] = None
         self.builder_creature_counter = 0
@@ -288,9 +300,17 @@ class GameEngine:
         return instance_id
 
     def _write_log_line(self, message: str) -> None:
+        self.pending_log_file_lines.append(message)
+
+    def flush_log_file_writes(self, max_lines: int | None = None) -> None:
+        if not self.pending_log_file_lines:
+            return
+        line_count = len(self.pending_log_file_lines) if max_lines is None else min(len(self.pending_log_file_lines), max_lines)
+        lines = self.pending_log_file_lines[:line_count]
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as log_file:
-            log_file.write(message + "\n")
+            log_file.write("\n".join(lines) + "\n")
+        del self.pending_log_file_lines[:line_count]
 
     def log(self, message: str) -> None:
         self.log_messages.append(message)
@@ -343,6 +363,8 @@ class GameEngine:
         )
 
     def start_new_game(self) -> None:
+        self.flush_log_file_writes()
+        self.cancel_ai_thinking()
         self.seed = Random().randrange(1, 10**12)
         self.rng = Random(self.seed)
         self.ai = SimpleAI(self.rng)
@@ -408,6 +430,7 @@ class GameEngine:
         self.start_dice_battle(human_creature.unit_id, ai_creature.unit_id)
 
     def reset_combat_state(self) -> None:
+        self.cancel_ai_thinking()
         self.selected_attackers = []
         self.selected_blocker_id = None
         self.selected_attack_target_id = None

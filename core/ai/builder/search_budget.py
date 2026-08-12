@@ -22,9 +22,9 @@ FINAL_DECISION_SEARCH_BUDGET = BuilderSearchBudget(
 
 
 TURN_LOOKAHEAD_SEARCH_BUDGET = BuilderSearchBudget(
-    max_exact_attack_candidates=72,
-    max_exact_block_assignments=480,
-    max_heuristic_attack_candidates=18,
-    max_heuristic_block_responses=14,
+    max_exact_attack_candidates=16,
+    max_exact_block_assignments=180,
+    max_heuristic_attack_candidates=8,
+    max_heuristic_block_responses=8,
     mode_name="lookahead",
 )

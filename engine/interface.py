@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Thread
 from typing import List
 
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES
@@ -29,20 +30,43 @@ def has_pending_ai_action(self) -> bool:
     return self.pending_ai_action is not None
 
 
+def is_ai_thinking(self) -> bool:
+    return bool(getattr(self, "ai_thinking", False))
+
+
+def cancel_ai_thinking(self) -> None:
+    with self.ai_think_lock:
+        self.ai_think_token += 1
+        self.ai_thinking = False
+        self.ai_think_result = None
+        self.ai_think_error = None
+        self.ai_think_thread = None
+
+
 def _actor_name(self) -> str:
-    return self.active_player.name
+    name = self.active_player.name
+    if not self.active_player.is_human:
+        return f"{name} (AI)"
+    return name
+
+
+def _defending_actor_name(self) -> str:
+    name = self.defending_player.name
+    if not self.defending_player.is_human:
+        return f"{name} (AI)"
+    return name
 
 
 def _format_builder_creature_plan(plan: dict) -> str:
     text = (
-        f"A {int(plan.get('aw', 0))} / D {int(plan.get('vw', 0))} / "
-        f"DMG {int(plan.get('sw', 0))} / Life {int(plan.get('lw', 1))}"
+        f"Atk {int(plan.get('aw', 0))} / Def {int(plan.get('vw', 0))} / "
+        f"Dmg {int(plan.get('sw', 0))} / Life {int(plan.get('lw', 1))}"
     )
     text += f" / {get_builder_creature_ability_label(plan.get('ability'))}"
     return text
 
 
-def prepare_ai_turn_action(self) -> bool:
+def _can_prepare_ai_turn_action(self) -> bool:
     if self.pending_ai_action is not None:
         return True
     if self.phase in {PHASE_GAME_OVER, PHASE_DICE_BATTLE, PHASE_BUILDER_CREATURE}:
@@ -54,8 +78,12 @@ def prepare_ai_turn_action(self) -> bool:
         PHASE_DECLARE_ATTACKERS,
     }
     ai_blocks = self.phase == PHASE_DECLARE_BLOCKERS and not self.defending_player.is_human
-    if not ai_main_or_attack and not ai_blocks:
-        return False
+    return ai_main_or_attack or ai_blocks
+
+
+def _compute_prepared_ai_action(self) -> dict | None:
+    if not _can_prepare_ai_turn_action(self):
+        return None
 
     if not self.ai_turn_initialized:
         self.ai_turn_initialized = True
@@ -63,12 +91,11 @@ def prepare_ai_turn_action(self) -> bool:
     if self.phase == PHASE_MAIN_1:
         planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
         if planner_decision.action_candidate.action_kind == "resource" and self.can_builder_add_resource(self.active_player):
-            self.pending_ai_action = {
+            return {
                 "kind": "builder_add_resource",
-                "description": f"{_actor_name(self)} will add a resource.",
+                "description": f"{_actor_name(self)} adds a resource.",
                 "turn_decision": planner_decision,
             }
-            return True
         if planner_decision.action_candidate.action_kind == "creature" and planner_decision.action_candidate.creature_candidate is not None:
             candidate = planner_decision.action_candidate.creature_candidate
             if 0 <= candidate.cost <= self.active_player.available_resources():
@@ -83,59 +110,53 @@ def prepare_ai_turn_action(self) -> bool:
                     "cost": candidate.cost,
                     "candidate_signature": getattr(candidate, "key", candidate.signature),
                 }
-                self.pending_ai_action = {
+                return {
                     "kind": "builder_create_creature",
-                    "description": f"{_actor_name(self)} will build {_format_builder_creature_plan(plan)}.",
+                    "description": f"{_actor_name(self)} builds creature: {_format_builder_creature_plan(plan)}.",
                     "turn_decision": planner_decision,
                     "plan": plan,
                 }
-                return True
         if planner_decision.action_candidate.action_kind in {"continue", "pass"}:
             has_attackers = bool(self.available_attackers(self.active_player))
-            self.pending_ai_action = {
+            return {
                 "kind": "to_combat" if has_attackers else "end_turn",
                 "description": (
-                    f"{_actor_name(self)} will enter combat."
+                    f"{_actor_name(self)} enters combat."
                     if has_attackers
-                    else f"{_actor_name(self)} will end the turn."
+                    else f"{_actor_name(self)} ends the turn."
                 ),
                 "turn_decision": planner_decision,
             }
-            return True
         action = self.ai.choose_builder_runtime_main_action(self.active_player, self)
         if action == "resource" and self.can_builder_add_resource(self.active_player):
-            self.pending_ai_action = {
+            return {
                 "kind": "builder_add_resource",
-                "description": f"{_actor_name(self)} will add a resource.",
+                "description": f"{_actor_name(self)} adds a resource.",
             }
-            return True
         if action == "creature":
             plan = self.ai.choose_builder_runtime_creature_plan(self.active_player, self)
             if plan is not None:
-                self.pending_ai_action = {
+                return {
                     "kind": "builder_create_creature",
-                    "description": f"{_actor_name(self)} will build {_format_builder_creature_plan(plan)}.",
+                    "description": f"{_actor_name(self)} builds creature: {_format_builder_creature_plan(plan)}.",
                     "plan": plan,
                 }
-                return True
-        self.pending_ai_action = {
+        return {
             "kind": "builder_pass_main_action",
-            "description": f"{_actor_name(self)} will pass the main action.",
+            "description": f"{_actor_name(self)} passes the main action.",
         }
-        return True
 
     if self.phase == PHASE_BUILDER_ABILITY:
         if not BUILDER_ABILITIES_ENABLED:
             has_attackers = bool(self.available_attackers(self.active_player))
-            self.pending_ai_action = {
+            return {
                 "kind": "to_combat" if has_attackers else "end_turn",
                 "description": (
-                    f"{_actor_name(self)} will enter combat."
+                    f"{_actor_name(self)} enters combat."
                     if has_attackers
-                    else f"{_actor_name(self)} will end the turn."
+                    else f"{_actor_name(self)} ends the turn."
                 ),
             }
-            return True
         planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
         planned_ability = planner_decision.ability_action
         if planned_ability.action_kind == "skip":
@@ -144,19 +165,18 @@ def prepare_ai_turn_action(self) -> bool:
                 if planner_decision.predicted_attack_decision is not None
                 else tuple()
             )
-            self.pending_ai_action = {
+            return {
                 "kind": "to_combat" if planned_attack_ids else "end_turn",
                 "description": (
-                    f"{_actor_name(self)} will enter combat."
+                    f"{_actor_name(self)} enters combat."
                     if planned_attack_ids
-                    else f"{_actor_name(self)} will end the turn."
+                    else f"{_actor_name(self)} ends the turn."
                 ),
                 "turn_decision": planner_decision,
             }
-            return True
-        self.pending_ai_action = {
+        return {
             "kind": "builder_use_ability",
-            "description": f"{_actor_name(self)} will use an ability card.",
+            "description": f"{_actor_name(self)} uses an ability card.",
             "ability_action": {
                 "card_id": planned_ability.card_instance_id,
                 "mode": planned_ability.action_kind,
@@ -165,7 +185,6 @@ def prepare_ai_turn_action(self) -> bool:
             },
             "turn_decision": planner_decision,
         }
-        return True
 
     if self.phase == PHASE_DECLARE_ATTACKERS:
         planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
@@ -176,25 +195,95 @@ def prepare_ai_turn_action(self) -> bool:
         lookup = {creature.unit_id: creature for creature in self.available_attackers(self.active_player)}
         attackers = [lookup[attacker_id] for attacker_id in attacker_ids if attacker_id in lookup]
         attacker_names = ", ".join(attacker.name for attacker in attackers)
-        self.pending_ai_action = {
+        return {
             "kind": "declare_attackers",
             "description": (
-                f"{_actor_name(self)} will not attack."
+                f"{_actor_name(self)} does not attack."
                 if not attackers
-                else f"{_actor_name(self)} will attack with: {attacker_names}."
+                else f"{_actor_name(self)} attacks with: {attacker_names}."
             ),
             "attacker_ids": [attacker.unit_id for attacker in attackers],
             "turn_decision": planner_decision,
         }
-        return True
 
     if self.phase == PHASE_DECLARE_BLOCKERS:
-        self.pending_ai_action = {
+        return {
             "kind": "declare_blocks",
-            "description": f"{self.defending_player.name} will assign blockers.",
+            "description": f"{_defending_actor_name(self)} assigns blockers.",
         }
-        return True
 
+    return None
+
+
+def prepare_ai_turn_action(self) -> bool:
+    if self.pending_ai_action is not None:
+        return True
+    action = _compute_prepared_ai_action(self)
+    if action is None:
+        return False
+    self.pending_ai_action = action
+    return True
+
+
+def _finish_ai_thinking(self, token: int, action: dict | None, error: str | None) -> None:
+    with self.ai_think_lock:
+        if token != self.ai_think_token:
+            return
+        self.ai_think_result = action
+        self.ai_think_error = error
+
+
+def _run_ai_think_worker(self, token: int) -> None:
+    action = None
+    error = None
+    try:
+        action = _compute_prepared_ai_action(self)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+    _finish_ai_thinking(self, token, action, error)
+
+
+def start_ai_thinking(self) -> bool:
+    if self.pending_ai_action is not None:
+        return True
+    if self.ai_thinking:
+        return True
+    if not _can_prepare_ai_turn_action(self):
+        return False
+    if not self.ai_turn_initialized:
+        self.ai_turn_initialized = True
+    with self.ai_think_lock:
+        self.ai_think_token += 1
+        token = self.ai_think_token
+        self.ai_thinking = True
+        self.ai_think_result = None
+        self.ai_think_error = None
+        worker = Thread(target=_run_ai_think_worker, args=(self, token), daemon=True)
+        self.ai_think_thread = worker
+        worker.start()
+    return True
+
+
+def poll_ai_thinking(self) -> bool:
+    if not self.ai_thinking:
+        return False
+    with self.ai_think_lock:
+        result = self.ai_think_result
+        error = self.ai_think_error
+        thread = self.ai_think_thread
+        ready = result is not None or error is not None or (thread is not None and not thread.is_alive())
+        if not ready:
+            return False
+        self.ai_thinking = False
+        self.ai_think_thread = None
+        self.ai_think_result = None
+        self.ai_think_error = None
+    if error is not None:
+        self.log(f"AI thinking failed ({error}). Falling back to direct planning.")
+        return self.prepare_ai_turn_action()
+    if result is not None:
+        self.pending_ai_action = result
+        return True
     return False
 
 
@@ -435,6 +524,8 @@ def persist_game_results_once(self) -> None:
 
 
 def current_prompt(self) -> str:
+    if self.is_ai_thinking():
+        return "AI is thinking..."
     if self.pending_ai_action is not None:
         return self.pending_ai_action.get("description", "Player 2 action is waiting for confirmation.")
     if self.phase == PHASE_BUILDER_CREATURE:
@@ -471,6 +562,8 @@ def current_prompt(self) -> str:
 def get_button_specs(self) -> List[ButtonSpec]:
     if self.phase == PHASE_GAME_OVER:
         return [ButtonSpec("New game", True, "new_game")]
+    if self.is_ai_thinking():
+        return []
     if self.pending_ai_action is not None:
         return [ButtonSpec("Next", True, "confirm_ai_action")]
 
@@ -494,8 +587,8 @@ def get_button_specs(self) -> List[ButtonSpec]:
             buttons.append(ButtonSpec(BUILDER_ABILITY_LABELS[ability], True, f"builder_select_ability_{ability.name.lower()}"))
         buttons.extend(
             [
-            ButtonSpec("Create creature", self.builder_creature_build_is_valid(), "builder_confirm_creature"),
-            ButtonSpec("Cancel", True, "builder_cancel_creature"),
+                ButtonSpec("Create", self.builder_creature_build_is_valid(), "builder_confirm_creature"),
+                ButtonSpec("Cancel", True, "builder_cancel_creature"),
             ]
         )
         return buttons
@@ -552,7 +645,7 @@ def get_button_specs(self) -> List[ButtonSpec]:
     if self.phase == PHASE_DECLARE_BLOCKERS:
         blocker_count = sum(1 for blocker_id in self.block_assignments.values() if blocker_id is not None)
         block_label = "Skip blocks" if blocker_count <= 0 else "Next"
-        return [ButtonSpec(block_label, True, "confirm_blocks"), ButtonSpec("Clear blocks", True, "clear_blocks")]
+        return [ButtonSpec(block_label, True, "confirm_blocks")]
 
     if self.phase == PHASE_DICE_BATTLE and self.pending_dice_battle is not None and self.pending_dice_battle.resolution_complete:
         return [ButtonSpec("Resolve Combat", True, "end_dice_battle")]

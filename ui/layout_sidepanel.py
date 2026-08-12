@@ -7,22 +7,22 @@ import pygame
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_ABILITY_COST, BUILDER_CREATURE_ABILITIES
 from core.models import ButtonSpec, PHASE_BUILDER_ABILITY, PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
 from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT
-from ui.style import BUTTON_COLOR, BUTTON_DISABLED, CARD_BORDER, HIGHLIGHT, MUTED_TEXT, PANEL_COLOR, SECTION_COLOR, TEXT_COLOR
+from ui.style import BUTTON_COLOR, BUTTON_DISABLED, CARD_BORDER, HIGHLIGHT, MUTED_TEXT, PANEL_COLOR, PLAYER_CARD_COLOR, SECTION_COLOR, TEXT_COLOR
 
-BUILDER_STAT_BUTTON_COLORS = {
-    "builder_aw_up": (164, 97, 97),
-    "builder_aw_down": (164, 97, 97),
-    "builder_vw_up": (96, 122, 172),
-    "builder_vw_down": (96, 122, 172),
-    "builder_sw_up": (168, 128, 74),
-    "builder_sw_down": (168, 128, 74),
-    "builder_lw_up": (95, 150, 109),
-    "builder_lw_down": (95, 150, 109),
+BUILDER_STAT_ACTIONS = {
+    "builder_aw_up",
+    "builder_aw_down",
+    "builder_vw_up",
+    "builder_vw_down",
+    "builder_sw_up",
+    "builder_sw_down",
+    "builder_lw_up",
+    "builder_lw_down",
 }
 
 
-def _dim_button_color(color: tuple[int, int, int]) -> tuple[int, int, int]:
-    return tuple(max(36, int(channel * 0.55)) for channel in color)
+def _soft_disabled_button_color(color: tuple[int, int, int]) -> tuple[int, int, int]:
+    return tuple(int(color[index] * 0.45 + BUTTON_DISABLED[index] * 0.55) for index in range(3))
 
 
 def get_overview_phase_label(phase: str) -> str:
@@ -31,7 +31,7 @@ def get_overview_phase_label(phase: str) -> str:
     if phase == PHASE_BUILDER_ABILITY:
         return "Combat" if not BUILDER_ABILITIES_ENABLED else "Ability"
     if phase == PHASE_MAIN_1:
-        return "Main"
+        return "Main Phase"
     if phase in {PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE}:
         return "Combat"
     return phase
@@ -44,6 +44,8 @@ def get_action_panel_title(self) -> str:
 
 
 def get_action_panel_prompt(self) -> str:
+    if self.engine.is_ai_thinking():
+        return self.engine.current_prompt()
     if self.engine.pending_ai_action is not None:
         return self.engine.current_prompt()
     if self.engine.phase == PHASE_MAIN_1:
@@ -53,8 +55,43 @@ def get_action_panel_prompt(self) -> str:
     if self.engine.phase == PHASE_BUILDER_ABILITY:
         return "Attack or end the turn."
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        return "Distribute ready resources across the new creature's stats and choose exactly one free ability."
+        return ""
     return self.engine.current_prompt()
+
+
+def get_panel_header_font(self) -> pygame.font.Font:
+    return pygame.font.SysFont("arial", max(self.font.get_height() + 6, 28), bold=True)
+
+
+def _rebuild_log_cache(self, width: int, line_height: int, line_gap: int) -> None:
+    wrapped_entries = [self.wrap_text(self.font, message, width) or [""] for message in self.engine.log_messages]
+    self._log_wrapped_entries = wrapped_entries
+    self._log_wrapped_width = width
+    self._log_cached_message_count = len(self.engine.log_messages)
+    self._log_entry_heights = [
+        len(entry) * line_height + max(0, len(entry) - 1) * line_gap
+        for entry in wrapped_entries
+    ]
+
+
+def _ensure_log_cache(self, width: int, line_height: int, line_gap: int) -> None:
+    cached_width = getattr(self, "_log_wrapped_width", None)
+    cached_count = getattr(self, "_log_cached_message_count", 0)
+    if cached_width != width or cached_count > len(self.engine.log_messages):
+        _rebuild_log_cache(self, width, line_height, line_gap)
+        return
+    if cached_count == len(self.engine.log_messages):
+        return
+    wrapped_entries = getattr(self, "_log_wrapped_entries", [])
+    entry_heights = getattr(self, "_log_entry_heights", [])
+    for message in self.engine.log_messages[cached_count:]:
+        wrapped = self.wrap_text(self.font, message, width) or [""]
+        wrapped_entries.append(wrapped)
+        entry_heights.append(len(wrapped) * line_height + max(0, len(wrapped) - 1) * line_gap)
+    self._log_wrapped_entries = wrapped_entries
+    self._log_entry_heights = entry_heights
+    self._log_wrapped_width = width
+    self._log_cached_message_count = len(self.engine.log_messages)
 
 
 def draw_side_panel(self) -> None:
@@ -105,18 +142,24 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
 
 
 def draw_side_log(self, rect: pygame.Rect) -> None:
-    viewport = pygame.Rect(rect.x + 12, rect.y + 28, rect.width - 36, rect.height - 40)
+    header_font = get_panel_header_font(self)
+    header_y = rect.y + 12
+    self.blit_text(header_font, "Logging", TEXT_COLOR, rect.x + 12, header_y)
+    header_gap = 18
+    viewport = pygame.Rect(
+        rect.x + 12,
+        header_y + header_font.get_height() + header_gap,
+        rect.width - 36,
+        rect.height - (header_font.get_height() + header_gap + 12),
+    )
     self.log_viewport_rect = viewport
     line_height = 22
-    line_gap = 4
-    wrapped_lines: List[str] = []
-    for message in self.engine.log_messages:
-        wrapped = self.wrap_text(self.font, message, viewport.width)
-        wrapped_lines.extend(wrapped or [""])
-        wrapped_lines.append("")
-    if wrapped_lines:
-        wrapped_lines.pop()
-    content_height = len(wrapped_lines) * (line_height + line_gap)
+    line_gap = 2
+    entry_gap = 6
+    _ensure_log_cache(self, viewport.width, line_height, line_gap)
+    wrapped_entries = getattr(self, "_log_wrapped_entries", [])
+    entry_heights = getattr(self, "_log_entry_heights", [])
+    content_height = sum(entry_heights) + max(0, len(entry_heights) - 1) * entry_gap
     previous_max_offset = max(0, getattr(self, "log_content_height", 0) - viewport.height)
     was_at_bottom = self.log_scroll_offset >= previous_max_offset
     max_offset = max(0, content_height - viewport.height)
@@ -128,10 +171,22 @@ def draw_side_log(self, rect: pygame.Rect) -> None:
     clip_before = self.screen.get_clip()
     self.screen.set_clip(viewport)
     y = viewport.y - self.log_scroll_offset
-    for line in wrapped_lines:
-        if y + line_height >= viewport.y and y <= viewport.bottom:
-            self.blit_text(self.font, line, MUTED_TEXT, viewport.x, y)
-        y += line_height + line_gap
+    for entry_index, entry in enumerate(wrapped_entries):
+        entry_height = entry_heights[entry_index]
+        entry_bottom = y + entry_height
+        if entry_bottom < viewport.y:
+            y = entry_bottom + (entry_gap if entry_index < len(wrapped_entries) - 1 else 0)
+            continue
+        if y > viewport.bottom:
+            break
+        for line_index, line in enumerate(entry):
+            if y + line_height >= viewport.y and y <= viewport.bottom:
+                self.blit_text(self.font, line, MUTED_TEXT, viewport.x, y)
+            y += line_height
+            if line_index < len(entry) - 1:
+                y += line_gap
+        if entry_index < len(wrapped_entries) - 1:
+            y += entry_gap
     self.screen.set_clip(clip_before)
     track_rect = pygame.Rect(rect.right - 18, viewport.y, 6, viewport.height)
     pygame.draw.rect(self.screen, SECTION_COLOR, track_rect, border_radius=3)
@@ -226,54 +281,103 @@ def draw_action_detail_sections(self, rect: pygame.Rect, start_y: int, max_botto
 def draw_side_actions(self, rect: pygame.Rect) -> None:
     action_specs = self.engine.get_button_specs()
     phase_label = get_action_panel_title(self)
-    button_font = pygame.font.SysFont("arial", max(self.font.get_height() + 6, 28), bold=True)
+    button_font = get_panel_header_font(self)
     compact_button_font = pygame.font.SysFont("arial", max(self.font.get_height() + 2, 22), bold=True)
     header_font = button_font
     header_y = rect.y + 12
     self.blit_text(
         header_font,
-        f"{self.engine.turn_number} | {self.engine.active_player.name} - {phase_label}",
+        f"{self.engine.active_player.name} - {phase_label}",
         TEXT_COLOR,
         rect.x + 12,
         header_y,
     )
-    prompt_rect = pygame.Rect(rect.x + 12, header_y + header_font.get_height() + 12, rect.width - 24, 64)
-    self.blit_wrapped_text(self.font, get_action_panel_prompt(self), MUTED_TEXT, prompt_rect, 22)
+    prompt_text = get_action_panel_prompt(self)
+    prompt_bottom = header_y + header_font.get_height()
+    if prompt_text:
+        prompt_rect = pygame.Rect(rect.x + 12, prompt_bottom + 12, rect.width - 24, 64)
+        self.blit_wrapped_text(self.font, prompt_text, MUTED_TEXT, prompt_rect, 22)
+        prompt_bottom = prompt_rect.bottom
     button_margin = 12
     width = rect.width - button_margin * 2
     height = 36
     gap = 10
+    builder_resource_line_height = 22
     start_x = rect.x + button_margin
-    large_next_button = len(action_specs) == 1 and action_specs[0].label == "Next"
+    large_primary_button = len(action_specs) == 1 and (
+        action_specs[0].label == "Next"
+        or action_specs[0].action in {"confirm_attackers", "confirm_blocks", "end_dice_battle", "new_game"}
+    )
     builder_main_action_row = (
         self.engine.phase == PHASE_MAIN_1
         and self.engine.active_player.is_human
         and len(action_specs) == 2
         and {spec.action for spec in action_specs} == {"builder_add_resource", "builder_open_creature"}
     )
-    if builder_main_action_row or large_next_button:
+    combat_block_action_row = False
+    if builder_main_action_row or combat_block_action_row or large_primary_button:
         height = 72
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        stat_rows = min(2, len(action_specs) // 4)
-        trailing_buttons = max(0, len(action_specs) - stat_rows * 4)
+        stat_specs = [spec for spec in action_specs if spec.action in BUILDER_STAT_ACTIONS]
+        ability_specs = [spec for spec in action_specs if spec.action.startswith("builder_select_ability_")]
+        footer_specs = [spec for spec in action_specs if spec not in stat_specs and spec not in ability_specs]
+        stat_rows = (len(stat_specs) + 3) // 4
         stat_button_size = max(44, (width - gap * 3) // 4)
-        button_total_height = stat_rows * stat_button_size + max(0, stat_rows - 1) * gap
-        if trailing_buttons:
-            button_total_height += gap + trailing_buttons * 44 + max(0, trailing_buttons - 1) * gap
-    elif builder_main_action_row:
+        button_total_height = builder_resource_line_height + gap
+        if ability_specs:
+            button_total_height += len(ability_specs) * 44 + max(0, len(ability_specs) - 1) * gap
+        if stat_specs:
+            if button_total_height:
+                button_total_height += gap
+            button_total_height += stat_rows * stat_button_size + max(0, stat_rows - 1) * gap
+        if footer_specs:
+            if button_total_height:
+                button_total_height += gap
+            button_total_height += len(footer_specs) * 44 + max(0, len(footer_specs) - 1) * gap
+    elif builder_main_action_row or combat_block_action_row:
         button_total_height = len(action_specs) * height + gap
     else:
         button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
     button_start_y = rect.bottom - 12 - button_total_height
-    draw_action_detail_sections(self, rect, prompt_rect.bottom + 8, button_start_y - 8)
+    draw_action_detail_sections(self, rect, prompt_bottom + 8, button_start_y - 8)
     start_y = button_start_y
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         stat_gap = 8
         stat_button_size = max(44, (width - stat_gap * 3) // 4)
         current_y = start_y
-        stat_rows = min(2, len(action_specs) // 4)
+        stat_specs = [spec for spec in action_specs if spec.action in BUILDER_STAT_ACTIONS]
+        ability_specs = [spec for spec in action_specs if spec.action.startswith("builder_select_ability_")]
+        footer_specs = [spec for spec in action_specs if spec not in stat_specs and spec not in ability_specs]
+        if self.engine.pending_builder_creature is not None:
+            spent_resources = self.engine.builder_creature_build_cost()
+            max_resources = self.engine.pending_builder_creature.available_resources
+            self.blit_text(
+                self.font,
+                f"Resources {spent_resources}/{max_resources}",
+                MUTED_TEXT,
+                start_x,
+                current_y,
+            )
+            current_y += builder_resource_line_height + gap
+        for spec in ability_specs:
+            button_rect = pygame.Rect(start_x, current_y, width, 44)
+            selected_ability_action = None
+            if self.engine.pending_builder_creature is not None and self.engine.pending_builder_creature.selected_ability is not None:
+                selected_ability_action = (
+                    f"builder_select_ability_{self.engine.pending_builder_creature.selected_ability.name.lower()}"
+                )
+            is_selected_ability = spec.action == selected_ability_action
+            button_color = HIGHLIGHT if is_selected_ability and spec.enabled else BUTTON_COLOR if spec.enabled else BUTTON_DISABLED
+            pygame.draw.rect(self.screen, button_color, button_rect, border_radius=6)
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
+            self.buttons.append((button_rect, spec))
+            current_y += 44 + gap
+        if ability_specs and stat_specs:
+            current_y += gap
+        stat_rows = (len(stat_specs) + 3) // 4
         for row_index in range(stat_rows):
-            row_specs = action_specs[row_index * 4 : row_index * 4 + 4]
+            row_specs = stat_specs[row_index * 4 : row_index * 4 + 4]
             for column_index, spec in enumerate(row_specs):
                 button_rect = pygame.Rect(
                     start_x + column_index * (stat_button_size + stat_gap),
@@ -281,29 +385,30 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
                     stat_button_size,
                     stat_button_size,
                 )
-                base_color = BUILDER_STAT_BUTTON_COLORS.get(spec.action, BUTTON_COLOR)
-                color = base_color if spec.enabled else _dim_button_color(base_color)
+                color = BUTTON_COLOR if spec.enabled else _soft_disabled_button_color(BUTTON_COLOR)
                 pygame.draw.rect(self.screen, color, button_rect, border_radius=6)
                 pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
                 self.blit_centered_text(compact_button_font, spec.label, TEXT_COLOR, button_rect)
                 self.buttons.append((button_rect, spec))
             current_y += stat_button_size + gap
-        for spec in action_specs[stat_rows * 4:]:
+        if stat_specs and footer_specs:
+            current_y += gap
+        for spec in footer_specs:
             button_rect = pygame.Rect(start_x, current_y, width, 44)
-            selected_ability_action = None
-            if self.engine.pending_builder_creature is not None and self.engine.pending_builder_creature.selected_ability is not None:
-                selected_ability_action = (
-                    f"builder_select_ability_{self.engine.pending_builder_creature.selected_ability.name.lower()}"
-                )
-            is_selected_ability = spec.action.startswith("builder_select_ability_") and spec.action == selected_ability_action
-            button_color = HIGHLIGHT if is_selected_ability and spec.enabled else BUTTON_COLOR if spec.enabled else BUTTON_DISABLED
+            is_create_button = spec.action == "builder_confirm_creature"
+            if is_create_button and spec.enabled:
+                button_color = PLAYER_CARD_COLOR
+            elif spec.enabled:
+                button_color = BUTTON_COLOR
+            else:
+                button_color = BUTTON_DISABLED
             pygame.draw.rect(self.screen, button_color, button_rect, border_radius=6)
             pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
             self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
             self.buttons.append((button_rect, spec))
             current_y += 44 + gap
         return
-    if builder_main_action_row:
+    if builder_main_action_row or combat_block_action_row:
         for index, spec in enumerate(action_specs):
             button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)
             pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)

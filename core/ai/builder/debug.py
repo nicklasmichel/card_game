@@ -10,7 +10,7 @@ from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS,
 
 
 def builder_debug_level() -> int:
-    return max(0, int(getattr(config, "BUILDER_AI_DEBUG", 0)))
+    return max(0, int(getattr(config, "AI_DEBUG", 0)))
 
 
 def builder_debug_enabled() -> bool:
@@ -22,23 +22,23 @@ def builder_debug_verbose() -> bool:
 
 
 def builder_debug_top_n() -> int:
-    return max(1, int(getattr(config, "BUILDER_AI_DEBUG_TOP_N", 5)))
+    return max(1, int(getattr(config, "AI_DEBUG_TOP_N", 5)))
 
 
 def builder_debug_build_top_n() -> int:
-    return max(1, int(getattr(config, "BUILDER_AI_DEBUG_BUILD_TOP_N", builder_debug_top_n())))
+    return max(1, int(getattr(config, "AI_DEBUG_BUILD_TOP_N", builder_debug_top_n())))
 
 
 def builder_debug_precision() -> int:
-    return max(0, int(getattr(config, "BUILDER_AI_DEBUG_FLOAT_PRECISION", 2)))
+    return max(0, int(getattr(config, "AI_DEBUG_FLOAT_PRECISION", 2)))
 
 
 def builder_debug_include_weights() -> bool:
-    return bool(getattr(config, "BUILDER_AI_DEBUG_INCLUDE_WEIGHTS", 1))
+    return bool(getattr(config, "AI_DEBUG_INCLUDE_WEIGHTS", 1))
 
 
 def builder_debug_include_fingerprints() -> bool:
-    return bool(getattr(config, "BUILDER_AI_DEBUG_INCLUDE_FINGERPRINTS", 1))
+    return bool(getattr(config, "AI_DEBUG_INCLUDE_FINGERPRINTS", 1))
 
 
 def log_builder_runtime_action(engine, action: dict) -> None:
@@ -200,14 +200,14 @@ def select_scored_rows(scored_rows: list[tuple[object, object]], *, top_n: int, 
 def turn_score_gap(decisions: list) -> tuple[float, object | None]:
     if len(decisions) < 2:
         return 0.0, None
-    return round(decisions[0].score.total - decisions[1].score.total, builder_debug_precision()), decisions[1]
+    return round(decisions[0].score.selection_score - decisions[1].score.selection_score, builder_debug_precision()), decisions[1]
 
 
 def score_delta_keys(primary_score, secondary_score, *, limit: int = 3) -> str:
     fields = [
         field_name
         for field_name, value in primary_score.__dict__.items()
-        if isinstance(value, (int, float)) and field_name not in {"total", "baseline_attack_score", "projected_attack_score"}
+        if isinstance(value, (int, float)) and field_name not in {"total", "selection_score", "baseline_attack_score", "projected_attack_score"}
     ]
     ranked = sorted(
         ((abs(getattr(primary_score, field_name, 0.0) - getattr(secondary_score, field_name, 0.0)), field_name) for field_name in fields),
@@ -252,7 +252,7 @@ def _candidate_row_key(candidate) -> tuple:
 
 
 def _scored_row_sort_key(candidate, score) -> tuple:
-    return (getattr(score, "total", 0.0), _candidate_row_key(candidate))
+    return (getattr(score, "selection_score", getattr(score, "total", 0.0)), _candidate_row_key(candidate))
 
 
 def _format_value(value) -> str:

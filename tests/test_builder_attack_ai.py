@@ -189,13 +189,18 @@ class BuilderAttackAITests(unittest.TestCase):
         weak = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
         tough = self.make_builder_creature(0, aw=1, vw=3, sw=3, lw=4, ready=True)
         cheap = self.make_builder_creature(0, aw=1, vw=2, sw=1, lw=2, ready=True)
+        candidate = BuilderAttackCandidate(attacker_ids=(strong.unit_id, weak.unit_id))
 
-        score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=(strong.unit_id, weak.unit_id)), self.engine.ai_player, self.engine)
+        score = score_builder_attack_candidate(candidate, self.engine.ai_player, self.engine)
+        assignments = generate_builder_block_assignments(candidate, self.engine.ai_player, self.engine.human_player, self.engine)
+        scored = {
+            assignment: evaluate_attack_assignment(candidate, assignment, self.engine.ai_player, self.engine.human_player, self.engine).total
+            for assignment in assignments
+        }
+        worst_total = min(scored.values())
 
-        self.assertIn(score.chosen_block_assignment, {
-            ((strong.unit_id, tough.unit_id), (weak.unit_id, cheap.unit_id)),
-            ((strong.unit_id, tough.unit_id),),
-        })
+        self.assertIn(score.chosen_block_assignment, scored)
+        self.assertAlmostEqual(scored[score.chosen_block_assignment], worst_total, places=4)
 
     def test_guaranteed_lethal_is_chosen(self) -> None:
         attacker = self.make_builder_creature(1, aw=2, vw=1, sw=3, lw=2, ready=True, abilities=(Ability.FLYING,))
@@ -229,6 +234,26 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertGreater(attack_score.lost_block_value, 0.0)
         self.assertGreater(attack_score.projected_counter_damage, 0.0)
         self.assertLess(attack_score.total, score.total)
+
+    def test_no_attack_still_projects_strongest_enemy_followup(self) -> None:
+        self.engine.ai_player.life = 3
+        self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+        self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+
+        score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
+
+        self.assertGreaterEqual(score.projected_counter_damage, 4.0)
+        self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
+
+    def test_ground_creature_does_not_count_as_flying_blocker_in_no_attack_followup(self) -> None:
+        self.engine.ai_player.life = 2
+        self.make_builder_creature(1, aw=0, vw=3, sw=0, lw=2, ready=True)
+        self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+
+        score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
+
+        self.assertGreaterEqual(score.projected_counter_damage, 2.0)
+        self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
 
     def test_attack_selection_can_hold_back_partial_blockers(self) -> None:
         hold_back = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)

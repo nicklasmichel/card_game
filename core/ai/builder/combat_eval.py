@@ -146,7 +146,7 @@ def estimate_dice_win_probabilities(attacker_aw: int, defender_vw: int) -> DiceW
     if defender_vw == 0 and attacker_aw > 0:
         return DiceWinEstimate(1.0, 0.0, 0.0)
     if attacker_aw == 0 and defender_vw == 0:
-        return DiceWinEstimate(0.5, 0.5, 1.0)
+        return DiceWinEstimate(1.0, 0.0, 1.0)
 
     attacker_distribution = get_d6_sum_distribution(attacker_aw)
     defender_distribution = get_d6_sum_distribution(defender_vw)
@@ -163,9 +163,8 @@ def estimate_dice_win_probabilities(attacker_aw: int, defender_vw: int) -> DiceW
             else:
                 tie_raw += probability
     if tie_raw >= 1.0:
-        return DiceWinEstimate(0.5, 0.5, 1.0)
-    reroll_factor = 1.0 - tie_raw
-    return DiceWinEstimate(attacker_raw / reroll_factor, defender_raw / reroll_factor, tie_raw)
+        return DiceWinEstimate(1.0, 0.0, 1.0)
+    return DiceWinEstimate(attacker_raw + tie_raw, defender_raw, tie_raw)
 
 
 def can_legally_block(attacker, blocker, *, require_ready: bool = True) -> bool:

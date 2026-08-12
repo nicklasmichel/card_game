@@ -165,7 +165,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertGreater(decision.action_candidate.creature_candidate.vw, 0)
         self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
 
-    def test_ai_can_reject_haste_when_another_ability_fits_better(self) -> None:
+    def test_ai_can_choose_haste_when_it_removes_immediate_followup_damage(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.engine.ai_player.life = 2
         self.make_builder_creature(0, aw=2, vw=1, sw=3, lw=2, ready=True)
@@ -173,8 +173,9 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertEqual(decision.action_candidate.creature_candidate.builder_ability, Ability.FLYING)
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(decision.score.expected_enemy_followup_damage, 0.0)
+        self.assertEqual(decision.score.enemy_lethal_risk, 0.0)
 
     def test_planning_with_haste_candidates_does_not_mutate_runtime_state(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
@@ -363,6 +364,30 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "resource")
+
+    def test_safe_state_can_prefer_resource_over_redundant_fifth_creature(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 5)
+        self.set_builder_resources(self.engine.human_player, 4)
+        for _ in range(4):
+            self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
+        self.make_builder_creature(0, aw=0, vw=1, sw=1, lw=2, ready=True)
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "resource")
+
+    def test_fifth_slot_can_be_used_for_necessary_haste_blocker(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 5)
+        self.engine.ai_player.life = 1
+        for _ in range(4):
+            self.make_builder_creature(1, aw=0, vw=1, sw=0, lw=2, ready=True)
+        self.make_builder_creature(0, aw=1, vw=1, sw=3, lw=2, ready=True)
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(self.engine.ai_player.total_resources(), 5)
 
     def test_creature_is_built_under_pressure(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
