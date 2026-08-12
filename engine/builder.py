@@ -178,7 +178,13 @@ def discard_builder_ability_card(self, player: PlayerState, card_instance_id: in
     return card
 
 
-def initialize_builder_game(self) -> None:
+def initialize_builder_game(
+    self,
+    starting_player_id: int | None = None,
+    *,
+    auto_begin: bool = True,
+    log_start: bool = True,
+) -> None:
     self.players = [
         PlayerState(0, "Player 1", True, summoner_key="builder", life=STARTING_LIFE),
         PlayerState(1, "Player 2", False, summoner_key="builder", life=STARTING_LIFE),
@@ -206,17 +212,24 @@ def initialize_builder_game(self) -> None:
         player.summoner_tapped = False
         player.turns_started = 0
         player.mulligan_used = True
-    self.starting_player_id = self.rng.choice([0, 1])
+    resolved_starting_player_id = self.rng.choice([0, 1]) if starting_player_id is None else starting_player_id
+    if resolved_starting_player_id not in {0, 1}:
+        raise ValueError(f"Unsupported starting_player_id: {resolved_starting_player_id}")
+    self.starting_player_id = resolved_starting_player_id
     self.active_player_index = self.starting_player_id
-    self.statistics = GameStatistics(
-        game_id=self.game_id,
-        seed=self.seed,
-        started_at=datetime.now().isoformat(timespec="seconds"),
-        start_player=self.players[self.starting_player_id].name,
-        player_names={0: "Player 1", 1: "Player 2"},
-    )
-    self.log("New game started in builder mode.")
-    self.start_turn()
+    self.statistics = None
+    if auto_begin:
+        self.statistics = GameStatistics(
+            game_id=self.game_id,
+            seed=self.seed,
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            start_player=self.players[self.starting_player_id].name,
+            player_names={0: "Player 1", 1: "Player 2"},
+        )
+    if log_start:
+        self.log(f"New game started in builder mode. {self.players[self.starting_player_id].name} begins.")
+    if auto_begin:
+        self.start_turn()
 
 
 def start_builder_turn(self) -> None:

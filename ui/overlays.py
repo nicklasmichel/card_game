@@ -111,3 +111,47 @@ def draw_pause_overlay(self) -> None:
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
     self.blit_centered_text(self.title_font, "Pausiert", TEXT_COLOR, pygame.Rect(panel.x, panel.y + 22, panel.width, 30))
     self.blit_centered_text(self.font, "Enter setzt das Spiel fort.", MUTED_TEXT, pygame.Rect(panel.x + 20, panel.y + 68, panel.width - 40, 24))
+
+
+def draw_start_player_overlay(self) -> None:
+    if not getattr(self, "start_player_selection_open", False):
+        return
+    title_font = pygame.font.SysFont("arial", 38, bold=True)
+    button_font = pygame.font.SysFont("arial", 34, bold=True)
+    overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+    overlay.fill(OVERLAY_COLOR)
+    self.screen.blit(overlay, (0, 0))
+    panel_width = min(920, self.window_width - 80)
+    panel_height = 360
+    panel = pygame.Rect(
+        max(40, (self.window_width - panel_width) // 2),
+        max(40, (self.window_height - panel_height) // 2),
+        panel_width,
+        panel_height,
+    )
+    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
+    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
+    self.blit_centered_text(title_font, "Who starts?", TEXT_COLOR, pygame.Rect(panel.x, panel.y + 28, panel.width, 44))
+
+    choices = [
+        ("Player 1", "player_1"),
+        ("Player 2", "player_2"),
+        ("Random", "random"),
+    ]
+    gap = 24
+    button_width = (panel.width - 48 - gap * 2) // 3
+    button_height = 150
+    button_y = panel.y + 136
+    start_x = panel.x + 24
+    self.start_player_option_rects = []
+    for index, (label, selection) in enumerate(choices):
+        button_rect = pygame.Rect(
+            start_x + index * (button_width + gap),
+            button_y,
+            button_width,
+            button_height,
+        )
+        pygame.draw.rect(self.screen, PANEL_COLOR, button_rect, border_radius=8)
+        pygame.draw.rect(self.screen, HIGHLIGHT, button_rect, 2, border_radius=8)
+        self.blit_centered_text(button_font, label, TEXT_COLOR, button_rect)
+        self.start_player_option_rects.append((button_rect, selection))

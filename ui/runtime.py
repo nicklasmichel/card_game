@@ -14,9 +14,17 @@ def run(self) -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            elif (
+                event.type == pygame.KEYDOWN
+                and event.key == pygame.K_RETURN
+                and not self.start_player_selection_open
+            ):
                 self.handle_ui_action("ui_toggle_pause")
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+            elif (
+                event.type == pygame.KEYDOWN
+                and event.key == pygame.K_SPACE
+                and not self.start_player_selection_open
+            ):
                 if not self.primary_action_space_down:
                     self.primary_action_space_down = True
                     self.trigger_primary_action_button()
@@ -25,26 +33,34 @@ def run(self) -> None:
             elif event.type == pygame.MOUSEWHEEL:
                 self.handle_log_scroll(-event.y * 36)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self.handle_mouse_down(event.pos)
+                if self.start_player_selection_open:
+                    self.handle_start_player_selection_click(event.pos)
+                else:
+                    self.handle_mouse_down(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                self.handle_preview_start(event.pos)
+                if not self.start_player_selection_open:
+                    self.handle_preview_start(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                self.handle_mouse_up(event.pos)
+                if not self.start_player_selection_open:
+                    self.handle_mouse_up(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
-                self.handle_preview_stop()
+                if not self.start_player_selection_open:
+                    self.handle_preview_stop()
             elif event.type == pygame.MOUSEMOTION:
-                self.handle_mouse_motion(event.pos)
+                if not self.start_player_selection_open:
+                    self.handle_mouse_motion(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
                 direction = -36 if event.button == 4 else 36
                 self.handle_log_scroll(direction)
 
         self.consume_visual_events()
-        if not self.paused:
+        if not self.paused and not self.start_player_selection_open:
             self.engine.poll_ai_thinking()
             if not self.engine.has_pending_ai_action():
                 self.engine.start_ai_thinking()
-        self.engine.auto_resolve_human_no_blockers_if_needed()
-        self.engine.resolve_stalled_dice_battle_if_needed()
+        if not self.start_player_selection_open:
+            self.engine.auto_resolve_human_no_blockers_if_needed()
+            self.engine.resolve_stalled_dice_battle_if_needed()
         self.engine.flush_log_file_writes(max_lines=24)
         if self.engine.exit_requested:
             running = False
@@ -80,6 +96,9 @@ def get_think_progress(self, player) -> float | None:
 
 
 def handle_ui_action(self, action: str) -> bool:
+    if action == "new_game":
+        self.open_start_player_selection()
+        return True
     if action == "ui_toggle_pause":
         now = pygame.time.get_ticks()
         if self.paused:
@@ -96,6 +115,13 @@ def handle_ui_action(self, action: str) -> bool:
             self.pause_started_at_ms = now
         return True
     return False
+
+
+def handle_start_player_selection_click(self, position: tuple[int, int]) -> None:
+    for rect, selection in self.start_player_option_rects:
+        if rect.collidepoint(position):
+            self.start_new_game_with_selected_player(selection)
+            return
 
 
 def trigger_primary_action_button(self) -> None:
@@ -182,6 +208,7 @@ def draw(self) -> None:
     self.draw_pause_overlay()
     if self.engine.phase == PHASE_GAME_OVER:
         self.draw_game_over_overlay()
+    self.draw_start_player_overlay()
     self.draw_card_preview_overlay()
 
     pygame.display.flip()

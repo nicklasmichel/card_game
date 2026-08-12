@@ -7,6 +7,13 @@ from core.models import PHASE_DICE_BATTLE
 
 
 class GameStartTests(unittest.TestCase):
+    def test_engine_can_be_created_without_starting_a_game(self) -> None:
+        engine = GameEngine(auto_start=False)
+
+        self.assertEqual(engine.turn_number, 0)
+        self.assertEqual(engine.log_messages, [])
+        self.assertEqual(engine.active_player.name, "Player 1")
+
     def test_new_game_starts_builder_players_at_starting_life(self) -> None:
         engine = GameEngine()
 
@@ -24,6 +31,26 @@ class GameStartTests(unittest.TestCase):
         self.assertEqual(engine.human_player.hand, [])
         self.assertEqual(engine.ai_player.hand, [])
         self.assertIsNotNone(engine.pending_dice_battle)
+
+    def test_new_game_can_force_player_1_to_start(self) -> None:
+        engine = GameEngine()
+
+        engine.start_new_game(starting_player_id=0)
+
+        self.assertEqual(engine.starting_player_id, 0)
+        self.assertEqual(engine.active_player_index, 0)
+        self.assertEqual(engine.active_player.name, "Player 1")
+        self.assertEqual(engine.turn_number, 1)
+
+    def test_new_game_can_force_player_2_to_start(self) -> None:
+        engine = GameEngine()
+
+        engine.start_new_game(starting_player_id=1)
+
+        self.assertEqual(engine.starting_player_id, 1)
+        self.assertEqual(engine.active_player_index, 1)
+        self.assertEqual(engine.active_player.name, "Player 2")
+        self.assertEqual(engine.turn_number, 1)
 
 
 if __name__ == "__main__":

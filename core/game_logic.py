@@ -159,7 +159,7 @@ class GameEngine:
         clear_combat_temporary_effects,
     )
 
-    def __init__(self) -> None:
+    def __init__(self, auto_start: bool = True) -> None:
         self.templates = {}
         self.players: List[PlayerState] = []
         self.active_player_index = 0
@@ -216,7 +216,10 @@ class GameEngine:
         self.creatures_died_this_turn = 0
         self.debug_log_to_messages = False
 
-        self.start_new_game()
+        if auto_start:
+            self.start_new_game()
+        else:
+            self.initialize_builder_game(starting_player_id=0, auto_begin=False, log_start=False)
 
     @property
     def human_player(self) -> PlayerState:
@@ -362,7 +365,7 @@ class GameEngine:
             }
         )
 
-    def start_new_game(self) -> None:
+    def start_new_game(self, starting_player_id: int | None = None) -> None:
         self.flush_log_file_writes()
         self.cancel_ai_thinking()
         self.seed = Random().randrange(1, 10**12)
@@ -383,7 +386,7 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events.clear()
         self.reset_combat_state()
-        self.initialize_builder_game()
+        self.initialize_builder_game(starting_player_id=starting_player_id)
         return
 
     def start_test_combat(self) -> None:

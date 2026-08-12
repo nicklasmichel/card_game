@@ -100,11 +100,17 @@ from ui.layout import (
     get_side_panel_layout,
     handle_log_scroll,
 )
-from ui.overlays import draw_dice_battle_overlay, draw_game_over_overlay, draw_pause_overlay
+from ui.overlays import (
+    draw_dice_battle_overlay,
+    draw_game_over_overlay,
+    draw_pause_overlay,
+    draw_start_player_overlay,
+)
 from ui.runtime import (
     draw,
     get_decision_marker,
     get_think_progress,
+    handle_start_player_selection_click,
     handle_mouse_click,
     handle_mouse_down,
     handle_mouse_motion,
@@ -190,6 +196,7 @@ class TcgPrototypeApp:
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
     draw_pause_overlay = draw_pause_overlay
+    draw_start_player_overlay = draw_start_player_overlay
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
@@ -217,6 +224,7 @@ class TcgPrototypeApp:
     update_decision_timer = update_decision_timer
     get_think_progress = get_think_progress
     handle_ui_action = handle_ui_action
+    handle_start_player_selection_click = handle_start_player_selection_click
     trigger_primary_action_button = trigger_primary_action_button
     handle_mouse_down = handle_mouse_down
     handle_mouse_up = handle_mouse_up
@@ -253,7 +261,7 @@ class TcgPrototypeApp:
         self.small_font = pygame.font.SysFont("arial", 12)
         self.title_font = pygame.font.SysFont("arial", 24, bold=True)
         self.layout_scale = 1.0
-        self.engine = GameEngine()
+        self.engine = GameEngine(auto_start=False)
         self.resource_back_images = self.load_resource_back_images()
         self.summoner_images = self.load_summoner_images()
         self.ui_symbol_images = self.load_ui_symbol_images()
@@ -292,6 +300,26 @@ class TcgPrototypeApp:
             "combat_lane": [],
             "player_1_resources": [],
         }
+        self.start_player_selection_open = True
+        self.start_player_option_rects: List[Tuple[pygame.Rect, str]] = []
+
+    def open_start_player_selection(self) -> None:
+        self.start_player_selection_open = True
+        self.start_player_option_rects = []
+        self.clear_drag_state()
+
+    def start_new_game_with_selected_player(self, selection: str) -> None:
+        starting_player_id = {
+            "player_1": 0,
+            "player_2": 1,
+            "random": None,
+        }.get(selection)
+        if selection not in {"player_1", "player_2", "random"}:
+            return
+        self.start_player_selection_open = False
+        self.start_player_option_rects = []
+        self.clear_drag_state()
+        self.engine.start_new_game(starting_player_id=starting_player_id)
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
