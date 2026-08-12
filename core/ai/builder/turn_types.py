@@ -69,6 +69,22 @@ class BuilderTurnScore:
     projected_attack_score: float = 0.0
     search_was_exact: bool = True
     evaluated_candidate_count: int = 0
+    own_next_attack_damage: float = 0.0
+    own_next_attack_lethal: bool = False
+    own_next_attackers: tuple[int, ...] = field(default_factory=tuple)
+    enemy_future_blockers: tuple[tuple[int, tuple[int, ...]], ...] = field(default_factory=tuple)
+    enemy_blocker_ready_in_time: bool = False
+    turns_to_own_lethal: int | None = None
+    lethal_line_exact: bool = True
+    lethal_line_fallback_used: bool = False
+    known_enemy_attack_timeline: tuple = field(default_factory=tuple)
+    damage_before_coverage_ready: float = 0.0
+    second_attack_damage: float = 0.0
+    second_attack_lethal: bool = False
+    coverage_ready_turn: int | None = None
+    coverage_prevents_repeated_lethal: bool = False
+    must_hold_as_blocker: bool = False
+    cumulative_unavoidable_damage: float = 0.0
     debug_contributions: tuple[tuple[str, float, float, float], ...] = field(default_factory=tuple)
 
 

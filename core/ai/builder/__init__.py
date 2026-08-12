@@ -11,6 +11,7 @@ from .combat_eval import (
     estimate_unblocked_attack,
     get_d6_sum_distribution,
 )
+from .horizon import BuilderEnemyAttackTimelineEntry, BuilderHorizonReport, evaluate_block_horizon, evaluate_main_action_horizon
 from .attack_policy import (
     BuilderAttackCandidate,
     BuilderAttackDecision,
@@ -56,7 +57,7 @@ from .turn_policy import (
     materialize_builder_turn_decision,
     plan_builder_turn,
 )
-from .turn_projection import BuilderTurnProjection, build_current_turn_projection, project_ability_action, project_creature_action, project_pass_action, project_resource_action
+from .turn_projection import BuilderTurnProjection, build_current_turn_projection, project_ability_action, project_attack_to_next_turn, project_creature_action, project_pass_action, project_resource_action
 from .turn_types import BuilderAbilityActionCandidate, BuilderProjectedCandidate, BuilderSearchMetadata, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
 from .types import BuilderCandidateScore, BuilderCreatureCandidate, BuilderStrategicSnapshot
 
@@ -67,6 +68,8 @@ __all__ = [
     "BuilderAttackDecision",
     "BuilderAttackScore",
     "BuilderProjectedCandidate",
+    "BuilderEnemyAttackTimelineEntry",
+    "BuilderHorizonReport",
     "BuilderSearchBudget",
     "BuilderSearchMetadata",
     "BuilderBlockCandidate",
@@ -93,6 +96,7 @@ __all__ = [
     "materialize_builder_turn_decision",
     "build_current_turn_projection",
     "project_ability_action",
+    "project_attack_to_next_turn",
     "build_candidate_combatant_view",
     "can_legally_be_forced_to_block",
     "can_legally_block",
@@ -111,6 +115,7 @@ __all__ = [
     "estimate_unblocked_attack",
     "evaluate_best_builder_attack",
     "evaluate_attack_assignment",
+    "evaluate_block_horizon",
     "extract_candidate_future_value",
     "generate_builder_attack_candidates",
     "generate_builder_block_candidates",
@@ -123,6 +128,7 @@ __all__ = [
     "is_legal_builder_candidate",
     "player_damage_distribution_for_combat",
     "plan_builder_turn",
+    "evaluate_main_action_horizon",
     "project_creature_action",
     "project_pass_action",
     "project_resource_action",

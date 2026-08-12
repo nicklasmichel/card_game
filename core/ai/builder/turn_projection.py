@@ -296,6 +296,103 @@ def project_ability_action(
     )
 
 
+def project_attack_to_next_turn(
+    base_projection: BuilderTurnProjection,
+    attacker_ids: tuple[int, ...],
+    block_assignment: tuple[tuple[int, int], ...] = (),
+) -> BuilderTurnProjection:
+    from .combat_eval import estimate_builder_combat, estimate_unblocked_attack
+
+    attacked_ids = set(attacker_ids)
+    assignment_map = dict(block_assignment)
+    attackers = {unit.unit_id: unit for unit in base_projection.own_units}
+    blockers = {unit.unit_id: unit for unit in base_projection.enemy_units}
+    post_hp: dict[int, int] = {}
+    removed_attacker_ids: set[int] = set()
+    removed_blocker_ids: set[int] = set()
+    player_damage = 0.0
+
+    for attacker_id, blocker_id in assignment_map.items():
+        attacker = attackers.get(attacker_id)
+        blocker = blockers.get(blocker_id)
+        if attacker is None or blocker is None:
+            continue
+        estimate = estimate_builder_combat(attacker, blocker)
+        player_damage += estimate.expected_player_damage
+
+        if estimate.attacker_death_probability >= 1.0:
+            removed_attacker_ids.add(attacker_id)
+        else:
+            attacker_hp = max(1, int(attacker.current_hp) - int(round(estimate.expected_damage_to_attacker)))
+            attacker_hp = min(int(attacker.lw), attacker_hp + int(round(estimate.expected_attacker_heal)))
+            post_hp[attacker_id] = attacker_hp
+
+        if estimate.defender_death_probability >= 1.0:
+            removed_blocker_ids.add(blocker_id)
+        else:
+            blocker_hp = max(1, int(blocker.current_hp) - int(round(estimate.expected_damage_to_defender)))
+            blocker_hp = min(int(blocker.lw), blocker_hp + int(round(estimate.expected_defender_heal)))
+            post_hp[blocker_id] = blocker_hp
+
+    for attacker_id in attacked_ids:
+        if attacker_id in assignment_map or attacker_id in removed_attacker_ids:
+            continue
+        attacker = attackers.get(attacker_id)
+        if attacker is None:
+            continue
+        unblocked = estimate_unblocked_attack(attacker)
+        player_damage += unblocked.player_damage
+        healed_hp = min(int(attacker.lw), int(attacker.current_hp) + int(round(unblocked.attacker_heal)))
+        post_hp[attacker_id] = healed_hp
+
+    next_active_units = tuple(
+        _advance_unit_to_controller_turn_start(unit, current_hp=post_hp.get(unit.unit_id))
+        for unit in base_projection.enemy_units
+        if unit.unit_id not in removed_blocker_ids
+    )
+    next_inactive_units = tuple(
+        _advance_attacker_unit_to_opponent_turn(
+            unit,
+            attacked=unit.unit_id in attacked_ids,
+            current_hp=post_hp.get(unit.unit_id),
+        )
+        for unit in base_projection.own_units
+        if unit.unit_id not in removed_attacker_ids
+    )
+    next_active_life = max(0.0, float(base_projection.enemy_life) - float(player_damage))
+    return BuilderTurnProjection(
+        player_id=base_projection.enemy_id,
+        enemy_id=base_projection.player_id,
+        action_kind=f"{base_projection.action_kind}:next_turn",
+        own_life=next_active_life,
+        enemy_life=float(base_projection.own_life),
+        own_total_resources=base_projection.enemy_total_resources,
+        own_ready_resources=base_projection.enemy_total_resources,
+        enemy_total_resources=base_projection.own_total_resources,
+        enemy_ready_resources=base_projection.own_ready_resources,
+        own_units=next_active_units,
+        enemy_units=next_inactive_units,
+        available_attacker_ids=tuple(unit.unit_id for unit in next_active_units if unit.is_ready()),
+        hypothetical_unit_id=None,
+        candidate_signature=base_projection.candidate_signature + ("next_turn", tuple(sorted(attacked_ids))),
+        state_signature=_build_state_signature(
+            base_projection.enemy_id,
+            base_projection.player_id,
+            next_active_life,
+            float(base_projection.own_life),
+            base_projection.enemy_total_resources,
+            base_projection.enemy_total_resources,
+            base_projection.own_total_resources,
+            base_projection.own_ready_resources,
+            next_active_units,
+            next_inactive_units,
+            tuple(unit.unit_id for unit in next_active_units if unit.is_ready()),
+            (),
+            None,
+        ),
+    )
+
+
 def synthetic_unit_id_for_candidate(candidate: BuilderCreatureCandidate) -> int:
     ability_index = 0
     if candidate.builder_ability in BUILDER_CREATURE_ABILITIES:
@@ -386,6 +483,46 @@ def _coerce_unit_view(creature: BattlefieldCreature) -> ProjectedUnitView:
         summoning_sickness=creature.summoning_sick,
         cannot_block=getattr(creature, "cannot_block", False),
         debug_label=creature.name,
+    )
+
+
+def _advance_unit_to_controller_turn_start(unit: ProjectedUnitView, *, current_hp: int | None = None) -> ProjectedUnitView:
+    return ProjectedUnitView(
+        unit_id=unit.unit_id,
+        name=unit.name,
+        aw=unit.aw,
+        vw=unit.vw,
+        sw=unit.sw,
+        lw=unit.lw,
+        current_hp=unit.current_hp if current_hp is None else current_hp,
+        abilities=unit.abilities,
+        tapped=False,
+        summoning_sickness=False,
+        cannot_block=unit.cannot_block,
+        debug_label=unit.debug_label,
+    )
+
+
+def _advance_attacker_unit_to_opponent_turn(
+    unit: ProjectedUnitView,
+    *,
+    attacked: bool,
+    current_hp: int | None = None,
+) -> ProjectedUnitView:
+    remains_ready = unit.has_ability(Ability.VIGILANCE) or unit.has_ability(Ability.VIGILANT)
+    return ProjectedUnitView(
+        unit_id=unit.unit_id,
+        name=unit.name,
+        aw=unit.aw,
+        vw=unit.vw,
+        sw=unit.sw,
+        lw=unit.lw,
+        current_hp=unit.current_hp if current_hp is None else current_hp,
+        abilities=unit.abilities,
+        tapped=bool(unit.tapped or (attacked and not remains_ready)),
+        summoning_sickness=unit.summoning_sickness,
+        cannot_block=unit.cannot_block,
+        debug_label=unit.debug_label,
     )
 
 

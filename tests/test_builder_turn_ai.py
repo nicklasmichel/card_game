@@ -6,10 +6,12 @@ from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.ai.builder import (
     build_builder_runtime_fingerprint,
     build_current_turn_projection,
+    evaluate_main_action_horizon,
     evaluate_attack_assignment,
     evaluate_best_builder_attack,
     generate_builder_creature_candidates,
     plan_builder_turn,
+    project_attack_to_next_turn,
     project_creature_action,
     score_builder_creature_candidate,
 )
@@ -110,6 +112,26 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertFalse(unit.summoning_sickness)
         self.assertIn(unit.unit_id, projection.available_attacker_ids)
 
+    def test_projected_non_haste_creature_becomes_ready_on_controller_next_turn(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 4)
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        candidate = next(
+            candidate
+            for candidate in generate_builder_creature_candidates(build_builder_snapshot(self.engine.ai_player, self.engine), 4)
+            if candidate.cost == 4 and not candidate.has_haste
+        )
+        action = BuilderTurnActionCandidate("creature", candidate, 4, 0, "test")
+
+        projection = project_creature_action(base, action)
+        unit_id = projection.hypothetical_unit_id
+        enemy_turn = project_attack_to_next_turn(projection, ())
+        next_own_turn = project_attack_to_next_turn(enemy_turn, ())
+        unit = next_own_turn.get_unit_by_id(unit_id)
+
+        self.assertFalse(unit.tapped)
+        self.assertFalse(unit.summoning_sickness)
+        self.assertIn(unit.unit_id, next_own_turn.available_attacker_ids)
+
     def test_runtime_fingerprint_ignores_builder_hand_when_abilities_are_disabled(self) -> None:
         self.assertFalse(BUILDER_ABILITIES_ENABLED)
         template = type("T", (), {"template_id": "builder_ability_flying"})()
@@ -165,6 +187,48 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertGreater(decision.action_candidate.creature_candidate.vw, 0)
         self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
 
+    def test_flying_build_projects_next_turn_lethal_without_timely_blocker(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 7)
+        self.engine.human_player.life = 6
+        for _ in range(4):
+            self.make_builder_creature(1, aw=0, vw=1, sw=0, lw=2, ready=True)
+        for _ in range(2):
+            self.make_builder_creature(0, aw=0, vw=3, sw=0, lw=3, ready=True)
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertEqual(decision.action_candidate.creature_candidate.key, (0, 1, 6, 1, "FLYING"))
+        self.assertTrue(decision.score.own_next_attack_lethal)
+        self.assertEqual(decision.score.own_next_attack_damage, 6.0)
+        self.assertEqual(decision.score.turns_to_own_lethal, 1)
+        self.assertFalse(decision.score.enemy_blocker_ready_in_time)
+        self.assertGreaterEqual(decision.score.future_offense_value, 100.0)
+        self.assertGreaterEqual(decision.score.board_slot_opportunity_cost, 0.0)
+
+    def test_existing_ready_flying_blocker_prevents_projected_next_turn_lethal(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 7)
+        self.engine.human_player.life = 6
+        for _ in range(4):
+            self.make_builder_creature(1, aw=0, vw=1, sw=0, lw=2, ready=True)
+        self.make_builder_creature(0, aw=0, vw=3, sw=0, lw=3, ready=True)
+        self.make_builder_creature(0, aw=0, vw=1, sw=0, lw=2, ready=True, abilities=(Ability.FLYING,))
+
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        candidate = next(
+            current
+            for current in generate_builder_creature_candidates(snapshot, 7)
+            if current.key == (0, 1, 6, 1, "FLYING")
+        )
+        action = BuilderTurnActionCandidate("creature", candidate, 7, 0, "test")
+        projection = project_creature_action(base, action)
+        predicted_attack = evaluate_best_builder_attack(projection.players[projection.player_id], projection)
+        report = evaluate_main_action_horizon(projection, predicted_attack)
+
+        self.assertFalse(report.own_next_attack_lethal)
+        self.assertIsNone(report.turns_to_own_lethal)
+
     def test_ai_can_choose_haste_when_it_removes_immediate_followup_damage(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.engine.ai_player.life = 2
@@ -176,6 +240,51 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
         self.assertEqual(decision.score.expected_enemy_followup_damage, 0.0)
         self.assertEqual(decision.score.enemy_lethal_risk, 0.0)
+
+    def test_haste_candidate_does_not_count_as_future_flying_coverage(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 8)
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 20
+        self.make_builder_creature(0, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        for _ in range(2):
+            self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
+
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        candidate = next(
+            current
+            for current in generate_builder_creature_candidates(snapshot, 8)
+            if current.key == (0, 1, 7, 1, "HASTE")
+        )
+        action = BuilderTurnActionCandidate("creature", candidate, 8, 0, "test")
+        projection = project_creature_action(base, action)
+        predicted_attack = evaluate_best_builder_attack(projection.players[projection.player_id], projection)
+        report = evaluate_main_action_horizon(projection, predicted_attack)
+
+        self.assertFalse(report.coverage_prevents_repeated_lethal)
+        self.assertIsNone(report.coverage_ready_turn)
+        self.assertEqual(report.second_attack_damage, 5.0)
+        self.assertEqual(report.cumulative_unavoidable_damage, 10.0)
+
+    def test_flying_build_can_prevent_repeated_known_flying_lethal(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 8)
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 20
+        self.make_builder_creature(0, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        for _ in range(2):
+            self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
+        for _ in range(2):
+            self.make_builder_creature(0, aw=0, vw=3, sw=0, lw=3, ready=True)
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertEqual(decision.action_candidate.creature_candidate.key, (0, 1, 7, 1, "FLYING"))
+        self.assertTrue(decision.score.coverage_prevents_repeated_lethal)
+        self.assertEqual(decision.score.second_attack_damage, 5.0)
+        self.assertEqual(decision.score.cumulative_unavoidable_damage, 5.0)
+        self.assertEqual(decision.score.coverage_ready_turn, 1)
+        self.assertTrue(decision.score.must_hold_as_blocker)
 
     def test_planning_with_haste_candidates_does_not_mutate_runtime_state(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)

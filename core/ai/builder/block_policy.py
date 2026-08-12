@@ -15,7 +15,8 @@ from .combat_assignments import (
     get_forced_block_map_from_engine,
     player_damage_distribution_for_combat,
 )
-from .combat_eval import estimate_builder_combat, estimate_unblocked_attack
+from .attack_policy import BuilderAttackCandidate
+from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .debug import (
     builder_debug_enabled,
     builder_debug_include_fingerprints,
@@ -28,8 +29,9 @@ from .debug import (
     score_delta_keys,
     select_scored_rows,
 )
+from .horizon import evaluate_block_horizon
 from .scoring import estimate_creature_board_value
-from .turn_projection import normalize_builder_abilities
+from .turn_projection import build_current_turn_projection, normalize_builder_abilities
 from .turn_types import ProjectedUnitView
 
 PLAYER_DAMAGE_TAKEN_PENALTY = 2.6
@@ -80,7 +82,22 @@ class BuilderBlockScore:
     total: float
     guaranteed_lethal: bool = False
     lethal_probability: float = 0.0
+    known_enemy_attack_timeline: tuple = field(default_factory=tuple)
+    damage_before_coverage_ready: float = 0.0
+    second_attack_damage: float = 0.0
+    second_attack_lethal: bool = False
+    coverage_ready_turn: int | None = None
+    coverage_prevents_repeated_lethal: bool = False
+    must_hold_as_blocker: bool = False
+    cumulative_unavoidable_damage: float = 0.0
     debug_contributions: tuple[tuple[str, float, float, float], ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class BuilderBlockHorizonContext:
+    attack_projection: object
+    attack_candidate: object
+    baseline_report: object
 
 
 def generate_builder_block_candidates(defending_player, engine) -> list[BuilderBlockCandidate]:
@@ -104,7 +121,7 @@ def generate_builder_block_candidates(defending_player, engine) -> list[BuilderB
     return sorted(candidates, key=lambda candidate: candidate.assignments)
 
 
-def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_player, engine, *, cap_context=None) -> BuilderBlockScore:
+def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_player, engine, *, cap_context=None, horizon_context: BuilderBlockHorizonContext | None = None) -> BuilderBlockScore:
     attackers = get_declared_attackers_for_defender(defending_player, engine)
     blockers = get_available_blockers_for_defender(defending_player, engine)
     assignments = dict(candidate.assignments)
@@ -191,20 +208,25 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     prevented_player_damage = max(0.0, damage_without_blocks - expected_player_damage_taken)
     life_after_combat = max(0.0, life_total - expected_player_damage_taken)
     baseline_life_after_combat = max(0.0, life_total - damage_without_blocks)
-    known_unavoidable_next_damage = _estimate_known_next_flying_damage(
-        defending_player,
-        engine,
-        attackers=attackers,
-        blockers=blockers,
-        assignments=assignments,
+    if horizon_context is None:
+        attack_projection = build_current_turn_projection(engine.players[1 - defending_player.player_id], engine)
+        attack_candidate = BuilderAttackCandidate(attacker_ids=tuple(attacker.unit_id for attacker in attackers))
+        baseline_horizon_report = evaluate_block_horizon(
+            attack_projection,
+            attack_candidate,
+            tuple(),
+        )
+    else:
+        attack_projection = horizon_context.attack_projection
+        attack_candidate = horizon_context.attack_candidate
+        baseline_horizon_report = horizon_context.baseline_report
+    horizon_report = evaluate_block_horizon(
+        attack_projection,
+        attack_candidate,
+        tuple(sorted(candidate.assignments)),
     )
-    baseline_known_next_damage = _estimate_known_next_flying_damage(
-        defending_player,
-        engine,
-        attackers=attackers,
-        blockers=blockers,
-        assignments={},
-    )
+    known_unavoidable_next_damage = max(0.0, horizon_report.cumulative_unavoidable_damage - expected_player_damage_taken)
+    baseline_known_next_damage = max(0.0, baseline_horizon_report.cumulative_unavoidable_damage - damage_without_blocks)
     board_preservation = (
         (enemy_kill_value - own_death_value) * BOARD_PRESERVATION_WEIGHT
         + flying_scarcity_bonus
@@ -283,6 +305,14 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         total=round(total, 4),
         guaranteed_lethal=guaranteed_lethal,
         lethal_probability=round(lethal_probability, 4),
+        known_enemy_attack_timeline=horizon_report.known_enemy_attack_timeline,
+        damage_before_coverage_ready=round(horizon_report.damage_before_coverage_ready, 4),
+        second_attack_damage=round(horizon_report.second_attack_damage, 4),
+        second_attack_lethal=horizon_report.second_attack_lethal,
+        coverage_ready_turn=horizon_report.coverage_ready_turn,
+        coverage_prevents_repeated_lethal=horizon_report.coverage_prevents_repeated_lethal,
+        must_hold_as_blocker=horizon_report.must_hold_as_blocker,
+        cumulative_unavoidable_damage=round(horizon_report.cumulative_unavoidable_damage, 4),
         debug_contributions=tuple((name, round(raw, 4), round(weight, 4), round(contribution, 4)) for name, raw, weight, contribution in debug_contributions),
     )
 
@@ -295,8 +325,30 @@ def choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
         creature_cap=getattr(engine, "BUILDER_CREATURE_CAP", 5),
         resource_budget=defending_player.total_resources(),
     )
+    attack_projection = build_current_turn_projection(engine.players[1 - defending_player.player_id], engine)
+    attack_candidate = BuilderAttackCandidate(
+        attacker_ids=tuple(attacker.unit_id for attacker in get_declared_attackers_for_defender(defending_player, engine))
+    )
+    horizon_context = BuilderBlockHorizonContext(
+        attack_projection=attack_projection,
+        attack_candidate=attack_candidate,
+        baseline_report=evaluate_block_horizon(
+            attack_projection,
+            attack_candidate,
+            tuple(),
+        ),
+    )
     scored = [
-        (candidate, score_builder_block_candidate(candidate, defending_player, engine, cap_context=cap_context))
+        (
+            candidate,
+            score_builder_block_candidate(
+                candidate,
+                defending_player,
+                engine,
+                cap_context=cap_context,
+                horizon_context=horizon_context,
+            ),
+        )
         for candidate in candidates
     ]
     scored.sort(key=_block_candidate_sort_key, reverse=True)
@@ -458,7 +510,20 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
         resource_budget=defending_player.total_resources(),
     )
     available_blockers = get_available_blockers_for_defender(defending_player, engine)
+    ready_blockers = [blocker for blocker in defending_player.battlefield if not getattr(blocker, "tapped", False)]
     available_ids = {blocker.unit_id for blocker in available_blockers}
+    legal_blocker_rows = []
+    for attacker in attackers:
+        legal_blocker_rows.append(
+            (
+                attacker.unit_id,
+                [
+                    blocker.unit_id
+                    for blocker in available_blockers
+                    if can_legally_block(attacker, blocker, require_ready=True)
+                ],
+            )
+        )
     unavailable_rows = []
     for blocker in sorted(defending_player.battlefield, key=lambda current: current.unit_id):
         if blocker.unit_id in available_ids:
@@ -482,7 +547,8 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
 
     header_pairs = [
         ("incoming", [attacker.unit_id for attacker in attackers]),
-        ("available", [blocker.unit_id for blocker in available_blockers]),
+        ("all_ready_creatures", [blocker.unit_id for blocker in ready_blockers]),
+        ("legal_blockers", [f"{attacker_id}:{blockers}" for attacker_id, blockers in legal_blocker_rows]),
         ("unavailable", unavailable_rows),
         ("assignments", len(scored_candidates)),
         ("cap_pressure", cap_context.cap_pressure),
@@ -515,6 +581,13 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
                 ("taken", score.expected_player_damage_taken),
                 ("prevented", score.prevented_player_damage),
                 ("known_unavoidable_next_damage", score.known_unavoidable_next_damage),
+                ("damage_before_coverage_ready", score.damage_before_coverage_ready),
+                ("second_attack_damage", score.second_attack_damage),
+                ("second_attack_lethal", score.second_attack_lethal),
+                ("coverage_ready_turn", score.coverage_ready_turn),
+                ("coverage_prevents_repeated_lethal", score.coverage_prevents_repeated_lethal),
+                ("must_hold_as_blocker", score.must_hold_as_blocker),
+                ("cumulative_unavoidable_damage", score.cumulative_unavoidable_damage),
                 ("enemy_creature_damage", score.enemy_creature_damage),
                 ("own_creature_damage", score.own_creature_damage),
                 ("enemy_kill", score.enemy_kill_value),
@@ -548,11 +621,22 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
         decision="block",
         pairs=(
             ("choose", [] if best_candidate is None else list(best_candidate.assignments)),
+            ("selected_blockers", [] if best_candidate is None else [blocker_id for _, blocker_id in best_candidate.assignments]),
+            ("all_ready_creatures", [blocker.unit_id for blocker in ready_blockers]),
+            ("legal_blockers", [f"{attacker_id}:{blockers}" for attacker_id, blockers in legal_blocker_rows]),
             ("total", 0.0 if best_score is None else best_score.total),
+            ("current_incoming_damage", sum(estimate_unblocked_attack(attacker).player_damage for attacker in attackers)),
+            ("prevented_damage", 0.0 if best_score is None else best_score.prevented_player_damage),
+            ("life_after_combat", 0.0 if best_score is None else best_score.life_after_combat),
+            ("projected_repeated_damage", 0.0 if best_score is None else best_score.cumulative_unavoidable_damage),
+            ("immediate_lethal_prevention", 0.0 if best_score is None else best_score.immediate_lethal_prevention),
+            ("next_attack_lethal_prevention", 0.0 if best_score is None else best_score.next_attack_lethal_prevention),
             ("runner_up", "N/A" if runner_up is None else list(runner_up[0].assignments)),
             ("runner_up_total", "N/A" if runner_up is None else runner_up[1].total),
             ("gap", "N/A" if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
             ("delta_keys", "N/A" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
+            ("decision_score", 0.0 if best_score is None else best_score.total),
+            ("final_reason", "max_total"),
         ),
     )
     if builder_debug_verbose() and builder_debug_include_fingerprints():

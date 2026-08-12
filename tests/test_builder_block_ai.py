@@ -8,11 +8,14 @@ from unittest.mock import patch
 from core.ai.builder import (
     BuilderBlockCandidate,
     choose_builder_blocks,
+    evaluate_block_horizon,
     generate_builder_block_candidates,
     score_builder_block_candidate,
 )
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
+from core.ai.builder.turn_projection import build_current_turn_projection
+from core.ai.builder.attack_policy import BuilderAttackCandidate
 
 
 class BuilderBlockAITests(unittest.TestCase):
@@ -225,6 +228,43 @@ class BuilderBlockAITests(unittest.TestCase):
 
         self.assertEqual(assignments[ground.unit_id], blocker.unit_id)
         self.assertIsNone(assignments[flying.unit_id])
+
+    def test_block_horizon_tracks_repeated_flying_damage(self) -> None:
+        flyer = self.make_builder_creature(1, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        self.engine.human_player.life = 10
+        self.set_attackers(flyer)
+
+        projection = build_current_turn_projection(self.engine.ai_player, self.engine)
+        report = evaluate_block_horizon(
+            projection,
+            BuilderAttackCandidate(attacker_ids=(flyer.unit_id,)),
+            tuple(),
+        )
+
+        self.assertEqual(report.second_attack_damage, 5.0)
+        self.assertEqual(report.cumulative_unavoidable_damage, 10.0)
+        self.assertFalse(report.coverage_prevents_repeated_lethal)
+        self.assertIsNone(report.coverage_ready_turn)
+
+    def test_block_horizon_counts_future_flying_blocker_when_ready_in_time(self) -> None:
+        flyer = self.make_builder_creature(1, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        blocker = self.make_builder_creature(0, aw=0, vw=1, sw=0, lw=2, ready=True, abilities=(Ability.FLYING,))
+        self.engine.human_player.life = 10
+        self.set_attackers(flyer)
+
+        projection = build_current_turn_projection(self.engine.ai_player, self.engine)
+        report = evaluate_block_horizon(
+            projection,
+            BuilderAttackCandidate(attacker_ids=(flyer.unit_id,)),
+            tuple(),
+        )
+
+        self.assertEqual(report.second_attack_damage, 5.0)
+        self.assertTrue(report.coverage_prevents_repeated_lethal)
+        self.assertEqual(report.cumulative_unavoidable_damage, 5.0)
+        self.assertEqual(report.coverage_ready_turn, 1)
+        self.assertTrue(report.must_hold_as_blocker)
+        self.assertIsNotNone(blocker)
 
     def test_assignment_pairing_prefers_better_overall_matching(self) -> None:
         a1 = self.make_builder_creature(1, aw=1, vw=1, sw=5, lw=2, ready=True)

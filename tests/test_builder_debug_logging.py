@@ -122,6 +122,18 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         blocker.tapped = False
         return engine
 
+    def make_flying_block_engine(self) -> tuple[GameEngine, int, int, int]:
+        engine = self.make_engine()
+        engine.phase = PHASE_DECLARE_BLOCKERS
+        engine.active_player_index = engine.human_player.player_id
+        attacker = self.make_builder_creature(engine, 0, aw=2, vw=1, sw=3, lw=2, ready=True)
+        attacker.abilities = frozenset({Ability.FLYING})
+        ground = self.make_builder_creature(engine, 1, aw=0, vw=2, sw=0, lw=2, ready=True)
+        flying = self.make_builder_creature(engine, 1, aw=0, vw=1, sw=0, lw=2, ready=True)
+        flying.abilities = frozenset({Ability.FLYING})
+        engine.block_assignments = {attacker.unit_id: None}
+        return engine, attacker.unit_id, ground.unit_id, flying.unit_id
+
     def make_cap_attack_engine(self) -> GameEngine:
         engine = self.make_engine()
         engine.phase = PHASE_DECLARE_ATTACKERS
@@ -198,6 +210,8 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertTrue(self.debug_lines(block_engine.log_messages, "[AI BLOCK]"))
         self.assertIn("blocks=[]", block_logs)
         self.assertIn("blocks=[[", block_logs)
+        self.assertIn("all_ready_creatures=", block_logs)
+        self.assertIn("legal_blockers=", block_logs)
 
     def test_debug_level_two_emits_weights_state_contributions_and_fingerprints(self) -> None:
         self.set_debug(2, top_n=1, build_top_n=1)
@@ -336,8 +350,25 @@ class BuilderDebugLoggingTests(unittest.TestCase):
 
         self.assertIn("counter_search_exact=", logs)
         self.assertIn("counter_fallback_used=", logs)
-        self.assertIn("projected_enemy_main_action=", logs)
-        self.assertIn("projected_enemy_attackers=", logs)
+
+    def test_block_logging_separates_all_ready_creatures_from_legal_blockers_for_flying(self) -> None:
+        self.set_debug(1, top_n=2)
+        engine, attacker_id, ground_id, flying_id = self.make_flying_block_engine()
+
+        choose_builder_blocks(engine.ai_player, engine)
+
+        header = self.line_containing(engine.log_messages, "all_ready_creatures=")
+        self.assertIn(f"all_ready_creatures=[{ground_id},{flying_id}]", header)
+        self.assertIn(f"legal_blockers=[{attacker_id}:[{flying_id}]]", header)
+
+    def test_block_logging_emits_single_choose_summary(self) -> None:
+        self.set_debug(1, top_n=2)
+        block_engine = self.make_block_engine()
+
+        choose_builder_blocks(block_engine.ai_player, block_engine)
+
+        choose_lines = [line for line in block_engine.log_messages if line.startswith("[AI BLOCK]") and "choose=" in line]
+        self.assertEqual(len(choose_lines), 1)
 
     def test_cap_attack_logging_shows_slot_and_cap_context_without_guaranteeing_release(self) -> None:
         self.set_debug(1, top_n=4)

@@ -209,10 +209,14 @@ def score_delta_keys(primary_score, secondary_score, *, limit: int = 3) -> str:
         for field_name, value in primary_score.__dict__.items()
         if isinstance(value, (int, float)) and field_name not in {"total", "selection_score", "baseline_attack_score", "projected_attack_score"}
     ]
-    ranked = sorted(
-        ((abs(getattr(primary_score, field_name, 0.0) - getattr(secondary_score, field_name, 0.0)), field_name) for field_name in fields),
-        reverse=True,
-    )
+    ranked = []
+    for field_name in fields:
+        primary_value = getattr(primary_score, field_name, 0.0)
+        secondary_value = getattr(secondary_score, field_name, 0.0)
+        if not isinstance(primary_value, (int, float)) or not isinstance(secondary_value, (int, float)):
+            continue
+        ranked.append((abs(primary_value - secondary_value), field_name))
+    ranked.sort(reverse=True)
     parts = []
     for _, field_name in ranked[:limit]:
         delta = getattr(primary_score, field_name, 0.0) - getattr(secondary_score, field_name, 0.0)
