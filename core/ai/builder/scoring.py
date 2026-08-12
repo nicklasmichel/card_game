@@ -23,7 +23,7 @@ RAW_STAT_WEIGHTS = {
 }
 
 ABILITY_BASE_WEIGHTS = {
-    Ability.HASTE: 0.08,
+    Ability.HASTE: 0.0,
     Ability.FLYING: 0.45,
     Ability.ENRAGED: 0.35,
     Ability.TRAMPLE: 0.25,
@@ -193,10 +193,6 @@ def _score_synergy(candidate: BuilderCreatureCandidate, snapshot: BuilderStrateg
     high_sw = candidate.sw >= 3
     meaningful_defense = candidate.vw >= 2 or candidate.lw >= 3
 
-    if {Ability.HASTE, Ability.TRAMPLE}.issubset(abilities):
-        score += SYNERGY_WEIGHTS["haste_trample"]
-    if {Ability.HASTE, Ability.FLYING}.issubset(abilities):
-        score += SYNERGY_WEIGHTS["haste_flying"]
     if Ability.FLYING in abilities and high_sw:
         score += SYNERGY_WEIGHTS["flying_high_sw"]
     if {Ability.FLYING, Ability.ENRAGED}.issubset(abilities):
@@ -218,8 +214,6 @@ def _score_synergy(candidate: BuilderCreatureCandidate, snapshot: BuilderStrateg
         score += ANTI_SYNERGY_WEIGHTS["life_steal_no_sw"]
     if Ability.TRAMPLE in abilities and candidate.sw == 0:
         score += ANTI_SYNERGY_WEIGHTS["trample_no_sw"]
-    if Ability.HASTE in abilities and candidate.aw == 0 and candidate.sw == 0:
-        score += ANTI_SYNERGY_WEIGHTS["haste_passive"]
     if Ability.VIGILANT in abilities and candidate.aw == 0 and candidate.vw == 0 and candidate.lw <= 1:
         score += ANTI_SYNERGY_WEIGHTS["vigilant_low_impact"]
     if Ability.ENRAGED in abilities and snapshot.enemy_creature_count == 0:

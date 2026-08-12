@@ -214,6 +214,18 @@ class BuilderBlockAITests(unittest.TestCase):
         self.assertGreater(block_score.enemy_lifesteal_value, 0)
         self.assertLessEqual(block_score.expected_player_damage_taken, no_block_score.expected_player_damage_taken)
 
+    def test_blocking_ground_attacker_prevents_known_next_flying_lethal(self) -> None:
+        flying = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+        ground = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        blocker = self.make_builder_creature(0, aw=1, vw=2, sw=1, lw=3, ready=True)
+        self.engine.human_player.life = 6
+        self.set_attackers(flying, ground)
+
+        assignments = choose_builder_blocks(self.engine.human_player, self.engine)
+
+        self.assertEqual(assignments[ground.unit_id], blocker.unit_id)
+        self.assertIsNone(assignments[flying.unit_id])
+
     def test_assignment_pairing_prefers_better_overall_matching(self) -> None:
         a1 = self.make_builder_creature(1, aw=1, vw=1, sw=5, lw=2, ready=True)
         a2 = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=5, ready=True)

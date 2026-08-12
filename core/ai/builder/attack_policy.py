@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from itertools import combinations
 
 import core.config as config
+from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.models import Ability
 
 from .config import BUILDER_AI_WEIGHTS
@@ -20,16 +21,18 @@ from .debug import (
     select_scored_rows,
 )
 from .cap_strategy import compute_builder_cap_context
+from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
 from .combat_assignments import (
     convolve_damage_distributions,
     generate_block_assignment_tuples,
     player_damage_distribution_for_combat,
 )
 from .combat_eval import can_legally_be_forced_to_block, can_legally_block, estimate_builder_combat, estimate_unblocked_attack
+from .snapshot import build_builder_snapshot
 from .search_budget import BuilderSearchBudget, FINAL_DECISION_SEARCH_BUDGET, TURN_LOOKAHEAD_SEARCH_BUDGET
 from .scoring import estimate_creature_board_value
-from .turn_projection import BuilderTurnProjection, ProjectedPlayerView, ProjectedUnitView
-from .turn_types import BuilderSearchMetadata
+from .turn_projection import BuilderTurnProjection, ProjectedPlayerView, ProjectedUnitView, project_creature_action, project_pass_action, project_resource_action
+from .turn_types import BuilderSearchMetadata, BuilderTurnActionCandidate
 
 PLAYER_DAMAGE_WEIGHT = 2.2
 ENEMY_BOARD_DAMAGE_WEIGHT = 0.5
@@ -57,6 +60,8 @@ COUNTERATTACK_SEARCH_BUDGET = BuilderSearchBudget(
     mode_name="counter",
 )
 LOOKAHEAD_FOLLOWUP_SHORTLIST_LIMIT = 4
+FINAL_FOLLOWUP_SHORTLIST_LIMIT = 4
+COUNTER_MAIN_ACTION_BUILD_LIMIT = 6
 
 
 @dataclass(frozen=True)
@@ -82,6 +87,13 @@ class BuilderAttackScore:
     projected_counter_damage: float = 0.0
     projected_counter_kill_value: float = 0.0
     counter_lethal_risk: float = 0.0
+    counter_search_exact: bool = True
+    counter_fallback_used: bool = False
+    counter_fallback_reason: str = ""
+    projected_counter_main_action: str = "pass"
+    projected_counter_main_stats: str = "-"
+    projected_counter_attackers: tuple[int, ...] = ()
+    projected_counter_legal_blockers: tuple[tuple[int, tuple[int, ...]], ...] = ()
     lethal_probability: float = 0.0
     guaranteed_player_damage: float = 0.0
     chosen_block_assignment: tuple[tuple[int, int], ...] = ()
@@ -95,6 +107,18 @@ class BuilderAttackDecision:
     defensive_response: tuple[tuple[int, int], ...] | None
     search_metadata: BuilderSearchMetadata
     scored_candidates: tuple[tuple[BuilderAttackCandidate, BuilderAttackScore], ...] = ()
+
+
+@dataclass(frozen=True)
+class BuilderCounterResult:
+    score: BuilderAttackScore
+    search_exact: bool
+    fallback_used: bool
+    fallback_reason: str
+    main_action_kind: str
+    main_action_stats: str = "-"
+    attackers: tuple[int, ...] = ()
+    legal_blockers: tuple[tuple[int, tuple[int, ...]], ...] = ()
 
 
 def evaluate_best_builder_attack(
@@ -129,7 +153,7 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     evaluated_block_assignments = 0
     block_pruned = 0
     block_exact = True
-    counter_cache: dict[tuple, BuilderAttackScore] | None = {} if include_counterattack else None
+    counter_cache: dict[tuple, BuilderCounterResult] | None = {} if include_counterattack else None
     for candidate in candidates:
         score, block_metadata = _score_builder_attack_candidate_details(
             candidate,
@@ -148,18 +172,53 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     if include_counterattack and scored_candidates:
         scored_candidates.sort(key=_attack_candidate_sort_key, reverse=True)
         followup_indexes = _select_followup_shortlist_indexes(scored_candidates, search_budget)
+        no_attack_index = next(
+            (
+                index
+                for index, (candidate, _score) in enumerate(scored_candidates)
+                if not candidate.attacker_ids
+            ),
+            None,
+        )
+        baseline_counter: BuilderCounterResult | None = None
+        if no_attack_index is not None:
+            no_attack_candidate, no_attack_score = scored_candidates[no_attack_index]
+            no_attack_score = _apply_enemy_followup_pressure(
+                no_attack_score,
+                candidate=no_attack_candidate,
+                block_assignment=no_attack_score.chosen_block_assignment,
+                player=player,
+                enemy=enemy,
+                search_budget=search_budget,
+                counter_cache=counter_cache,
+                full_search=True,
+                baseline_counter=None,
+            )
+            scored_candidates[no_attack_index] = (no_attack_candidate, no_attack_score)
+            baseline_counter = BuilderCounterResult(
+                score=no_attack_score,
+                search_exact=no_attack_score.counter_search_exact,
+                fallback_used=no_attack_score.counter_fallback_used,
+                fallback_reason=no_attack_score.counter_fallback_reason,
+                main_action_kind=no_attack_score.projected_counter_main_action,
+                main_action_stats=no_attack_score.projected_counter_main_stats,
+            )
         rescored: list[tuple[BuilderAttackCandidate, BuilderAttackScore]] = []
         for index, (candidate, score) in enumerate(scored_candidates):
-            if index in followup_indexes:
-                score = _apply_enemy_followup_pressure(
-                    score,
-                    candidate=candidate,
-                    block_assignment=score.chosen_block_assignment,
-                    player=player,
-                    enemy=enemy,
-                    search_budget=search_budget,
-                    counter_cache=counter_cache,
-                )
+            if no_attack_index is not None and index == no_attack_index:
+                rescored.append((candidate, score))
+                continue
+            score = _apply_enemy_followup_pressure(
+                score,
+                candidate=candidate,
+                block_assignment=score.chosen_block_assignment,
+                player=player,
+                enemy=enemy,
+                search_budget=search_budget,
+                counter_cache=counter_cache,
+                full_search=index in followup_indexes,
+                baseline_counter=baseline_counter,
+            )
             rescored.append((candidate, score))
         scored_candidates = rescored
     scored_candidates.sort(key=_attack_candidate_sort_key, reverse=True)
@@ -194,7 +253,7 @@ def _select_followup_shortlist_indexes(
     if search_budget.mode_name == TURN_LOOKAHEAD_SEARCH_BUDGET.mode_name:
         limit = min(len(scored_candidates), LOOKAHEAD_FOLLOWUP_SHORTLIST_LIMIT)
     else:
-        limit = min(len(scored_candidates), max(1, search_budget.max_heuristic_attack_candidates))
+        limit = min(len(scored_candidates), FINAL_FOLLOWUP_SHORTLIST_LIMIT)
     selected = set(range(limit))
     no_attack_index = next(
         (
@@ -297,6 +356,23 @@ def score_builder_attack_candidate(
         cap_context=cap_context,
         include_counterattack=include_counterattack,
     )
+    if include_counterattack and candidate.attacker_ids:
+        baseline_counter = _estimate_candidate_counterattack(
+            BuilderAttackCandidate(attacker_ids=()),
+            (),
+            player,
+            enemy,
+            search_budget=search_budget,
+            counter_cache=None,
+            full_search=True,
+        )
+        concrete_lost_block_value = max(0.0, score.projected_counter_damage - baseline_counter.score.player_damage)
+        if concrete_lost_block_value > 0.0:
+            score = replace(
+                score,
+                lost_block_value=round(concrete_lost_block_value, 4),
+                total=round(score.total - concrete_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value, 4),
+            )
     return score
 
 
@@ -340,6 +416,8 @@ def _score_builder_attack_candidate_details(
                 player=player,
                 enemy=enemy,
                 search_budget=search_budget,
+                full_search=True,
+                baseline_counter=None,
             )
         return (
             base_score,
@@ -385,6 +463,8 @@ def _score_builder_attack_candidate_details(
             player=player,
             enemy=enemy,
             search_budget=search_budget,
+            full_search=True,
+            baseline_counter=None,
         )
     return best_response, block_metadata
 
@@ -397,20 +477,30 @@ def _apply_enemy_followup_pressure(
     player,
     enemy,
     search_budget,
-    counter_cache: dict[tuple, BuilderAttackScore] | None = None,
+    counter_cache: dict[tuple, BuilderCounterResult] | None = None,
+    full_search: bool,
+    baseline_counter: BuilderCounterResult | None,
 ) -> BuilderAttackScore:
     if base_score.guaranteed_player_damage >= enemy.life > 0:
         return base_score
-    counter_score = _estimate_candidate_counterattack(
+    counter_result = _estimate_candidate_counterattack(
         candidate,
         block_assignment,
         player,
         enemy,
         search_budget=search_budget,
         counter_cache=counter_cache,
+        full_search=full_search,
     )
+    counter_score = counter_result.score
     adjusted_total = base_score.total
-    lost_block_penalty = base_score.lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
+    concrete_lost_block_value = 0.0
+    if baseline_counter is not None and candidate.attacker_ids:
+        baseline_damage = baseline_counter.score.projected_counter_damage
+        concrete_lost_block_value = max(0.0, counter_score.player_damage - baseline_damage)
+        if counter_score.guaranteed_player_damage >= player.life > 0 and baseline_counter.score.guaranteed_player_damage < player.life:
+            concrete_lost_block_value += max(0.0, player.life - baseline_damage)
+    lost_block_penalty = concrete_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
     counter_damage_penalty = counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
     counter_lethal_penalty = counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
     adjusted_total -= lost_block_penalty
@@ -427,7 +517,7 @@ def _apply_enemy_followup_pressure(
     ) + (
         (
             "lost_block",
-            round(base_score.lost_block_value, 4),
+            round(concrete_lost_block_value, 4),
             round(-BUILDER_AI_WEIGHTS.lost_block_value, 4),
             round(-lost_block_penalty, 4),
         ),
@@ -452,9 +542,17 @@ def _apply_enemy_followup_pressure(
     )
     return replace(
         base_score,
+        lost_block_value=round(concrete_lost_block_value, 4),
         projected_counter_damage=round(counter_score.player_damage, 4),
         projected_counter_kill_value=round(counter_score.enemy_kill_value, 4),
         counter_lethal_risk=round(counter_score.lethal_probability, 4),
+        counter_search_exact=counter_result.search_exact,
+        counter_fallback_used=counter_result.fallback_used,
+        counter_fallback_reason=counter_result.fallback_reason,
+        projected_counter_main_action=counter_result.main_action_kind,
+        projected_counter_main_stats=counter_result.main_action_stats,
+        projected_counter_attackers=counter_result.attackers,
+        projected_counter_legal_blockers=counter_result.legal_blockers,
         total=round(adjusted_total, 4),
         debug_contributions=debug_contributions,
     )
@@ -753,22 +851,46 @@ def _estimate_candidate_counterattack(
     enemy,
     *,
     search_budget,
-    counter_cache: dict[tuple, BuilderAttackScore] | None = None,
-) -> BuilderAttackScore:
+    counter_cache: dict[tuple, BuilderCounterResult] | None = None,
+    full_search: bool,
+) -> BuilderCounterResult:
     counter_projection = _build_counterattack_projection(candidate, block_assignment, player, enemy)
-    if counter_cache is not None and counter_projection.state_signature in counter_cache:
-        return counter_cache[counter_projection.state_signature]
-    counter_player = counter_projection.players[counter_projection.player_id]
-    counter_decision, _ = _evaluate_best_builder_attack_details(
-        counter_player,
-        counter_projection,
-        search_budget=COUNTERATTACK_SEARCH_BUDGET,
-        include_counterattack=False,
-        debug_output=False,
-    )
+    cache_key = (counter_projection.state_signature, full_search)
+    if counter_cache is not None and cache_key in counter_cache:
+        return counter_cache[cache_key]
+    best_result: BuilderCounterResult | None = None
+    build_limit = COUNTER_MAIN_ACTION_BUILD_LIMIT if full_search else 2
+    for main_action_kind, main_action_stats, projected_state in _generate_counter_main_action_projections(counter_projection, build_limit=build_limit):
+        current = _evaluate_counter_projection_attack(
+            projected_state,
+            main_action_kind=main_action_kind,
+            main_action_stats=main_action_stats,
+            full_search=full_search,
+        )
+        if best_result is None or _counter_result_sort_key(current, projected_state.enemy_life) > _counter_result_sort_key(best_result, counter_projection.enemy_life):
+            best_result = current
+    if best_result is None:
+        best_result = BuilderCounterResult(
+            score=BuilderAttackScore(
+                player_damage=0.0,
+                enemy_creature_damage=0.0,
+                own_creature_damage=0.0,
+                enemy_kill_value=0.0,
+                own_death_risk=0.0,
+                lifesteal_value=0.0,
+                board_position_value=0.0,
+                vigilance_value=0.0,
+                lethal_value=0.0,
+                total=0.0,
+            ),
+            search_exact=True,
+            fallback_used=False,
+            fallback_reason="",
+            main_action_kind="pass",
+        )
     if counter_cache is not None:
-        counter_cache[counter_projection.state_signature] = counter_decision.score
-    return counter_decision.score
+        counter_cache[cache_key] = best_result
+    return best_result
 
 
 def _build_counterattack_projection(
@@ -876,7 +998,258 @@ def _build_counterattack_projection(
         available_attacker_ids=tuple(unit.unit_id for unit in own_post if unit.is_ready()),
         hypothetical_unit_id=None,
         candidate_signature=("counterattack", candidate.attacker_ids),
-        state_signature=("counterattack", candidate.attacker_ids),
+        state_signature=_counter_projection_signature(
+            enemy.player_id,
+            player.player_id,
+            enemy.life,
+            player.life,
+            enemy.total_resources(),
+            enemy.available_resources(),
+            player.total_resources(),
+            player.available_resources(),
+            tuple(own_post),
+            tuple(enemy_post),
+        ),
+    )
+
+
+def _generate_counter_main_action_projections(counter_projection: BuilderTurnProjection, *, build_limit: int):
+    yield "pass", "-", project_pass_action(counter_projection)
+    if len(counter_projection.own_units) >= BUILDER_CREATURE_CAP:
+        return
+    counter_player = counter_projection.players[counter_projection.player_id]
+    counter_snapshot = build_builder_snapshot(counter_player, counter_projection)
+    legal_haste_builds = [
+        current
+        for current in generate_builder_creature_candidates(counter_snapshot, counter_projection.own_ready_resources)
+        if current.has_haste and is_legal_builder_candidate(current, counter_projection.own_ready_resources)
+    ]
+    legal_haste_builds.sort(
+        key=lambda current: (
+            current.sw,
+            current.aw,
+            current.vw,
+            current.lw,
+            -current.cost,
+            current.key,
+        ),
+        reverse=True,
+    )
+    for current in legal_haste_builds[: max(1, build_limit)]:
+        action = BuilderTurnActionCandidate(
+            action_kind="creature",
+            creature_candidate=current,
+            projected_total_resources=counter_projection.own_total_resources,
+            projected_ready_resources=max(0, counter_projection.own_ready_resources - current.cost),
+            generation_reason="counter_haste",
+        )
+        yield (
+            "build_haste",
+            f"{current.aw}/{current.vw}/{current.sw}/{current.lw}/{getattr(current.builder_ability, 'value', '-')}",
+            project_creature_action(counter_projection, action),
+        )
+
+
+def _evaluate_counter_projection_attack(
+    projection: BuilderTurnProjection,
+    *,
+    main_action_kind: str,
+    main_action_stats: str,
+    full_search: bool,
+) -> BuilderCounterResult:
+    return _fallback_counterattack(
+        projection,
+        main_action_kind=main_action_kind,
+        main_action_stats=main_action_stats,
+        fast_mode=not full_search,
+    )
+
+
+def _fallback_counterattack(
+    projection: BuilderTurnProjection,
+    *,
+    main_action_kind: str,
+    main_action_stats: str,
+    fast_mode: bool,
+) -> BuilderCounterResult:
+    counter_player = projection.players[projection.player_id]
+    defender = projection.players[projection.enemy_id]
+    available_attackers = list(projection.available_attackers(counter_player))
+    enemy_battlefield = list(defender.battlefield)
+    exact_attack = (
+        not fast_mode
+        and len(available_attackers) <= FULL_ATTACK_ENUMERATION_THRESHOLD
+        and estimate_attack_candidate_upper_bound(available_attackers, enemy_battlefield) <= COUNTERATTACK_SEARCH_BUDGET.max_exact_attack_candidates
+    )
+    if fast_mode:
+        candidates = _generate_fast_counter_candidates(available_attackers, enemy_battlefield)
+    else:
+        candidates = (
+            _generate_exhaustive_attack_candidates(available_attackers, enemy_battlefield)
+            if exact_attack
+            else _generate_structured_attack_candidates(available_attackers, enemy_battlefield)
+        )
+    best_candidate = BuilderAttackCandidate(attacker_ids=())
+    best_score = BuilderAttackScore(
+        player_damage=0.0,
+        enemy_creature_damage=0.0,
+        own_creature_damage=0.0,
+        enemy_kill_value=0.0,
+        own_death_risk=0.0,
+        lifesteal_value=0.0,
+        board_position_value=0.0,
+        vigilance_value=0.0,
+        lethal_value=0.0,
+        total=0.0,
+    )
+    exact_blocks = True
+    pair_cache: dict[tuple[int, int], tuple] = {}
+    for current in candidates:
+        block_metadata: dict = {}
+        assignments = generate_builder_block_assignments(
+            current,
+            counter_player,
+            defender,
+            projection,
+            search_budget=COUNTERATTACK_SEARCH_BUDGET,
+            metadata=block_metadata,
+        )
+        exact_blocks = exact_blocks and block_metadata.get("exact_search", False)
+        scored = [
+            evaluate_attack_assignment(
+                current,
+                assignment,
+                counter_player,
+                defender,
+                projection,
+                pair_cache=pair_cache,
+                block_value_cache=None,
+                cap_context=None,
+            )
+            for assignment in assignments
+        ]
+        if not scored:
+            continue
+        defended = min(scored, key=lambda score: _counter_response_sort_key(score, defender.life))
+        if _counter_score_sort_key(defended, defender.life) > _counter_score_sort_key(best_score, defender.life):
+            best_candidate = current
+            best_score = defended
+    return BuilderCounterResult(
+        score=best_score,
+        search_exact=bool(exact_attack and exact_blocks),
+        fallback_used=not (exact_attack and exact_blocks),
+        fallback_reason="" if exact_attack and exact_blocks else "fallback_search",
+        main_action_kind=main_action_kind,
+        main_action_stats=main_action_stats,
+        attackers=tuple(best_candidate.attacker_ids),
+        legal_blockers=_counter_legal_blocker_map(projection, best_candidate.attacker_ids),
+    )
+
+
+def _generate_fast_counter_candidates(available_attackers: list, enemy_battlefield: list) -> list[BuilderAttackCandidate]:
+    candidates: dict[tuple, BuilderAttackCandidate] = { (tuple(), tuple()): BuilderAttackCandidate(attacker_ids=(), enraged_targets=(), generation_reason="none") }
+
+    def add(group: list, reason: str) -> None:
+        for current in _expand_enraged_targets(group, enemy_battlefield, heuristic=True):
+            candidates[(current.attacker_ids, current.enraged_targets)] = BuilderAttackCandidate(
+                attacker_ids=current.attacker_ids,
+                enraged_targets=current.enraged_targets,
+                generation_reason=reason,
+            )
+
+    add(available_attackers, "all")
+    add([unit for unit in available_attackers if unit.has_ability(Ability.FLYING)], "flying")
+    by_sw = sorted(available_attackers, key=lambda unit: (unit.sw, unit.aw, unit.unit_id), reverse=True)
+    by_value = sorted(available_attackers, key=lambda unit: (estimate_creature_board_value(unit), unit.sw, unit.unit_id), reverse=True)
+    if by_sw:
+        add(by_sw[: min(2, len(by_sw))], "top_sw")
+    if by_value:
+        add(by_value[:1], "top_value")
+    for unit in by_sw[: min(2, len(by_sw))]:
+        add([unit], "single")
+    return sorted(candidates.values(), key=lambda current: (len(current.attacker_ids), current.attacker_ids, current.enraged_targets))
+
+
+def _counter_score_sort_key(score: BuilderAttackScore, defender_life: int) -> tuple:
+    return (
+        score.guaranteed_player_damage >= defender_life > 0,
+        score.lethal_probability,
+        score.guaranteed_player_damage,
+        score.player_damage,
+        score.enemy_kill_value,
+        -score.own_death_risk,
+    )
+
+
+def _counter_response_sort_key(score: BuilderAttackScore, defender_life: int) -> tuple:
+    return (
+        score.guaranteed_player_damage >= defender_life > 0,
+        score.lethal_probability,
+        score.guaranteed_player_damage,
+        score.player_damage,
+        score.enemy_kill_value,
+        tuple(score.chosen_block_assignment),
+    )
+
+
+def _counter_result_sort_key(result: BuilderCounterResult, defender_life: int) -> tuple:
+    return _counter_score_sort_key(result.score, defender_life) + (result.main_action_kind, result.attackers)
+
+
+def _counter_legal_blocker_map(projection: BuilderTurnProjection, attacker_ids: tuple[int, ...]) -> tuple[tuple[int, tuple[int, ...]], ...]:
+    defender = projection.players[projection.enemy_id]
+    available_blockers = list(projection.available_blockers(defender))
+    rows: list[tuple[int, tuple[int, ...]]] = []
+    for attacker_id in attacker_ids:
+        attacker = projection.get_unit_by_id(attacker_id)
+        if attacker is None:
+            continue
+        legal = tuple(
+            blocker.unit_id
+            for blocker in available_blockers
+            if can_legally_block(attacker, blocker, require_ready=True)
+        )
+        rows.append((attacker_id, legal))
+    return tuple(rows)
+
+
+def _counter_projection_signature(
+    player_id: int,
+    enemy_id: int,
+    own_life: int,
+    enemy_life: int,
+    own_total_resources: int,
+    own_ready_resources: int,
+    enemy_total_resources: int,
+    enemy_ready_resources: int,
+    own_units: tuple[ProjectedUnitView, ...],
+    enemy_units: tuple[ProjectedUnitView, ...],
+) -> tuple:
+    return (
+        player_id,
+        enemy_id,
+        own_life,
+        enemy_life,
+        own_total_resources,
+        own_ready_resources,
+        enemy_total_resources,
+        enemy_ready_resources,
+        tuple(_counter_unit_signature(unit) for unit in own_units),
+        tuple(_counter_unit_signature(unit) for unit in enemy_units),
+    )
+
+
+def _counter_unit_signature(unit: ProjectedUnitView) -> tuple:
+    return (
+        unit.unit_id,
+        unit.aw,
+        unit.vw,
+        unit.sw,
+        unit.lw,
+        unit.current_hp,
+        unit.tapped,
+        unit.summoning_sickness,
+        tuple(sorted(ability.value for ability in unit.abilities)),
     )
 
 
@@ -976,6 +1349,13 @@ def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> N
                 ("projected_counter_damage", score.projected_counter_damage),
                 ("projected_counter_kill_value", score.projected_counter_kill_value),
                 ("enemy_lethal_risk", score.counter_lethal_risk),
+                ("counter_search_exact", score.counter_search_exact),
+                ("counter_fallback_used", score.counter_fallback_used),
+                ("counter_fallback_reason", score.counter_fallback_reason or "none"),
+                ("projected_enemy_main_action", score.projected_counter_main_action),
+                ("projected_enemy_main_stats", score.projected_counter_main_stats),
+                ("projected_enemy_attackers", list(score.projected_counter_attackers)),
+                ("projected_legal_blockers", [f"{attacker_id}:{list(blockers)}" for attacker_id, blockers in score.projected_counter_legal_blockers]),
                 ("board_position_value", score.board_position_value),
                 ("response_policy", "adversarial_worst_for_attacker"),
                 ("best_response", list(score.chosen_block_assignment)),
@@ -1005,10 +1385,10 @@ def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> N
         pairs=(
             ("choose", [] if best_candidate is None else list(best_candidate.attacker_ids)),
             ("total", 0.0 if best_score is None else best_score.total),
-            ("runner_up", "-" if runner_up is None else list(runner_up[0].attacker_ids)),
-            ("runner_up_total", 0.0 if runner_up is None else runner_up[1].total),
-            ("gap", 0.0 if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
-            ("delta_keys", "-" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
+            ("runner_up", "N/A" if runner_up is None else list(runner_up[0].attacker_ids)),
+            ("runner_up_total", "N/A" if runner_up is None else runner_up[1].total),
+            ("gap", "N/A" if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
+            ("delta_keys", "N/A" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
         ),
     )
     if builder_debug_verbose() and builder_debug_include_fingerprints():

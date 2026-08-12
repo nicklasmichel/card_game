@@ -29,6 +29,8 @@ from .debug import (
     select_scored_rows,
 )
 from .scoring import estimate_creature_board_value
+from .turn_projection import normalize_builder_abilities
+from .turn_types import ProjectedUnitView
 
 PLAYER_DAMAGE_TAKEN_PENALTY = 2.6
 OWN_DEATH_VALUE_PENALTY = 1.35
@@ -44,6 +46,8 @@ OWN_CREATURE_DAMAGE_PENALTY = 0.14
 BOARD_PRESERVATION_WEIGHT = 0.16
 FLYING_BLOCKER_PRESERVATION_WEIGHT = 0.22
 CAP_SLOT_RELEASE_WEIGHT = 0.6
+NEXT_ATTACK_LETHAL_PENALTY = 180.0
+NEXT_ATTACK_BUFFER_WEIGHT = 0.45
 
 
 @dataclass(frozen=True)
@@ -56,8 +60,11 @@ class BuilderBlockCandidate:
 
 @dataclass(frozen=True)
 class BuilderBlockScore:
+    life_before_combat: float
+    life_after_combat: float
     prevented_player_damage: float
     expected_player_damage_taken: float
+    known_unavoidable_next_damage: float
     enemy_creature_damage: float
     own_creature_damage: float
     enemy_kill_value: float
@@ -66,7 +73,10 @@ class BuilderBlockScore:
     enemy_lifesteal_value: float
     trample_damage_taken: float
     board_preservation: float
+    immediate_lethal_prevention: float
+    next_attack_lethal_prevention: float
     lethal_prevention: float
+    sacrificed_blocker_value: float
     total: float
     guaranteed_lethal: bool = False
     lethal_probability: float = 0.0
@@ -179,18 +189,47 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     baseline_lethal_probability = sum(probability for damage, probability in baseline_distribution.items() if damage >= life_total)
 
     prevented_player_damage = max(0.0, damage_without_blocks - expected_player_damage_taken)
+    life_after_combat = max(0.0, life_total - expected_player_damage_taken)
+    baseline_life_after_combat = max(0.0, life_total - damage_without_blocks)
+    known_unavoidable_next_damage = _estimate_known_next_flying_damage(
+        defending_player,
+        engine,
+        attackers=attackers,
+        blockers=blockers,
+        assignments=assignments,
+    )
+    baseline_known_next_damage = _estimate_known_next_flying_damage(
+        defending_player,
+        engine,
+        attackers=attackers,
+        blockers=blockers,
+        assignments={},
+    )
     board_preservation = (
         (enemy_kill_value - own_death_value) * BOARD_PRESERVATION_WEIGHT
         + flying_scarcity_bonus
         + slot_release_value
     )
-    lethal_prevention = 0.0
+    immediate_lethal_prevention = 0.0
     if guaranteed_lethal:
-        lethal_prevention -= LETHAL_PREVENTION_BONUS * 2
+        immediate_lethal_prevention -= LETHAL_PREVENTION_BONUS * 2
     elif baseline_guaranteed_lethal:
-        lethal_prevention += LETHAL_PREVENTION_BONUS
-    lethal_prevention += max(0.0, baseline_lethal_probability - lethal_probability) * LETHAL_PROBABILITY_PENALTY
-    lethal_prevention -= lethal_probability * LETHAL_PROBABILITY_PENALTY
+        immediate_lethal_prevention += LETHAL_PREVENTION_BONUS
+    immediate_lethal_prevention += max(0.0, baseline_lethal_probability - lethal_probability) * LETHAL_PROBABILITY_PENALTY
+    immediate_lethal_prevention -= lethal_probability * LETHAL_PROBABILITY_PENALTY
+
+    next_attack_lethal_prevention = 0.0
+    current_next_lethal = life_after_combat > 0 and life_after_combat <= known_unavoidable_next_damage
+    baseline_next_lethal = baseline_life_after_combat > 0 and baseline_life_after_combat <= baseline_known_next_damage
+    if current_next_lethal:
+        next_attack_lethal_prevention -= NEXT_ATTACK_LETHAL_PENALTY
+    elif baseline_next_lethal:
+        next_attack_lethal_prevention += NEXT_ATTACK_LETHAL_PENALTY
+    next_attack_lethal_prevention += max(0.0, baseline_known_next_damage - known_unavoidable_next_damage) * NEXT_ATTACK_BUFFER_WEIGHT
+    life_buffer_after_combat = max(0.0, life_after_combat - known_unavoidable_next_damage)
+    next_attack_lethal_prevention += life_buffer_after_combat * 0.12
+
+    lethal_prevention = immediate_lethal_prevention + next_attack_lethal_prevention
 
     total = (
         prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT
@@ -206,8 +245,11 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         + lethal_prevention
     )
     debug_contributions = (
+        ("life_before_combat", life_total, 1.0, life_total),
+        ("life_after_combat", life_after_combat, 1.0, life_after_combat),
         ("prevented_player_damage", prevented_player_damage, PREVENTED_PLAYER_DAMAGE_WEIGHT, prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT),
         ("player_damage_taken", expected_player_damage_taken, -PLAYER_DAMAGE_TAKEN_PENALTY, -expected_player_damage_taken * PLAYER_DAMAGE_TAKEN_PENALTY),
+        ("known_unavoidable_next_damage", known_unavoidable_next_damage, -1.0, -known_unavoidable_next_damage),
         ("enemy_creature_damage", enemy_creature_damage, ENEMY_CREATURE_DAMAGE_WEIGHT, enemy_creature_damage * ENEMY_CREATURE_DAMAGE_WEIGHT),
         ("own_creature_damage", own_creature_damage, -OWN_CREATURE_DAMAGE_PENALTY, -own_creature_damage * OWN_CREATURE_DAMAGE_PENALTY),
         ("enemy_kill_value", enemy_kill_value, ENEMY_KILL_VALUE_WEIGHT, enemy_kill_value * ENEMY_KILL_VALUE_WEIGHT),
@@ -216,11 +258,16 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         ("enemy_lifesteal", enemy_lifesteal_value, -ENEMY_LIFESTEAL_PENALTY, -enemy_lifesteal_value * ENEMY_LIFESTEAL_PENALTY),
         ("trample_damage", trample_damage_taken, -TRAMPLE_DAMAGE_PENALTY, -trample_damage_taken * TRAMPLE_DAMAGE_PENALTY),
         ("board_preservation", board_preservation, 1.0, board_preservation),
+        ("immediate_lethal_prevention", immediate_lethal_prevention, 1.0, immediate_lethal_prevention),
+        ("next_attack_lethal_prevention", next_attack_lethal_prevention, 1.0, next_attack_lethal_prevention),
         ("lethal_prevention", lethal_prevention, 1.0, lethal_prevention),
     )
     return BuilderBlockScore(
+        life_before_combat=round(life_total, 4),
+        life_after_combat=round(life_after_combat, 4),
         prevented_player_damage=round(prevented_player_damage, 4),
         expected_player_damage_taken=round(expected_player_damage_taken, 4),
+        known_unavoidable_next_damage=round(known_unavoidable_next_damage, 4),
         enemy_creature_damage=round(enemy_creature_damage, 4),
         own_creature_damage=round(own_creature_damage, 4),
         enemy_kill_value=round(enemy_kill_value, 4),
@@ -229,7 +276,10 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         enemy_lifesteal_value=round(enemy_lifesteal_value, 4),
         trample_damage_taken=round(trample_damage_taken, 4),
         board_preservation=round(board_preservation, 4),
+        immediate_lethal_prevention=round(immediate_lethal_prevention, 4),
+        next_attack_lethal_prevention=round(next_attack_lethal_prevention, 4),
         lethal_prevention=round(lethal_prevention, 4),
+        sacrificed_blocker_value=round(own_death_value, 4),
         total=round(total, 4),
         guaranteed_lethal=guaranteed_lethal,
         lethal_probability=round(lethal_probability, 4),
@@ -254,7 +304,26 @@ def choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
         best_candidate, best_score = scored[0]
     else:
         best_candidate = BuilderBlockCandidate(assignments=tuple())
-        best_score = BuilderBlockScore(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        best_score = BuilderBlockScore(
+            life_before_combat=float(defending_player.life),
+            life_after_combat=float(defending_player.life),
+            prevented_player_damage=0.0,
+            expected_player_damage_taken=0.0,
+            known_unavoidable_next_damage=0.0,
+            enemy_creature_damage=0.0,
+            own_creature_damage=0.0,
+            enemy_kill_value=0.0,
+            own_death_value=0.0,
+            own_lifesteal_value=0.0,
+            enemy_lifesteal_value=0.0,
+            trample_damage_taken=0.0,
+            board_preservation=0.0,
+            immediate_lethal_prevention=0.0,
+            next_attack_lethal_prevention=0.0,
+            lethal_prevention=0.0,
+            sacrificed_blocker_value=0.0,
+            total=0.0,
+        )
     _debug_block_decision(engine, defending_player, scored, best_candidate)
     result = {attacker_id: None for attacker_id in engine.block_assignments}
     for attacker_id, blocker_id in best_candidate.assignments:
@@ -268,11 +337,109 @@ def _block_candidate_sort_key(scored_candidate: tuple[BuilderBlockCandidate, Bui
     candidate, score = scored_candidate
     return (
         score.total,
+        score.next_attack_lethal_prevention,
         -score.expected_player_damage_taken,
         -score.own_death_value,
         score.enemy_kill_value,
         tuple(candidate.assignments),
     )
+
+
+def _estimate_known_next_flying_damage(defending_player, engine, *, attackers: list, blockers: list, assignments: dict[int, int]) -> float:
+    assignment_map = dict(assignments)
+    attacker_lookup = {attacker.unit_id: attacker for attacker in attackers}
+    blocker_lookup = {blocker.unit_id: blocker for blocker in blockers}
+    surviving_enemy: list[ProjectedUnitView] = []
+    surviving_own: list[ProjectedUnitView] = []
+    removed_enemy_ids: set[int] = set()
+    removed_own_ids: set[int] = set()
+    post_hp: dict[int, int] = {}
+
+    for attacker in attackers:
+        blocker_id = assignment_map.get(attacker.unit_id)
+        if blocker_id is None:
+            unblocked = estimate_unblocked_attack(attacker)
+            post_hp[attacker.unit_id] = min(int(attacker.lw), int(attacker.current_hp) + int(round(unblocked.attacker_heal)))
+            continue
+        blocker = blocker_lookup.get(blocker_id)
+        if blocker is None:
+            continue
+        estimate = estimate_builder_combat(attacker, blocker)
+        if estimate.attacker_death_probability >= 1.0:
+            removed_enemy_ids.add(attacker.unit_id)
+        else:
+            attacker_hp = max(1, int(attacker.current_hp) - int(round(estimate.expected_damage_to_attacker)))
+            attacker_hp = min(int(attacker.lw), attacker_hp + int(round(estimate.expected_attacker_heal)))
+            post_hp[attacker.unit_id] = attacker_hp
+        if estimate.defender_death_probability >= 1.0:
+            removed_own_ids.add(blocker.unit_id)
+        else:
+            blocker_hp = max(1, int(blocker.current_hp) - int(round(estimate.expected_damage_to_defender)))
+            blocker_hp = min(int(blocker.lw), blocker_hp + int(round(estimate.expected_defender_heal)))
+            post_hp[blocker.unit_id] = blocker_hp
+
+    enemy_player = engine.players[1 - defending_player.player_id]
+    for unit in enemy_player.battlefield:
+        if unit.unit_id in removed_enemy_ids:
+            continue
+        surviving_enemy.append(
+            ProjectedUnitView(
+                unit_id=unit.unit_id,
+                name=unit.name,
+                aw=unit.aw,
+                vw=unit.vw,
+                sw=unit.sw,
+                lw=unit.lw,
+                current_hp=post_hp.get(unit.unit_id, unit.current_hp),
+                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
+                tapped=False,
+                summoning_sickness=False,
+                cannot_block=getattr(unit, "cannot_block", False),
+                debug_label=unit.name,
+            )
+        )
+    for unit in defending_player.battlefield:
+        if unit.unit_id in removed_own_ids:
+            continue
+        surviving_own.append(
+            ProjectedUnitView(
+                unit_id=unit.unit_id,
+                name=unit.name,
+                aw=unit.aw,
+                vw=unit.vw,
+                sw=unit.sw,
+                lw=unit.lw,
+                current_hp=post_hp.get(unit.unit_id, unit.current_hp),
+                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
+                tapped=False,
+                summoning_sickness=False,
+                cannot_block=getattr(unit, "cannot_block", False),
+                debug_label=unit.name,
+            )
+        )
+
+    flying_attackers = [unit for unit in surviving_enemy if unit.has_ability(Ability.FLYING) and unit.sw > 0]
+    flying_blockers = [unit for unit in surviving_own if unit.has_ability(Ability.FLYING) and unit.vw > 0 and not unit.cannot_block]
+    if not flying_attackers:
+        return 0.0
+    assignments = generate_block_assignment_tuples(flying_attackers, flying_blockers, {})
+    best_damage = None
+    for current in assignments:
+        mapping = dict(current)
+        total_damage = 0.0
+        for attacker in flying_attackers:
+            blocker_id = mapping.get(attacker.unit_id)
+            if blocker_id is None:
+                total_damage += attacker.sw
+                continue
+            blocker = next((existing for existing in flying_blockers if existing.unit_id == blocker_id), None)
+            if blocker is None:
+                total_damage += attacker.sw
+                continue
+            total_damage += estimate_builder_combat(attacker, blocker).expected_player_damage
+        if best_damage is None or total_damage < best_damage:
+            best_damage = total_damage
+    return 0.0 if best_damage is None else best_damage
 
 
 def _debug_block_decision(engine, defending_player, scored_candidates, best_candidate) -> None:
@@ -343,8 +510,11 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
                 ("blocks", list(candidate.assignments)),
                 ("unblocked", list(candidate.unblocked_attacker_ids)),
                 ("total", score.total),
+                ("life_before", score.life_before_combat),
+                ("life_after", score.life_after_combat),
                 ("taken", score.expected_player_damage_taken),
                 ("prevented", score.prevented_player_damage),
+                ("known_unavoidable_next_damage", score.known_unavoidable_next_damage),
                 ("enemy_creature_damage", score.enemy_creature_damage),
                 ("own_creature_damage", score.own_creature_damage),
                 ("enemy_kill", score.enemy_kill_value),
@@ -353,6 +523,9 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
                 ("enemy_heal", score.enemy_lifesteal_value),
                 ("trample", score.trample_damage_taken),
                 ("board_preservation", score.board_preservation),
+                ("immediate_lethal_prevention", score.immediate_lethal_prevention),
+                ("next_attack_lethal_prevention", score.next_attack_lethal_prevention),
+                ("sacrificed_blocker_value", score.sacrificed_blocker_value),
                 ("lethal_prevention", score.lethal_prevention),
                 ("guaranteed_lethal", score.guaranteed_lethal),
                 ("lethal_probability", score.lethal_probability),
@@ -376,10 +549,10 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
         pairs=(
             ("choose", [] if best_candidate is None else list(best_candidate.assignments)),
             ("total", 0.0 if best_score is None else best_score.total),
-            ("runner_up", "-" if runner_up is None else list(runner_up[0].assignments)),
-            ("runner_up_total", 0.0 if runner_up is None else runner_up[1].total),
-            ("gap", 0.0 if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
-            ("delta_keys", "-" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
+            ("runner_up", "N/A" if runner_up is None else list(runner_up[0].assignments)),
+            ("runner_up_total", "N/A" if runner_up is None else runner_up[1].total),
+            ("gap", "N/A" if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
+            ("delta_keys", "N/A" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
         ),
     )
     if builder_debug_verbose() and builder_debug_include_fingerprints():

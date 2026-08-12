@@ -322,6 +322,23 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertIn("gap=", logs)
         self.assertTrue(any("attackers=[" in line and "attackers=[]" not in line for line in engine.log_messages))
 
+    def test_attack_logging_marks_counter_search_and_projected_enemy_action(self) -> None:
+        self.set_debug(1, top_n=3)
+        engine = self.make_engine()
+        engine.phase = PHASE_DECLARE_ATTACKERS
+        engine.active_player_index = engine.ai_player.player_id
+        engine.ai_player.is_human = False
+        self.set_builder_resources(engine, engine.human_player, 2)
+        self.make_builder_creature(engine, 1, aw=1, vw=1, sw=1, lw=2, ready=True)
+
+        evaluate_best_builder_attack(engine.ai_player, engine)
+        logs = "\n".join(engine.log_messages)
+
+        self.assertIn("counter_search_exact=", logs)
+        self.assertIn("counter_fallback_used=", logs)
+        self.assertIn("projected_enemy_main_action=", logs)
+        self.assertIn("projected_enemy_attackers=", logs)
+
     def test_cap_attack_logging_shows_slot_and_cap_context_without_guaranteeing_release(self) -> None:
         self.set_debug(1, top_n=4)
         engine = self.make_cap_attack_engine()

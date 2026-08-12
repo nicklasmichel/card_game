@@ -29,6 +29,9 @@ class BuilderAttackAITests(unittest.TestCase):
             tapped=tapped,
         )
 
+    def set_builder_resources(self, player, total: int, *, tapped: int = 0) -> None:
+        player.resources = [self.make_builder_resource(tapped=index < tapped) for index in range(total)]
+
     def make_builder_creature(
         self,
         owner_id: int,
@@ -254,6 +257,36 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertGreaterEqual(score.projected_counter_damage, 2.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
+
+    def test_ground_attack_does_not_remove_existing_flying_followup(self) -> None:
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        self.make_builder_creature(1, aw=0, vw=2, sw=1, lw=2, ready=True)
+        self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+
+        no_attack = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
+        attack = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=(attacker.unit_id,)), self.engine.ai_player, self.engine)
+
+        self.assertGreaterEqual(no_attack.projected_counter_damage, 2.0)
+        self.assertGreaterEqual(attack.projected_counter_damage, 2.0)
+
+    def test_multiple_ground_attack_lines_keep_same_unavoidable_flying_baseline(self) -> None:
+        a1 = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        a2 = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+        self.make_builder_creature(0, aw=2, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
+
+        first = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=(a1.unit_id,)), self.engine.ai_player, self.engine)
+        second = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=(a2.unit_id,)), self.engine.ai_player, self.engine)
+
+        self.assertEqual(first.projected_counter_damage, second.projected_counter_damage)
+        self.assertGreaterEqual(first.projected_counter_damage, 2.0)
+
+    def test_counter_followup_considers_enemy_haste_build(self) -> None:
+        self.set_builder_resources(self.engine.human_player, 2)
+
+        score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
+
+        self.assertEqual(score.projected_counter_main_action, "build_haste")
+        self.assertGreater(score.projected_counter_damage, 0.0)
 
     def test_attack_selection_can_hold_back_partial_blockers(self) -> None:
         hold_back = self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True)

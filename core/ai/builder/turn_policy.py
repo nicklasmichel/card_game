@@ -11,6 +11,7 @@ from .attack_policy import BuilderAttackDecision, evaluate_best_builder_attack
 from .config import BUILDER_AI_WEIGHTS
 from .cap_strategy import compute_builder_cap_context
 from .candidates import builder_candidate_budgets, generate_builder_creature_candidates, is_legal_builder_candidate
+from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .debug import (
     builder_debug_build_top_n,
     builder_debug_enabled,
@@ -885,21 +886,41 @@ def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDeci
 
 
 def _score_future_offense_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
-    own_pressure = sum(unit.sw + unit.aw * 0.35 for unit in projection.own_units)
-    ready_pressure = sum(
-        unit.sw + unit.aw * 0.25
-        for unit in projection.own_units
-        if unit.is_ready() or unit.unit_id in predicted_attack.candidate.attacker_ids
-    )
-    evasive_pressure = sum(unit.sw for unit in projection.own_units if unit.has_ability(Ability.FLYING))
-    enemy_block_mass = sum(unit.vw + unit.current_hp * 0.22 for unit in projection.enemy_units)
-    trample_pressure = sum(unit.sw * 0.18 for unit in projection.own_units if unit.has_ability(Ability.TRAMPLE))
-    if own_pressure <= 0.0:
-        return -2.8
-    path_score = ready_pressure * 0.22 + evasive_pressure * 0.32 + trample_pressure - enemy_block_mass * 0.08
-    if sum(1 for unit in projection.own_units if unit.sw > 0) <= 1 and own_pressure < enemy_block_mass * 0.55:
-        path_score -= 1.1
-    return path_score
+    offensive_units = [unit for unit in projection.own_units if unit.sw > 0]
+    if not offensive_units:
+        return -3.1
+    enemy_blockers = [unit for unit in projection.enemy_units if unit.vw > 0]
+    total = 0.0
+    threatening_units = 0
+    for unit in offensive_units:
+        unblocked = estimate_unblocked_attack(unit)
+        legal_blockers = [blocker for blocker in enemy_blockers if can_legally_block(unit, blocker, require_ready=True)]
+        if not legal_blockers:
+            unit_value = unblocked.player_damage + (0.35 if unit.has_ability(Ability.FLYING) else 0.0)
+        else:
+            blocked_lines = []
+            for blocker in legal_blockers:
+                estimate = estimate_builder_combat(unit, blocker)
+                blocked_lines.append(
+                    estimate.expected_player_damage
+                    + estimate.defender_death_probability * 0.7
+                    - estimate.attacker_death_probability * 0.55
+                )
+            unit_value = min(blocked_lines)
+            if unit.has_ability(Ability.FLYING):
+                unit_value += 0.2
+            if unit.has_ability(Ability.TRAMPLE):
+                unit_value += 0.18 * unit.sw
+            if unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE):
+                unit_value += 0.12
+        if unit_value > 0.15:
+            threatening_units += 1
+        total += unit_value
+    if threatening_units == 0:
+        total -= 2.2
+    elif threatening_units == 1 and len(enemy_blockers) >= 2:
+        total -= 0.9
+    return total
 
 
 def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context) -> float:
@@ -938,9 +959,6 @@ def _score_haste_immediate_value(snapshot, projection, predicted_attack, project
         value += predicted_attack.score.enemy_kill_value * 0.28
         if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
             value += 2.2
-    if projected_candidate.candidate.vw > 0:
-        prevented = max(0.0, snapshot.enemy_total_sw - predicted_attack.score.projected_counter_damage)
-        value += prevented * 0.22 + projected_candidate.candidate.vw * 0.14
     return value
 
 
@@ -955,19 +973,22 @@ def _score_flying_offense_value(snapshot, projection, predicted_attack, projecte
 
 
 def _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
-    current_ready_flying_blockers = sum(
-        1 for unit in projection.own_units if unit.has_ability(Ability.FLYING) and not unit.tapped and unit.vw > 0
-    )
-    future_flying_threat = max(0.0, snapshot.enemy_total_resources - 2) * 0.18 + snapshot.enemy_flying_count * 0.7
-    coverage_gap = future_flying_threat - current_ready_flying_blockers
-    value = -max(0.0, coverage_gap) * 0.6
+    immediate_enemy_flyers = [unit for unit in projection.enemy_units if unit.has_ability(Ability.FLYING) and unit.sw > 0]
+    immediate_ready_blockers = [unit for unit in projection.own_units if unit.has_ability(Ability.FLYING) and not unit.tapped and unit.vw > 0]
+    future_ready_blockers = [unit for unit in projection.own_units if unit.has_ability(Ability.FLYING) and unit.vw > 0]
+    immediate_gap = max(0, len(immediate_enemy_flyers) - len(immediate_ready_blockers))
+    future_buildable_enemy_flyers = 1 if snapshot.enemy_total_resources >= 2 else 0
+    future_gap = max(0, len(immediate_enemy_flyers) + future_buildable_enemy_flyers - len(future_ready_blockers))
+    immediate_pressure = sum(unit.sw for unit in immediate_enemy_flyers)
+    value = -(immediate_gap * max(0.6, immediate_pressure * 0.22))
+    value -= future_gap * 0.55
     if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
         if projected_candidate.candidate.has_haste:
-            value += 0.9
-        elif snapshot.enemy_flying_count == 0:
             value += 0.35
-    if predicted_attack.score.projected_counter_damage <= 0.0 and snapshot.enemy_flying_count <= 0:
-        value *= 0.45
+        else:
+            value += 0.95 if future_gap > 0 else 0.18
+    if immediate_pressure <= 0 and future_buildable_enemy_flyers <= 0:
+        value *= 0.4
     return value
 
 
@@ -991,15 +1012,16 @@ def _score_action_survival_urgency(snapshot, projection, predicted_attack, actio
     life_after = projection.own_life - expected_damage
     legal_blockers = sum(1 for unit in projection.own_units if not unit.tapped and unit.vw > 0)
     if expected_damage <= 0.0 and lethal_risk <= 0.0:
-        stability = legal_blockers * 0.16 + max(0.0, life_after - 2.0) * 0.04
+        stability = legal_blockers * 0.12 + max(0.0, life_after - 2.0) * 0.05
         if action_kind == "pass":
             stability -= 0.25
         return stability
-    damage_penalty = expected_damage * (0.42 + max(0.0, 5.0 - life_after) * 0.08)
-    lethal_penalty = lethal_risk * (8.0 + max(0.0, 3.0 - life_after) * 1.2)
-    blocker_relief = legal_blockers * 0.18
-    resource_tax = 0.45 if action_kind == "resource" and expected_damage > 0.0 else 0.7 if action_kind == "pass" else 0.0
-    return blocker_relief - damage_penalty - lethal_penalty - resource_tax - pressure * 0.03
+    life_buffer = max(0.0, life_after)
+    damage_penalty = expected_damage * (0.4 + max(0.0, 4.0 - life_buffer) * 0.11)
+    lethal_penalty = lethal_risk * (9.0 + max(0.0, 3.0 - life_buffer) * 1.6)
+    blocker_relief = legal_blockers * 0.14
+    resource_tax = 0.2 if action_kind == "resource" and expected_damage > 0.0 and life_buffer > 2.0 else 0.6 if action_kind == "pass" else 0.0
+    return blocker_relief - damage_penalty - lethal_penalty - resource_tax - pressure * 0.02 + min(1.2, life_buffer * 0.08)
 
 
 def _score_board_projection_value(projection) -> float:
@@ -1449,7 +1471,8 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
             ),
         )
     if ranked:
-        best = ranked[0]
+        static_best = ranked[0]
+        chosen_build = next((current for current in ranked if current.candidate.key == selected_signature), static_best)
         runner_up = ranked[1] if len(ranked) > 1 else None
         emit_builder_debug_line(
             engine,
@@ -1457,19 +1480,22 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
             player=player,
             decision="build",
             pairs=(
-                ("choose", f"{best.candidate.aw}/{best.candidate.vw}/{best.candidate.sw}/{best.candidate.lw}"),
-                ("ability", getattr(best.candidate.builder_ability, "value", "-")),
+                ("static_best", f"{static_best.candidate.aw}/{static_best.candidate.vw}/{static_best.candidate.sw}/{static_best.candidate.lw}"),
+                ("choose", f"{chosen_build.candidate.aw}/{chosen_build.candidate.vw}/{chosen_build.candidate.sw}/{chosen_build.candidate.lw}"),
+                ("ability", getattr(chosen_build.candidate.builder_ability, "value", "-")),
                 ("ability_cost", 0),
-                ("haste", best.candidate.has_haste),
-                ("haste_cost", best.candidate.haste_cost),
-                ("enters_tapped", best.candidate.enters_tapped),
-                ("total", best.static_score.total),
-                ("static_total", best.static_score.total),
-                ("runner_up", "-" if runner_up is None else f"{runner_up.candidate.aw}/{runner_up.candidate.vw}/{runner_up.candidate.sw}/{runner_up.candidate.lw}"),
-                ("runner_up_total", 0.0 if runner_up is None else runner_up.static_score.total),
-                ("runner_up_static_total", 0.0 if runner_up is None else runner_up.static_score.total),
-                ("static_gap", 0.0 if runner_up is None else round(best.static_score.total - runner_up.static_score.total, 4)),
-                ("gap", 0.0 if runner_up is None else round(best.static_score.total - runner_up.static_score.total, 4)),
+                ("haste", chosen_build.candidate.has_haste),
+                ("haste_cost", chosen_build.candidate.haste_cost),
+                ("enters_tapped", chosen_build.candidate.enters_tapped),
+                ("total", chosen_build.static_score.total),
+                ("static_total", static_best.static_score.total),
+                ("runner_up", "N/A" if runner_up is None else f"{runner_up.candidate.aw}/{runner_up.candidate.vw}/{runner_up.candidate.sw}/{runner_up.candidate.lw}"),
+                ("runner_up_total", "N/A" if runner_up is None else runner_up.static_score.total),
+                ("runner_up_static_total", "N/A" if runner_up is None else runner_up.static_score.total),
+                ("static_gap", "N/A" if runner_up is None else round(max(0.0, static_best.static_score.total - runner_up.static_score.total), 4)),
+                ("chosen_vs_static_best_delta", round(chosen_build.static_score.total - static_best.static_score.total, 4)),
+                ("gap", "N/A" if runner_up is None else round(max(0.0, static_best.static_score.total - runner_up.static_score.total), 4)),
+                ("selection_reason", "static_best" if chosen_build.candidate.key == static_best.candidate.key else "turn_selection_score"),
             ),
         )
 
