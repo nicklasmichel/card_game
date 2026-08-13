@@ -42,6 +42,7 @@ def build_builder_snapshot(player: PlayerState, engine) -> BuilderStrategicSnaps
     return BuilderStrategicSnapshot(
         own_life=player.life,
         enemy_life=enemy.life,
+        combat_die_sides=int(getattr(engine, "combat_die_sides", 6)),
         own_total_resources=player.total_resources(),
         own_ready_resources=player.available_resources(),
         enemy_total_resources=enemy.total_resources(),

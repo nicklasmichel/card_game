@@ -18,7 +18,11 @@ from core.ai.builder import (
 from core.ai.builder.cap_strategy import compute_builder_cap_context
 from core.ai.builder.snapshot import build_builder_snapshot
 from core.ai.builder.search_budget import FINAL_DECISION_SEARCH_BUDGET
-from core.ai.builder.turn_policy import evaluate_builder_next_main_value
+from core.ai.builder.turn_policy import (
+    _build_projected_candidates,
+    _shortlist_projected_candidates,
+    evaluate_builder_next_main_value,
+)
 from core.ai.builder.turn_types import BuilderTurnActionCandidate
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_MAIN_1, ResourceCard
@@ -465,6 +469,50 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertGreater(breaker_score.matchup_defense, wall_score.matchup_defense)
         self.assertGreater(breaker_score.total, wall_score.total)
+
+    def test_shortlist_retains_matchup_specific_high_defense_haste_blocker(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 4)
+        self.set_builder_resources(self.engine.human_player, 4)
+        for aw, sw in ((2, 3), (3, 2)):
+            self.make_builder_creature(0, aw=aw, vw=0, sw=sw, lw=1, ready=True, abilities=(Ability.HASTE,))
+
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        projected, _, _ = _build_projected_candidates(self.engine.ai_player, self.engine, snapshot)
+        shortlisted = _shortlist_projected_candidates(projected, snapshot)
+
+        self.assertIn((0, 3, 1, 1, "HASTE"), {current.candidate.key for current in shortlisted})
+
+    def test_earlier_pressure_state_prefers_durable_haste_blocker(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 4)
+        self.set_builder_resources(self.engine.human_player, 4)
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.ai_player.life = 8
+        for aw, sw in ((2, 3), (3, 2)):
+            self.make_builder_creature(0, aw=aw, vw=0, sw=sw, lw=1, ready=True, abilities=(Ability.HASTE,))
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertEqual(decision.action_candidate.creature_candidate.key, (0, 3, 1, 1, "HASTE"))
+
+    def test_forced_loss_state_logs_honest_width_based_loss(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 4)
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.ai_player.life = 6
+        self.engine.debug_log_to_messages = True
+        self.make_builder_creature(1, aw=0, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.HASTE,))
+        self.make_builder_creature(1, aw=1, vw=0, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+        for stats in ((2, 0, 3, 1), (3, 0, 2, 1), (2, 0, 3, 1), (2, 0, 3, 1)):
+            self.make_builder_creature(0, aw=stats[0], vw=stats[1], sw=stats[2], lw=stats[3], ready=True, abilities=(Ability.HASTE,))
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+        logs = "\n".join(self.engine.log_messages)
+
+        self.assertLess(decision.score.selection_score, -9000.0)
+        self.assertEqual(decision.predicted_attack_decision.score.projected_counter_main_action, "build_haste")
+        self.assertEqual(len(decision.predicted_attack_decision.score.projected_counter_attackers), 5)
+        self.assertIn("forced_loss_all_actions=true", logs)
 
     def test_resource_can_beat_bad_early_build(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)

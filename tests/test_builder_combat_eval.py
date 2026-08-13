@@ -82,6 +82,33 @@ class BuilderCombatEvalTests(unittest.TestCase):
         self.assertGreater(attacker_favored.attacker_win_probability, 0.5)
         self.assertLess(attacker_unfavored.attacker_win_probability, 0.5)
 
+    def test_exact_block_probabilities_match_documented_d6_values(self) -> None:
+        d1_vs_a2 = estimate_dice_win_probabilities(2, 1)
+        d1_vs_a3 = estimate_dice_win_probabilities(3, 1)
+        d3_vs_a2 = estimate_dice_win_probabilities(2, 3)
+        d3_vs_a3 = estimate_dice_win_probabilities(3, 3)
+
+        self.assertAlmostEqual(d1_vs_a2.defender_win_probability, 20 / 216, places=8)
+        self.assertAlmostEqual(d1_vs_a3.defender_win_probability, 15 / 1296, places=8)
+        self.assertAlmostEqual(d3_vs_a2.defender_win_probability, 0.7785493827, places=8)
+        self.assertAlmostEqual(d3_vs_a3.defender_win_probability, 0.4535751029, places=8)
+
+    def test_combat_probability_cache_does_not_mix_attacker_and_blocker_roles(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=0, sw=3, lw=2, abilities=frozenset(), cost=5),
+            current_hp=2,
+        )
+        blocker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=4, abilities=frozenset(), cost=6),
+            current_hp=4,
+        )
+
+        attack_estimate = estimate_builder_combat(attacker, blocker)
+        reverse_estimate = estimate_builder_combat(blocker, attacker)
+
+        self.assertNotAlmostEqual(attack_estimate.attacker_win_probability, reverse_estimate.attacker_win_probability, places=8)
+        self.assertNotAlmostEqual(attack_estimate.expected_damage_to_defender, reverse_estimate.expected_damage_to_defender, places=8)
+
     def test_zero_dice_special_cases_are_explicit(self) -> None:
         attacker_zero = estimate_dice_win_probabilities(0, 2)
         defender_zero = estimate_dice_win_probabilities(2, 0)
@@ -239,6 +266,50 @@ class BuilderCombatEvalTests(unittest.TestCase):
         )
 
         self.assertGreater(tough_score.matchup_defense, fragile_score.matchup_defense)
+
+    def test_blocker_damage_above_enemy_life_does_not_change_attacker_kill_probability(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=0, sw=3, lw=1, abilities=frozenset({Ability.HASTE}), cost=5),
+            current_hp=1,
+        )
+        dmg_one = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=1, abilities=frozenset({Ability.HASTE}), cost=4),
+            current_hp=1,
+        )
+        dmg_two = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=2, lw=1, abilities=frozenset({Ability.HASTE}), cost=5),
+            current_hp=1,
+        )
+
+        one_estimate = estimate_builder_combat(attacker, dmg_one)
+        two_estimate = estimate_builder_combat(attacker, dmg_two)
+
+        self.assertAlmostEqual(one_estimate.attacker_death_probability, two_estimate.attacker_death_probability, places=8)
+
+    def test_life_breakpoint_only_changes_survival_when_hit_damage_is_crossed(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=0, sw=3, lw=1, abilities=frozenset({Ability.HASTE}), cost=5),
+            current_hp=1,
+        )
+        life_two = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=2, abilities=frozenset({Ability.HASTE}), cost=4),
+            current_hp=2,
+        )
+        life_three = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=3, abilities=frozenset({Ability.HASTE}), cost=5),
+            current_hp=3,
+        )
+        life_four = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=4, abilities=frozenset({Ability.HASTE}), cost=6),
+            current_hp=4,
+        )
+
+        two_estimate = estimate_builder_combat(attacker, life_two)
+        three_estimate = estimate_builder_combat(attacker, life_three)
+        four_estimate = estimate_builder_combat(attacker, life_four)
+
+        self.assertAlmostEqual(two_estimate.defender_survival_probability, three_estimate.defender_survival_probability, places=8)
+        self.assertGreater(four_estimate.defender_survival_probability, three_estimate.defender_survival_probability)
 
     def test_haste_immediate_pressure_spikes_with_open_lethal_line(self) -> None:
         self.engine.human_player.life = 4

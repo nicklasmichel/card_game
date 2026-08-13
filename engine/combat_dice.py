@@ -12,6 +12,11 @@ from core.models import (
 )
 
 
+def _combat_die_sides(self) -> int:
+    sides = int(getattr(self, "combat_die_sides", 6))
+    return max(1, sides)
+
+
 def make_combat_unit_snapshot(self, creature: BattlefieldCreature) -> CombatUnitSnapshot:
     return CombatUnitSnapshot(
         unit_id=creature.unit_id,
@@ -116,8 +121,9 @@ def _resolve_battle_rounds(
         if apply_result:
             _apply_battle_result(self, battle, attacker, blocker)
         return
-    battle.attacker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
-    battle.blocker_rolls = [self.rng.randint(1, 6) for _ in range(max(0, self.get_creature_defense_value(blocker)))]
+    die_sides = _combat_die_sides(self)
+    battle.attacker_rolls = [self.rng.randint(1, die_sides) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
+    battle.blocker_rolls = [self.rng.randint(1, die_sides) for _ in range(max(0, self.get_creature_defense_value(blocker)))]
     battle.attack_sum = sum(battle.attacker_rolls)
     battle.defense_sum = sum(battle.blocker_rolls)
     _finalize_battle_rolls(self, battle, attacker, blocker)

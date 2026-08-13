@@ -146,6 +146,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     own_lifesteal_value = 0.0
     enemy_lifesteal_value = 0.0
     trample_damage_taken = 0.0
+    inefficient_trample_trade_penalty = 0.0
     flying_scarcity_bonus = 0.0
     slot_release_value = 0.0
 
@@ -180,13 +181,24 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         trample_damage_taken += estimate.expected_player_damage
         enemy_creature_damage += estimate.expected_damage_to_attacker
         own_creature_damage += estimate.expected_damage_to_defender
-        enemy_kill_value += estimate.attacker_death_probability * estimate_creature_board_value(attacker)
-        own_death_value += estimate.defender_death_probability * estimate_creature_board_value(blocker)
+        attacker_value = estimate_creature_board_value(attacker)
+        blocker_value = estimate_creature_board_value(blocker)
+        enemy_kill_value += estimate.attacker_death_probability * attacker_value
+        own_death_value += estimate.defender_death_probability * blocker_value
         own_lifesteal_value += estimate.expected_defender_heal
         enemy_lifesteal_value += estimate.expected_attacker_heal
         current_distributions.append(player_damage_distribution_for_combat(attacker, estimate))
         if cap_context.at_cap and blocker.unit_id == cap_context.weakest_unit_id:
             slot_release_value += estimate.defender_death_probability * cap_context.cap_pressure * CAP_SLOT_RELEASE_WEIGHT
+        if attacker.has_ability(Ability.TRAMPLE):
+            prevented_here = max(0.0, float(attacker.sw) - estimate.expected_player_damage)
+            prevention_ratio = prevented_here / max(1.0, float(attacker.sw))
+            inefficient_trample_trade_penalty += (
+                estimate.defender_death_probability
+                * blocker_value
+                * max(0.0, 1.0 - prevention_ratio)
+                * 4.6
+            )
 
         if (
             blocker.has_ability(Ability.FLYING)
@@ -263,6 +275,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         + own_lifesteal_value * OWN_LIFESTEAL_WEIGHT
         - enemy_lifesteal_value * ENEMY_LIFESTEAL_PENALTY
         - trample_damage_taken * TRAMPLE_DAMAGE_PENALTY
+        - inefficient_trample_trade_penalty
         + board_preservation
         + lethal_prevention
     )
@@ -279,6 +292,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         ("own_lifesteal", own_lifesteal_value, OWN_LIFESTEAL_WEIGHT, own_lifesteal_value * OWN_LIFESTEAL_WEIGHT),
         ("enemy_lifesteal", enemy_lifesteal_value, -ENEMY_LIFESTEAL_PENALTY, -enemy_lifesteal_value * ENEMY_LIFESTEAL_PENALTY),
         ("trample_damage", trample_damage_taken, -TRAMPLE_DAMAGE_PENALTY, -trample_damage_taken * TRAMPLE_DAMAGE_PENALTY),
+        ("trample_trade", inefficient_trample_trade_penalty, -1.0, -inefficient_trample_trade_penalty),
         ("board_preservation", board_preservation, 1.0, board_preservation),
         ("immediate_lethal_prevention", immediate_lethal_prevention, 1.0, immediate_lethal_prevention),
         ("next_attack_lethal_prevention", next_attack_lethal_prevention, 1.0, next_attack_lethal_prevention),

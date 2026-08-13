@@ -33,6 +33,7 @@ class BuilderTurnProjection:
     player_id: int
     enemy_id: int
     action_kind: str
+    combat_die_sides: int
     own_life: int
     enemy_life: int
     own_total_resources: int
@@ -102,6 +103,7 @@ def build_current_turn_projection(player: PlayerState, engine) -> BuilderTurnPro
         player_id=player.player_id,
         enemy_id=enemy.player_id,
         action_kind="current",
+        combat_die_sides=int(getattr(engine, "combat_die_sides", 6)),
         own_life=player.life,
         enemy_life=enemy.life,
         own_total_resources=player.total_resources(),
@@ -364,6 +366,7 @@ def project_attack_to_next_turn(
         player_id=base_projection.enemy_id,
         enemy_id=base_projection.player_id,
         action_kind=f"{base_projection.action_kind}:next_turn",
+        combat_die_sides=base_projection.combat_die_sides,
         own_life=next_active_life,
         enemy_life=float(base_projection.own_life),
         own_total_resources=base_projection.enemy_total_resources,
@@ -452,6 +455,7 @@ def _rebuild_projection(
         player_id=base_projection.player_id,
         enemy_id=base_projection.enemy_id,
         action_kind=action_kind,
+        combat_die_sides=base_projection.combat_die_sides,
         own_life=base_projection.own_life,
         enemy_life=base_projection.enemy_life,
         own_total_resources=base_projection.own_total_resources if own_total_resources is None else own_total_resources,

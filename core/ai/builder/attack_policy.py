@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from itertools import combinations
 
 import core.config as config
+from core.config import COMBAT_DIE_SIDES
 from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.models import Ability
 
@@ -35,6 +36,7 @@ from .turn_projection import (
     BuilderTurnProjection,
     ProjectedPlayerView,
     ProjectedUnitView,
+    normalize_builder_abilities,
     project_attack_to_next_turn,
     project_creature_action,
     project_pass_action,
@@ -68,9 +70,9 @@ COUNTERATTACK_SEARCH_BUDGET = BuilderSearchBudget(
     max_heuristic_block_responses=8,
     mode_name="counter",
 )
-LOOKAHEAD_FOLLOWUP_SHORTLIST_LIMIT = 4
-FINAL_FOLLOWUP_SHORTLIST_LIMIT = 4
-COUNTER_MAIN_ACTION_BUILD_LIMIT = 6
+LOOKAHEAD_FOLLOWUP_SHORTLIST_LIMIT = 1
+FINAL_FOLLOWUP_SHORTLIST_LIMIT = 1
+COUNTER_MAIN_ACTION_BUILD_LIMIT = 4
 
 
 @dataclass(frozen=True)
@@ -988,7 +990,7 @@ def _build_counterattack_projection(
                 sw=unit.sw,
                 lw=unit.lw,
                 current_hp=post_hp.get(unit.unit_id, unit.current_hp),
-                abilities=frozenset(unit.abilities),
+                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
                 tapped=False,
                 summoning_sickness=False,
                 cannot_block=getattr(unit, "cannot_block", False),
@@ -1009,7 +1011,7 @@ def _build_counterattack_projection(
                 sw=unit.sw,
                 lw=unit.lw,
                 current_hp=post_hp.get(unit.unit_id, unit.current_hp),
-                abilities=frozenset(unit.abilities),
+                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
                 tapped=bool(
                     (attacked and not (unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE)))
                     or (not attacked and getattr(unit, "tapped", False))
@@ -1024,12 +1026,13 @@ def _build_counterattack_projection(
         player_id=enemy.player_id,
         enemy_id=player.player_id,
         action_kind="projected_counterattack",
+        combat_die_sides=COMBAT_DIE_SIDES,
         own_life=enemy.life,
         enemy_life=player.life,
         own_total_resources=enemy.total_resources(),
-        own_ready_resources=enemy.available_resources(),
+        own_ready_resources=enemy.total_resources(),
         enemy_total_resources=player.total_resources(),
-        enemy_ready_resources=player.available_resources(),
+        enemy_ready_resources=player.total_resources(),
         own_units=tuple(own_post),
         enemy_units=tuple(enemy_post),
         available_attacker_ids=tuple(unit.unit_id for unit in own_post if unit.is_ready()),
@@ -1041,9 +1044,9 @@ def _build_counterattack_projection(
             enemy.life,
             player.life,
             enemy.total_resources(),
-            enemy.available_resources(),
+            enemy.total_resources(),
             player.total_resources(),
-            player.available_resources(),
+            player.total_resources(),
             tuple(own_post),
             tuple(enemy_post),
         ),
@@ -1052,27 +1055,124 @@ def _build_counterattack_projection(
 
 def _generate_counter_main_action_projections(counter_projection: BuilderTurnProjection, *, build_limit: int):
     yield "pass", "-", project_pass_action(counter_projection)
+    if counter_projection.own_total_resources < BUILDER_MAX_RESOURCES:
+        yield "resource", "-", project_resource_action(counter_projection)
     if len(counter_projection.own_units) >= BUILDER_CREATURE_CAP:
         return
     counter_player = counter_projection.players[counter_projection.player_id]
     counter_snapshot = build_builder_snapshot(counter_player, counter_projection)
-    legal_haste_builds = [
+    legal_builds = [
         current
         for current in generate_builder_creature_candidates(counter_snapshot, counter_projection.own_ready_resources)
-        if current.has_haste and is_legal_builder_candidate(current, counter_projection.own_ready_resources)
+        if is_legal_builder_candidate(current, counter_projection.own_ready_resources)
     ]
-    legal_haste_builds.sort(
-        key=lambda current: (
-            current.sw,
-            current.aw,
-            current.vw,
-            current.lw,
-            -current.cost,
-            current.key,
-        ),
-        reverse=True,
-    )
-    for current in legal_haste_builds[: max(1, build_limit)]:
+    selected: dict[tuple, tuple[str, object]] = {}
+
+    def consider(label: str, candidate) -> None:
+        if candidate is None:
+            return
+        existing = selected.get(candidate.key)
+        if existing is None or existing[0] == "build_best":
+            selected[candidate.key] = (label, candidate)
+
+    if legal_builds:
+        consider(
+            "build_haste",
+            max(
+                (candidate for candidate in legal_builds if candidate.has_haste),
+                key=lambda candidate: (
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.vw,
+                    candidate.lw,
+                    -candidate.cost,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+        consider(
+            "build_haste_blocker",
+            max(
+                (candidate for candidate in legal_builds if candidate.has_haste and candidate.vw > 0),
+                key=lambda candidate: (
+                    candidate.vw,
+                    candidate.sw,
+                    candidate.lw,
+                    candidate.aw,
+                    -candidate.cost,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+        consider(
+            "build_delayed",
+            max(
+                (candidate for candidate in legal_builds if not candidate.has_haste),
+                key=lambda candidate: (
+                    candidate.aw + candidate.sw,
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.vw,
+                    candidate.lw,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+        consider(
+            "build_flying",
+            max(
+                (candidate for candidate in legal_builds if candidate.has_ability(Ability.FLYING)),
+                key=lambda candidate: (
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.vw,
+                    candidate.lw,
+                    candidate.key,
+                ),
+                default=None,
+            ),
+        )
+        consider(
+            "build_defense",
+            max(
+                legal_builds,
+                key=lambda candidate: (
+                    candidate.vw + candidate.lw,
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.key,
+                ),
+            ),
+        )
+        consider(
+            "build_terminal",
+            max(
+                legal_builds,
+                key=lambda candidate: (
+                    candidate.has_haste,
+                    candidate.sw,
+                    candidate.aw,
+                    candidate.vw,
+                    candidate.key,
+                ),
+            ),
+        )
+        consider(
+            "build_best",
+            max(
+                legal_builds,
+                key=lambda candidate: (
+                    candidate.aw + candidate.vw + candidate.sw + candidate.lw,
+                    candidate.has_haste,
+                    candidate.sw,
+                    candidate.key,
+                ),
+            ),
+        )
+    for label, current in list(selected.values())[: max(1, build_limit)]:
         action = BuilderTurnActionCandidate(
             action_kind="creature",
             creature_candidate=current,
@@ -1081,7 +1181,7 @@ def _generate_counter_main_action_projections(counter_projection: BuilderTurnPro
             generation_reason="counter_haste",
         )
         yield (
-            "build_haste",
+            label,
             f"{current.aw}/{current.vw}/{current.sw}/{current.lw}/{getattr(current.builder_ability, 'value', '-')}",
             project_creature_action(counter_projection, action),
         )

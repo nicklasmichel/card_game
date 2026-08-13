@@ -291,7 +291,12 @@ def finish_block_assignment(self) -> None:
     if self.phase != PHASE_DECLARE_BLOCKERS:
         return
     if not self.defending_player.is_human and self.active_player.is_human:
-        self.ai_assign_blocks()
+        if not any(
+            blocker_id is not None
+            for attacker_id, blocker_id in self.block_assignments.items()
+            if attacker_id not in self.enraged_forced_attackers
+        ):
+            self.ai_assign_blocks()
     if self.statistics is not None:
         for blocker_id in self.block_assignments.values():
             self.statistics.register_block_assignment(1 if blocker_id is not None else 0)

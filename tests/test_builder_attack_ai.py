@@ -359,6 +359,20 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertEqual(score.projected_counter_main_action, "build_haste")
         self.assertGreater(score.projected_counter_damage, 0.0)
 
+    def test_counter_followup_haste_projection_includes_new_attacker_with_existing_board(self) -> None:
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.engine.ai_player.life = 6
+        self.make_builder_creature(1, aw=0, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.HASTE,))
+        for stats in ((2, 0, 3, 1), (3, 0, 2, 1), (2, 0, 3, 1), (2, 0, 3, 1)):
+            self.make_builder_creature(0, aw=stats[0], vw=stats[1], sw=stats[2], lw=stats[3], ready=True, abilities=(Ability.HASTE,))
+
+        score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
+
+        self.assertEqual(score.projected_counter_main_action, "build_haste")
+        self.assertEqual(len(score.projected_counter_attackers), 5)
+        self.assertGreaterEqual(score.projected_counter_damage, 9.0)
+        self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
+
     def test_opponent_can_choose_no_block_to_keep_ai_weak_body_trapped_at_cap(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_DECLARE_ATTACKERS

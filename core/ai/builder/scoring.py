@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 from itertools import combinations
-from statistics import mean
-
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.models import Ability, BattlefieldCreature
 
@@ -19,10 +17,10 @@ from .combat_eval import (
 from .types import BuilderCandidateScore, BuilderCreatureCandidate, BuilderStrategicSnapshot
 
 RAW_STAT_WEIGHTS = {
-    "aw": 1.0,
-    "vw": 0.8,
-    "sw": 1.3,
-    "hp": 1.1,
+    "aw": 0.2,
+    "vw": 0.18,
+    "sw": 0.22,
+    "hp": 0.14,
 }
 
 ABILITY_BASE_WEIGHTS = {
@@ -312,6 +310,7 @@ def _score_candidate_matchups(
     enemy_creatures: list,
     own_creatures: list,
 ) -> dict[str, float]:
+    die_sides = snapshot.combat_die_sides
     candidate_future = build_candidate_combatant_view(candidate, ready=True)
     candidate_immediate = build_candidate_combatant_view(candidate, ready=Ability.HASTE in candidate.abilities)
     future_enemy_blockers = [coerce_builder_combatant(creature, ready=True) for creature in enemy_creatures]
@@ -319,24 +318,35 @@ def _score_candidate_matchups(
     enemy_attackers = [coerce_builder_combatant(creature, ready=True) for creature in enemy_creatures]
     own_blockers = [coerce_builder_combatant(creature) for creature in own_creatures]
 
-    offensive = _evaluate_offensive_matchups(candidate_future, future_enemy_blockers, prefer_forced=Ability.ENRAGED in candidate.abilities)
-    immediate_defense = _evaluate_marginal_immediate_defense(candidate_immediate, enemy_attackers, own_blockers)
-    immediate = _evaluate_immediate_pressure(candidate_immediate, snapshot, immediate_enemy_blockers)
+    offensive = _evaluate_offensive_matchups(
+        candidate_future,
+        future_enemy_blockers,
+        prefer_forced=Ability.ENRAGED in candidate.abilities,
+        die_sides=die_sides,
+    )
+    future_defense = _evaluate_defensive_matchups(candidate_future, enemy_attackers, die_sides=die_sides)
+    immediate_defense = _evaluate_marginal_immediate_defense(
+        candidate_immediate,
+        enemy_attackers,
+        own_blockers,
+        die_sides=die_sides,
+    )
+    immediate = _evaluate_immediate_pressure(candidate_immediate, snapshot, immediate_enemy_blockers, die_sides=die_sides)
     evasion = _evaluate_evasion(candidate_future, candidate_immediate, snapshot, future_enemy_blockers, immediate_enemy_blockers)
 
     return {
         "matchup_offense": offensive["score"],
-        "matchup_defense": immediate_defense["score"],
+        "matchup_defense": future_defense["score"] + immediate_defense["score"],
         "immediate_pressure": immediate["score"],
         "evasion": evasion["score"],
         "expected_player_damage": offensive["expected_player_damage"] + immediate["expected_player_damage"],
         "expected_heal": offensive["expected_heal"] + immediate["expected_heal"],
-        "kill_pressure": offensive["kill_pressure"] + immediate_defense["kill_pressure"],
-        "death_risk": offensive["death_risk"] + immediate_defense["death_risk"],
+        "kill_pressure": offensive["kill_pressure"] + future_defense["kill_pressure"] + immediate_defense["kill_pressure"],
+        "death_risk": offensive["death_risk"] + future_defense["death_risk"] + immediate_defense["death_risk"],
     }
 
 
-def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer_forced: bool) -> dict[str, float]:
+def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer_forced: bool, die_sides: int) -> dict[str, float]:
     legal_normal_blockers = [blocker for blocker in enemy_blockers if can_legally_block(candidate_view, blocker, require_ready=True)]
     legal_forced_blockers = [blocker for blocker in enemy_blockers if can_legally_be_forced_to_block(candidate_view, blocker, require_ready=True)]
     unblocked = estimate_unblocked_attack(candidate_view)
@@ -356,12 +366,12 @@ def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer
             "death_risk": 0.0,
         }
 
-    blocker_estimates = [_offensive_matchup_summary(candidate_view, blocker) for blocker in legal_normal_blockers]
+    blocker_estimates = [_offensive_matchup_summary(candidate_view, blocker, die_sides=die_sides) for blocker in legal_normal_blockers]
     chosen_summary = min(blocker_estimates, key=lambda summary: summary["score"])
     offense_score = chosen_summary["score"]
 
     if prefer_forced and legal_forced_blockers:
-        forced_summaries = [_offensive_matchup_summary(candidate_view, blocker) for blocker in legal_forced_blockers]
+        forced_summaries = [_offensive_matchup_summary(candidate_view, blocker, die_sides=die_sides) for blocker in legal_forced_blockers]
         best_forced = max(forced_summaries, key=lambda summary: summary["score"])
         best_forced_score = max(best_forced["score"], unblocked_score)
         if best_forced_score > offense_score:
@@ -386,15 +396,27 @@ def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer
     }
 
 
-def _offensive_matchup_summary(candidate_view, blocker_view) -> dict[str, float]:
-    estimate = estimate_builder_combat(candidate_view, blocker_view)
+def _offensive_matchup_summary(candidate_view, blocker_view, *, die_sides: int) -> dict[str, float]:
+    estimate = estimate_builder_combat(candidate_view, blocker_view, die_sides)
+    blocker_value = estimate_creature_board_value(blocker_view)
+    attacker_value = estimate_creature_board_value(candidate_view)
+    contact_probability = estimate.attacker_win_probability
+    delivered_creature_damage = min(candidate_view.sw, blocker_view.current_hp) * estimate.defender_death_probability
+    stranded_damage = max(0.0, candidate_view.sw - delivered_creature_damage - estimate.expected_player_damage)
+    overkill_damage = max(0.0, candidate_view.sw - blocker_view.current_hp) * estimate.defender_death_probability
     score = _score_offensive_estimate(
         player_damage=estimate.expected_player_damage,
-        creature_damage=estimate.expected_damage_to_defender,
+        creature_damage=delivered_creature_damage,
         kill_probability=estimate.defender_death_probability,
         death_probability=estimate.attacker_death_probability,
         heal=estimate.expected_attacker_heal,
     )
+    score += contact_probability * 0.75
+    score += estimate.attacker_survival_probability * 0.55
+    score += estimate.defender_death_probability * blocker_value * 0.08
+    score -= stranded_damage * 0.45
+    score -= overkill_damage * 0.2
+    score -= estimate.attacker_death_probability * attacker_value * 0.08
     return {
         "score": score,
         "expected_player_damage": estimate.expected_player_damage,
@@ -421,53 +443,61 @@ def _score_offensive_estimate(
     )
 
 
-def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list) -> dict[str, float]:
+def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list, *, die_sides: int) -> dict[str, float]:
     legal_attackers = [enemy for enemy in enemy_attackers if can_legally_block(enemy, candidate_view, require_ready=False)]
     if not legal_attackers:
-        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
+        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0, "repeat_block_value": 0.0}
 
     summaries = []
     for enemy in legal_attackers:
-        estimate = estimate_builder_combat(enemy, candidate_view)
+        estimate = estimate_builder_combat(enemy, candidate_view, die_sides)
         prevented_damage = max(0.0, enemy.sw - estimate.expected_player_damage)
-        kill_breakpoint = 0.0
-        if getattr(enemy, "current_hp", 0) > 0:
-            kill_breakpoint = min(1.0, candidate_view.sw / max(1, enemy.current_hp))
-        contest_ratio = min(1.3, candidate_view.vw / max(1, enemy.aw))
-        unresolved_threat = (1.0 - estimate.attacker_death_probability) * (
-            enemy.sw * DEFENSIVE_UNRESOLVED_THREAT_PENALTY + enemy.aw * 0.18
+        kill_probability = estimate.attacker_death_probability
+        survive_probability = estimate.defender_survival_probability
+        block_win_probability = estimate.defender_win_probability
+        delivered_kill_damage = min(candidate_view.sw, enemy.current_hp) * kill_probability
+        overkill_damage = max(0.0, candidate_view.sw - enemy.current_hp) * kill_probability
+        repeat_block_value = survive_probability * (
+            prevented_damage + kill_probability * max(1.0, enemy.sw + enemy.aw * 0.35)
         )
-        stall_only_penalty = 0.0
-        if candidate_view.sw == 0:
-            stall_only_penalty += DEFENSIVE_STALL_ONLY_PENALTY * max(0.35, 1.0 - estimate.attacker_death_probability)
-        if candidate_view.vw <= 1 and enemy.aw >= 4:
-            stall_only_penalty += DEFENSIVE_LOW_DEFENSE_PENALTY
+        unresolved_threat = (1.0 - kill_probability) * (enemy.sw * 1.1 + enemy.aw * 0.35)
+        brittle_chump_penalty = 0.0
+        if survive_probability < 0.2 and kill_probability < 0.2:
+            brittle_chump_penalty += 1.15 + max(0.0, enemy.sw - prevented_damage) * 0.25
+        if candidate_view.sw <= 0:
+            brittle_chump_penalty += 0.55 * max(0.0, 1.0 - kill_probability)
         score = (
             prevented_damage * DEFENSIVE_PREVENTED_DAMAGE_WEIGHT
-            + estimate.attacker_death_probability * DEFENSIVE_KILL_WEIGHT
-            + kill_breakpoint * estimate.attacker_death_probability * DEFENSIVE_BREAKPOINT_KILL_WEIGHT
-            + contest_ratio * DEFENSIVE_CONTEST_WEIGHT
-            + (1.0 - estimate.defender_death_probability) * DEFENSIVE_SURVIVAL_WEIGHT
+            + kill_probability * DEFENSIVE_KILL_WEIGHT
+            + delivered_kill_damage * 0.45
+            + block_win_probability * DEFENSIVE_CONTEST_WEIGHT
+            + survive_probability * (DEFENSIVE_SURVIVAL_WEIGHT + 0.75)
+            + repeat_block_value * 0.9
             - estimate.defender_death_probability * DEFENSIVE_DEATH_PENALTY
+            - overkill_damage * 0.18
             - unresolved_threat
-            - stall_only_penalty
+            - brittle_chump_penalty
         )
         summaries.append(
             {
                 "score": score,
-                "kill_pressure": estimate.attacker_death_probability * DEFENSIVE_KILL_WEIGHT,
+                "kill_pressure": kill_probability * DEFENSIVE_KILL_WEIGHT,
                 "death_risk": -(estimate.defender_death_probability * DEFENSIVE_DEATH_PENALTY),
+                "repeat_block_value": repeat_block_value,
+                "weight": max(1.0, enemy.sw + enemy.aw * 0.35),
             }
         )
-    average_score = mean(summary["score"] for summary in summaries)
+    total_weight = sum(summary["weight"] for summary in summaries)
+    weighted_score = sum(summary["score"] * summary["weight"] for summary in summaries) / max(1.0, total_weight)
     return {
-        "score": average_score,
-        "kill_pressure": mean(summary["kill_pressure"] for summary in summaries),
-        "death_risk": mean(summary["death_risk"] for summary in summaries),
+        "score": weighted_score,
+        "kill_pressure": sum(summary["kill_pressure"] * summary["weight"] for summary in summaries) / max(1.0, total_weight),
+        "death_risk": sum(summary["death_risk"] * summary["weight"] for summary in summaries) / max(1.0, total_weight),
+        "repeat_block_value": sum(summary["repeat_block_value"] * summary["weight"] for summary in summaries) / max(1.0, total_weight),
     }
 
 
-def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnapshot, immediate_enemy_blockers: list) -> dict[str, float]:
+def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnapshot, immediate_enemy_blockers: list, *, die_sides: int) -> dict[str, float]:
     if not candidate_view.has_ability(Ability.HASTE):
         return {"score": 0.0, "expected_player_damage": 0.0, "expected_heal": 0.0}
 
@@ -481,7 +511,12 @@ def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnaps
             "expected_heal": unblocked.attacker_heal,
         }
 
-    offensive = _evaluate_offensive_matchups(candidate_view, immediate_enemy_blockers, prefer_forced=Ability.ENRAGED in candidate_view.abilities)
+    offensive = _evaluate_offensive_matchups(
+        candidate_view,
+        immediate_enemy_blockers,
+        prefer_forced=Ability.ENRAGED in candidate_view.abilities,
+        die_sides=die_sides,
+    )
     lethal_bonus = IMMEDIATE_LETHAL_BONUS_WEIGHT if offensive["expected_player_damage"] >= snapshot.enemy_life else 0.0
     return {
         "score": offensive["score"] + lethal_bonus,
@@ -490,30 +525,31 @@ def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnaps
     }
 
 
-def _evaluate_immediate_defense(candidate_view, enemy_attackers: list) -> dict[str, float]:
+def _evaluate_immediate_defense(candidate_view, enemy_attackers: list, *, die_sides: int) -> dict[str, float]:
     if not candidate_view.has_ability(Ability.HASTE):
-        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
-    defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers)
+        return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0, "repeat_block_value": 0.0}
+    defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers, die_sides=die_sides)
     return {
         "score": defensive["score"],
         "kill_pressure": defensive["kill_pressure"],
         "death_risk": defensive["death_risk"],
+        "repeat_block_value": defensive["repeat_block_value"],
     }
 
 
-def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, own_blockers: list) -> dict[str, float]:
+def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, own_blockers: list, *, die_sides: int) -> dict[str, float]:
     if not candidate_view.has_ability(Ability.HASTE):
         return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
     baseline_damage = _optimal_enemy_damage(enemy_attackers, own_blockers)
     with_candidate_damage = _optimal_enemy_damage(enemy_attackers, own_blockers + [candidate_view])
     marginal_prevented = max(0.0, baseline_damage - with_candidate_damage)
-    if marginal_prevented <= 0.0:
+    defensive = _evaluate_immediate_defense(candidate_view, enemy_attackers, die_sides=die_sides)
+    if marginal_prevented <= 0.0 and defensive["repeat_block_value"] <= 0.0:
         return {"score": 0.0, "kill_pressure": 0.0, "death_risk": 0.0}
-    defensive = _evaluate_immediate_defense(candidate_view, enemy_attackers)
-    score = marginal_prevented * DEFENSIVE_PREVENTED_DAMAGE_WEIGHT
-    if baseline_damage > 0.0:
-        score += max(0.0, defensive["kill_pressure"])
-        score += max(0.0, defensive["death_risk"]) * 0.35
+    score = marginal_prevented * (DEFENSIVE_PREVENTED_DAMAGE_WEIGHT + 0.35)
+    score += max(0.0, defensive["kill_pressure"]) * 1.35
+    score += max(0.0, defensive["death_risk"]) * 0.7
+    score += defensive["repeat_block_value"] * 1.1
     return {
         "score": score,
         "kill_pressure": defensive["kill_pressure"],

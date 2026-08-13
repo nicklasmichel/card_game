@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from core.ai_logic import SimpleAI
 from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
-from core.config import STARTING_LIFE
+from core.config import COMBAT_DIE_SIDES, STARTING_LIFE
 from core.models import (
     Ability,
     BattlefieldCreature,
@@ -180,6 +180,7 @@ class GameEngine:
         self.game_id = ""
         self.statistics: Optional[GameStatistics] = None
         self.game_over_saved = False
+        self.combat_die_sides = COMBAT_DIE_SIDES
 
         self.next_instance_id = 1
         self.selected_hand_ids: List[int] = []

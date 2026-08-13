@@ -10,6 +10,7 @@ from core.models import Ability
 class BuilderStrategicSnapshot:
     own_life: int
     enemy_life: int
+    combat_die_sides: int
     own_total_resources: int
     own_ready_resources: int
     enemy_total_resources: int

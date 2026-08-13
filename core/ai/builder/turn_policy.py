@@ -261,7 +261,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
     static_candidates, fallback_used, build_debug = _build_projected_candidates(player, engine, snapshot)
-    shortlisted = _shortlist_projected_candidates(static_candidates, snapshot.own_ready_resources)
+    shortlisted = _shortlist_projected_candidates(static_candidates, snapshot)
 
     decisions: list[BuilderTurnDecision] = []
     for action_candidate, projection, projected_candidate in _generate_main_action_projections(player, engine, base_projection, shortlisted):
@@ -920,7 +920,8 @@ def _attack_cache_key(projection) -> tuple:
     )
 
 
-def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], ready_resources: int) -> list[BuilderProjectedCandidate]:
+def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], snapshot) -> list[BuilderProjectedCandidate]:
+    ready_resources = snapshot.own_ready_resources
     if len(projected_candidates) <= 16:
         return projected_candidates
     selected: dict[tuple, BuilderProjectedCandidate] = {}
@@ -967,6 +968,72 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         key=_projected_candidate_sort_key,
         reverse=True,
     )
+    by_immediate_blocker = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_haste and projected.candidate.vw > 0],
+        key=lambda projected: (
+            projected.static_score.matchup_defense,
+            projected.static_score.kill_pressure,
+            projected.static_score.survivability,
+            projected.candidate.vw,
+            projected.candidate.lw,
+            -projected.candidate.cost,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_persistent_blocker = sorted(
+        [projected for projected in projected_candidates if projected.candidate.vw > 0],
+        key=lambda projected: (
+            projected.static_score.matchup_defense + projected.static_score.survivability + projected.static_score.kill_pressure,
+            projected.candidate.vw,
+            projected.candidate.lw,
+            projected.future_value,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_width_control = sorted(
+        [projected for projected in projected_candidates if projected.candidate.vw > 0 and projected.candidate.sw > 0],
+        key=lambda projected: (
+            projected.static_score.kill_pressure + projected.static_score.matchup_defense,
+            projected.candidate.vw,
+            projected.candidate.sw,
+            -projected.candidate.cost,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_face_damage = sorted(
+        projected_candidates,
+        key=lambda projected: (
+            projected.static_score.immediate_pressure,
+            projected.static_score.expected_player_damage,
+            projected.static_score.matchup_offense,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_offense_access = sorted(
+        projected_candidates,
+        key=lambda projected: (
+            projected.static_score.matchup_offense,
+            projected.static_score.kill_pressure,
+            projected.candidate.aw,
+            projected.candidate.sw,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_highest_haste_defense = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_haste],
+        key=lambda projected: (
+            projected.candidate.vw,
+            projected.static_score.matchup_defense,
+            projected.candidate.sw,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
 
     take(by_future, 8 if ready_resources <= 4 else 12, "future")
     take(by_damage, 4 if ready_resources <= 4 else 6, "damage")
@@ -975,6 +1042,12 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     take(by_hybrid, 3 if ready_resources <= 4 else 4, "hybrid")
     take(by_haste, 4, "haste")
     take(by_flying, 4, "flying")
+    take(by_immediate_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_immediate_blocker")
+    take(by_persistent_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_persistent_blocker")
+    take(by_width_control, 2 if snapshot.enemy_creature_count > 1 else 1, "mandatory_anti_width")
+    take(by_face_damage, 2, "mandatory_face_damage")
+    take(by_offense_access, 2, "mandatory_offense_access")
+    take(by_highest_haste_defense, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_haste_defense")
     shortlisted = list(selected.values())
     shortlisted.sort(key=_projected_candidate_sort_key, reverse=True)
     return shortlisted[:16 if ready_resources <= 4 else 24]
@@ -1602,6 +1675,12 @@ def _score_terminal_projection(projection, predicted_attack: BuilderAttackDecisi
         return LOSS_PENALTY
     if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
         return WIN_BONUS
+    if (
+        projection.own_life > 0
+        and predicted_attack.score.counter_lethal_risk >= 1.0
+        and predicted_attack.score.projected_counter_damage >= projection.own_life
+    ):
+        return LOSS_PENALTY
     return 0.0
 
 
@@ -1893,6 +1972,11 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             break
         add_decision(current)
     displayed.sort(key=_turn_decision_sort_key, reverse=True)
+    forced_loss_all_actions = all(
+        current.score.enemy_lethal_risk >= 1.0 and current.score.expected_enemy_followup_damage >= snapshot.own_life
+        for current in decisions
+    )
+    best_survival_margin = max((current.score.survival_buffer for current in decisions), default=0.0)
     emit_builder_debug_line(
         engine,
         "AI PLAN",
@@ -1908,6 +1992,8 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("baseline_attack_lethal", baseline_attack.score.lethal_probability),
             ("attack_search_exact", baseline_attack.search_metadata.exact_search),
             ("fallback", fallback_used),
+            ("forced_loss_all_actions", forced_loss_all_actions),
+            ("best_survival_margin", round(best_survival_margin, 4)),
         ),
     )
     for rank, current in enumerate(displayed, start=1):
@@ -2013,6 +2099,8 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("delta_keys", "N/A" if runner_up is None else score_delta_keys(best.score, runner_up.score)),
             ("planned_attack", [] if best.predicted_attack_decision is None else list(best.predicted_attack_decision.candidate.attacker_ids)),
             ("selection_reason", "max_selection_score"),
+            ("forced_loss_all_actions", forced_loss_all_actions),
+            ("best_survival_margin", round(best_survival_margin, 4)),
         ),
     )
     if builder_debug_verbose() and builder_debug_include_fingerprints():
