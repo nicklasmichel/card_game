@@ -636,8 +636,6 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
         pairs=(
             ("choose", [] if best_candidate is None else list(best_candidate.assignments)),
             ("selected_blockers", [] if best_candidate is None else [blocker_id for _, blocker_id in best_candidate.assignments]),
-            ("all_ready_creatures", [blocker.unit_id for blocker in ready_blockers]),
-            ("legal_blockers", [f"{attacker_id}:{blockers}" for attacker_id, blockers in legal_blocker_rows]),
             ("total", 0.0 if best_score is None else best_score.total),
             ("current_incoming_damage", sum(estimate_unblocked_attack(attacker).player_damage for attacker in attackers)),
             ("prevented_damage", 0.0 if best_score is None else best_score.prevented_player_damage),

@@ -103,3 +103,14 @@ class BuilderCandidateScore:
     death_risk: float
     unused_resources: float
     total: float
+    attack_access_probability: float = 0.0
+    block_win_probability: float = 0.0
+    attacker_kill_probability: float = 0.0
+    blocker_survival_probability: float = 0.0
+    damage_delivery_probability: float = 0.0
+    stranded_damage: float = 0.0
+    overkill_damage: float = 0.0
+    life_breakpoint: float = 0.0
+    repeated_block_value: float = 0.0
+    immediate_prevented_damage: float = 0.0
+    repeated_prevented_damage: float = 0.0

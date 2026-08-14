@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from math import isfinite
+from time import monotonic
 
 import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP
@@ -10,7 +11,12 @@ from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS,
 from .attack_policy import BuilderAttackDecision, evaluate_best_builder_attack
 from .config import BUILDER_AI_WEIGHTS
 from .cap_strategy import compute_builder_cap_context
-from .candidates import builder_candidate_budgets, generate_builder_creature_candidates, is_legal_builder_candidate
+from .candidates import (
+    builder_candidate_budgets,
+    generate_builder_creature_candidates,
+    is_legal_builder_candidate,
+    select_builder_creature_search_frontier,
+)
 from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .debug import (
     builder_debug_build_top_n,
@@ -86,6 +92,11 @@ OPEN_HAND_REMOVAL_RISK_PENALTY = 0.0
 NONLETHAL_GLASS_ABILITY_PENALTY = 0.0
 _FUTURE_SLOT_VALUE_CACHE: dict[tuple, float] = {}
 _BUDGET_FRONTIER_CACHE: dict[tuple, tuple[float, str]] = {}
+ROOT_BUILD_SCORING_LIMIT = 128
+FRONTIER_BUILD_SCORING_LIMIT = 48
+ROOT_BUILD_SCORING_SECONDS = 4.0
+FRONTIER_SCORING_SECONDS = 1.5
+ACTION_HORIZON_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -110,14 +121,23 @@ def plan_builder_turn(player, engine) -> BuilderTurnDecision:
     if cached is not None and _decision_matches_runtime(cached, engine.phase, runtime_signature):
         return cached
 
+    time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
+    deadline = monotonic() + time_limit
+
     if engine.phase == PHASE_MAIN_1 and not player.main_action_used_this_turn:
-        decision = _plan_builder_full_turn(player, engine, runtime_signature)
+        decision = _plan_builder_full_turn(player, engine, runtime_signature, deadline=deadline)
     elif engine.phase == PHASE_BUILDER_ABILITY:
-        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=BUILDER_ABILITIES_ENABLED and not engine.builder_ability_used_this_turn)
+        decision = _plan_builder_continuation(
+            player,
+            engine,
+            runtime_signature,
+            allow_ability=BUILDER_ABILITIES_ENABLED and not engine.builder_ability_used_this_turn,
+            deadline=deadline,
+        )
     elif engine.phase == PHASE_DECLARE_ATTACKERS:
-        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False)
+        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
     else:
-        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False)
+        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
 
     setattr(engine.ai, "_last_builder_turn_decision", decision)
     return decision
@@ -249,19 +269,58 @@ def build_builder_runtime_fingerprint(player, engine) -> tuple:
     )
 
 
-def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> BuilderTurnDecision:
+def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadline: float) -> BuilderTurnDecision:
     if builder_debug_enabled():
         ensure_builder_weights_logged(engine)
     snapshot = build_builder_snapshot(player, engine)
     if builder_debug_verbose():
         log_builder_state(engine, player, decision="main", snapshot=snapshot)
     base_projection = build_current_turn_projection(player, engine)
-    frontier_context = _build_frontier_context(snapshot, base_projection)
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
-    static_candidates, fallback_used, build_debug = _build_projected_candidates(player, engine, snapshot)
+    if baseline_attack.score.guaranteed_player_damage >= base_projection.enemy_life > 0:
+        action_candidate = BuilderTurnActionCandidate(
+            action_kind="pass",
+            creature_candidate=None,
+            projected_total_resources=player.total_resources(),
+            projected_ready_resources=player.available_resources(),
+            generation_reason="guaranteed_lethal_attack",
+        )
+        frontier_context = (0.0, "-", 0.0, "-", 0.0, "-")
+        decision = _build_action_decision(
+            action_candidate=action_candidate,
+            ability_action=BuilderAbilityActionCandidate(action_kind="skip", generation_reason="lethal_short_circuit"),
+            main_projection=base_projection,
+            projection=base_projection,
+            baseline_attack=baseline_attack,
+            skip_attack=baseline_attack,
+            predicted_attack=baseline_attack,
+            snapshot=snapshot,
+            projected_candidate=None,
+            source_signature=runtime_signature,
+            fallback_used=False,
+            skip_hold_value=0.0,
+            horizon_cache=horizon_cache,
+            frontier_context=frontier_context,
+            engine=engine,
+            player=player,
+            deadline=deadline,
+        )
+        _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [decision], False)
+        return decision
+    static_candidates, fallback_used, build_debug = _build_projected_candidates(
+        player,
+        engine,
+        snapshot,
+        deadline=min(deadline, monotonic() + ROOT_BUILD_SCORING_SECONDS),
+    )
     shortlisted = _shortlist_projected_candidates(static_candidates, snapshot)
+    frontier_context = _build_frontier_context(
+        snapshot,
+        base_projection,
+        deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
+    )
 
     decisions: list[BuilderTurnDecision] = []
     for action_candidate, projection, projected_candidate in _generate_main_action_projections(player, engine, base_projection, shortlisted):
@@ -285,8 +344,19 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
                     frontier_context=frontier_context,
                     engine=engine,
                     player=player,
+                    deadline=deadline,
                 )
             )
+            current_decision = decisions[-1]
+            if (
+                current_decision.predicted_attack_decision is not None
+                and current_decision.predicted_attack_decision.score.guaranteed_player_damage >= base_projection.enemy_life > 0
+            ):
+                _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, current_decision)
+                _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [current_decision], fallback_used)
+                return current_decision
+            if decisions and monotonic() >= deadline:
+                break
             continue
         decisions.extend(
             _evaluate_ability_plans_for_projection(
@@ -302,8 +372,11 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
                 source_signature=runtime_signature,
                 fallback_used=fallback_used,
                 frontier_context=frontier_context,
+                deadline=deadline,
             )
         )
+        if decisions and monotonic() >= deadline:
+            break
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     decision = decisions[0]
     _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, decision)
@@ -311,7 +384,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple) -> Builder
     return decision
 
 
-def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allow_ability: bool) -> BuilderTurnDecision:
+def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allow_ability: bool, deadline: float) -> BuilderTurnDecision:
     if builder_debug_enabled():
         ensure_builder_weights_logged(engine)
     snapshot = build_builder_snapshot(player, engine)
@@ -323,7 +396,11 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             snapshot=snapshot,
         )
     base_projection = build_current_turn_projection(player, engine)
-    frontier_context = _build_frontier_context(snapshot, base_projection)
+    frontier_context = _build_frontier_context(
+        snapshot,
+        base_projection,
+        deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
+    )
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
@@ -352,6 +429,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             frontier_context=frontier_context,
             engine=engine,
             player=player,
+            deadline=deadline,
         )
         return decision
     decisions = _evaluate_ability_plans_for_projection(
@@ -368,6 +446,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
         fallback_used=False,
         frontier_context=frontier_context,
         allow_ability=allow_ability,
+        deadline=deadline,
     )
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     return decisions[0]
@@ -375,6 +454,7 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
 
 def _generate_main_action_projections(player, engine, base_projection, shortlisted):
     yielded = False
+    resource_row = None
     if player.total_resources() < engine.BUILDER_MAX_RESOURCES:
         resource_candidate = BuilderTurnActionCandidate(
             action_kind="resource",
@@ -383,8 +463,7 @@ def _generate_main_action_projections(player, engine, base_projection, shortlist
             projected_ready_resources=player.available_resources() + 1,
             generation_reason="resource_growth",
         )
-        yielded = True
-        yield resource_candidate, project_resource_action(base_projection), None
+        resource_row = (resource_candidate, project_resource_action(base_projection), None)
 
     if len(base_projection.own_units) < engine.BUILDER_CREATURE_CAP:
         for projected_candidate in shortlisted:
@@ -397,6 +476,9 @@ def _generate_main_action_projections(player, engine, base_projection, shortlist
             )
             yielded = True
             yield action_candidate, project_creature_action(base_projection, action_candidate), projected_candidate
+    if resource_row is not None:
+        yielded = True
+        yield resource_row
     if not yielded:
         pass_candidate = BuilderTurnActionCandidate(
             action_kind="pass",
@@ -422,6 +504,7 @@ def _evaluate_ability_plans_for_projection(
     source_signature: tuple,
     fallback_used: bool,
     frontier_context: tuple[float, str, float, str, float, str],
+    deadline: float,
     allow_ability: bool = True,
 ) -> list[BuilderTurnDecision]:
     if not BUILDER_ABILITIES_ENABLED:
@@ -444,6 +527,7 @@ def _evaluate_ability_plans_for_projection(
                 frontier_context=frontier_context,
                 engine=engine,
                 player=player,
+                deadline=deadline,
             )
         ]
     ability_candidates = _generate_ability_action_candidates(player, engine, main_projection, allow_ability=allow_ability)
@@ -472,8 +556,11 @@ def _evaluate_ability_plans_for_projection(
             frontier_context=frontier_context,
             engine=engine,
             player=player,
+            deadline=deadline,
         )
         decisions.append(decision)
+        if decisions and monotonic() >= deadline:
+            break
     return decisions
 
 
@@ -558,7 +645,14 @@ def _shortlist_ability_actions(candidates: list[BuilderAbilityActionCandidate], 
     return selected
 
 
-def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderProjectedCandidate], bool, dict]:
+def _build_projected_candidates(
+    player,
+    engine,
+    snapshot,
+    *,
+    deadline: float | None = None,
+    scoring_limit: int = ROOT_BUILD_SCORING_LIMIT,
+) -> tuple[list[BuilderProjectedCandidate], bool, dict]:
     available_resources = player.available_resources()
     candidates = generate_builder_creature_candidates(snapshot, available_resources)
     considered_budgets = builder_candidate_budgets(snapshot, available_resources)
@@ -574,8 +668,13 @@ def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderP
             "projected_all": tuple(),
             "frontier": tuple(),
         }
+    search_frontier = select_builder_creature_search_frontier(
+        legal,
+        snapshot,
+        limit=scoring_limit,
+    )
     projected: list[BuilderProjectedCandidate] = []
-    for candidate in legal:
+    for candidate in search_frontier:
         static_score = score_builder_creature_candidate(
             candidate,
             snapshot,
@@ -590,12 +689,15 @@ def _build_projected_candidates(player, engine, snapshot) -> tuple[list[BuilderP
                 future_value=extract_candidate_future_value(static_score, candidate, snapshot),
             )
         )
+        if projected and deadline is not None and monotonic() >= deadline:
+            break
     projected.sort(key=_projected_candidate_sort_key, reverse=True)
     return projected, False, {
         "budget": available_resources,
         "considered_budgets": considered_budgets,
         "generated_count": len(candidates),
         "legal_count": len(legal),
+        "search_frontier_count": len(search_frontier),
         "projected_all": tuple(projected),
         "frontier": tuple(projected),
     }
@@ -619,6 +721,7 @@ def _build_action_decision(
     frontier_context: tuple[float, str, float, str, float, str],
     engine,
     player,
+    deadline: float,
 ) -> BuilderTurnDecision:
     cap_context = compute_builder_cap_context(
         projection.players[projection.player_id],
@@ -630,10 +733,24 @@ def _build_action_decision(
     next_frontier = []
     if action_candidate.action_kind == "resource":
         next_snapshot = build_builder_snapshot(projection.players[projection.player_id], projection)
-        next_frontier, _, _ = _build_projected_candidates(projection.players[projection.player_id], projection, next_snapshot)
+        next_frontier, _, _ = _build_projected_candidates(
+            projection.players[projection.player_id],
+            projection,
+            next_snapshot,
+            deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
+            scoring_limit=FRONTIER_BUILD_SCORING_LIMIT,
+        )
 
     terminal = _score_terminal_projection(projection, predicted_attack)
-    horizon = _evaluate_horizon_cached(projection, predicted_attack, horizon_cache)
+    if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
+        horizon = BuilderHorizonReport()
+    else:
+        horizon = _evaluate_horizon_cached(
+            projection,
+            predicted_attack,
+            horizon_cache,
+            deadline=min(deadline, monotonic() + ACTION_HORIZON_SECONDS),
+        )
     creature_future_value = 0.0 if projected_candidate is None else projected_candidate.future_value * TURN_WEIGHTS.creature_future_value
     resource_growth_value = (
         score_resource_growth_action(snapshot, current_frontier, next_frontier)
@@ -894,7 +1011,13 @@ def _evaluate_attack_cached(projection, cache: dict[tuple, BuilderAttackDecision
     return decision
 
 
-def _evaluate_horizon_cached(projection, predicted_attack: BuilderAttackDecision, cache: dict[tuple, BuilderHorizonReport]) -> BuilderHorizonReport:
+def _evaluate_horizon_cached(
+    projection,
+    predicted_attack: BuilderAttackDecision,
+    cache: dict[tuple, BuilderHorizonReport],
+    *,
+    deadline: float,
+) -> BuilderHorizonReport:
     cache_key = (
         projection.state_signature,
         tuple(predicted_attack.candidate.attacker_ids),
@@ -903,7 +1026,7 @@ def _evaluate_horizon_cached(projection, predicted_attack: BuilderAttackDecision
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
-    report = evaluate_main_action_horizon(projection, predicted_attack)
+    report = evaluate_main_action_horizon(projection, predicted_attack, deadline=deadline)
     cache[cache_key] = report
     return report
 
@@ -922,7 +1045,10 @@ def _attack_cache_key(projection) -> tuple:
 
 def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], snapshot) -> list[BuilderProjectedCandidate]:
     ready_resources = snapshot.own_ready_resources
-    if len(projected_candidates) <= 16:
+    limit = 16 if ready_resources <= 4 else 20
+    if snapshot.enemy_potential_attacker_count >= 3 or snapshot.enemy_creature_count >= 4:
+        limit += 4
+    if len(projected_candidates) <= limit:
         return projected_candidates
     selected: dict[tuple, BuilderProjectedCandidate] = {}
 
@@ -963,17 +1089,38 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         key=_projected_candidate_sort_key,
         reverse=True,
     )
+    by_haste_damage = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_haste and projected.candidate.sw > 0],
+        key=lambda projected: (
+            projected.candidate.sw,
+            projected.static_score.immediate_pressure,
+            projected.candidate.aw,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
     by_flying = sorted(
         [projected for projected in projected_candidates if projected.candidate.has_ability(Ability.FLYING)],
         key=_projected_candidate_sort_key,
         reverse=True,
     )
+    by_flying_damage = sorted(
+        [projected for projected in projected_candidates if projected.candidate.has_ability(Ability.FLYING) and projected.candidate.sw > 0],
+        key=lambda projected: (
+            projected.candidate.sw,
+            projected.candidate.vw,
+            projected.static_score.damage_delivery_probability,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
     by_immediate_blocker = sorted(
         [projected for projected in projected_candidates if projected.candidate.has_haste and projected.candidate.vw > 0],
         key=lambda projected: (
-            projected.static_score.matchup_defense,
-            projected.static_score.kill_pressure,
-            projected.static_score.survivability,
+            projected.static_score.immediate_prevented_damage,
+            projected.static_score.block_win_probability,
+            projected.static_score.attacker_kill_probability + projected.static_score.blocker_survival_probability,
+            projected.static_score.life_breakpoint,
             projected.candidate.vw,
             projected.candidate.lw,
             -projected.candidate.cost,
@@ -981,10 +1128,35 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         ),
         reverse=True,
     )
+    by_block_win = sorted(
+        [projected for projected in projected_candidates if projected.candidate.vw > 0],
+        key=lambda projected: (
+            projected.static_score.block_win_probability,
+            projected.static_score.blocker_survival_probability,
+            projected.static_score.life_breakpoint,
+            projected.static_score.matchup_defense,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_kill_and_survive = sorted(
+        [projected for projected in projected_candidates if projected.candidate.vw > 0 and projected.candidate.sw > 0],
+        key=lambda projected: (
+            projected.static_score.attacker_kill_probability + projected.static_score.blocker_survival_probability,
+            projected.static_score.repeated_block_value,
+            projected.static_score.matchup_defense,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
     by_persistent_blocker = sorted(
         [projected for projected in projected_candidates if projected.candidate.vw > 0],
         key=lambda projected: (
-            projected.static_score.matchup_defense + projected.static_score.survivability + projected.static_score.kill_pressure,
+            projected.static_score.repeated_block_value,
+            projected.static_score.blocker_survival_probability,
+            projected.static_score.attacker_kill_probability,
+            projected.static_score.life_breakpoint,
+            projected.static_score.matchup_defense,
             projected.candidate.vw,
             projected.candidate.lw,
             projected.future_value,
@@ -995,7 +1167,9 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     by_width_control = sorted(
         [projected for projected in projected_candidates if projected.candidate.vw > 0 and projected.candidate.sw > 0],
         key=lambda projected: (
-            projected.static_score.kill_pressure + projected.static_score.matchup_defense,
+            projected.static_score.repeated_prevented_damage,
+            projected.static_score.attacker_kill_probability,
+            projected.static_score.blocker_survival_probability,
             projected.candidate.vw,
             projected.candidate.sw,
             -projected.candidate.cost,
@@ -1016,10 +1190,34 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     by_offense_access = sorted(
         projected_candidates,
         key=lambda projected: (
-            projected.static_score.matchup_offense,
-            projected.static_score.kill_pressure,
+            projected.static_score.attack_access_probability,
+            projected.static_score.damage_delivery_probability,
+            projected.static_score.attacker_kill_probability,
+            -projected.static_score.stranded_damage,
             projected.candidate.aw,
             projected.candidate.sw,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_damage_breakpoint = sorted(
+        [projected for projected in projected_candidates if projected.candidate.sw > 0],
+        key=lambda projected: (
+            projected.static_score.damage_delivery_probability,
+            -projected.static_score.stranded_damage,
+            -projected.static_score.overkill_damage,
+            -projected.candidate.cost,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
+    by_life_breakpoint = sorted(
+        [projected for projected in projected_candidates if projected.candidate.vw > 0 or projected.candidate.lw > 1],
+        key=lambda projected: (
+            projected.static_score.life_breakpoint,
+            projected.static_score.blocker_survival_probability,
+            -projected.candidate.cost,
+            projected.static_score.matchup_defense,
             projected.candidate.key,
         ),
         reverse=True,
@@ -1027,14 +1225,44 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     by_highest_haste_defense = sorted(
         [projected for projected in projected_candidates if projected.candidate.has_haste],
         key=lambda projected: (
-            projected.candidate.vw,
-            projected.static_score.matchup_defense,
+            projected.static_score.immediate_prevented_damage,
+            projected.static_score.block_win_probability,
+            projected.static_score.blocker_survival_probability,
             projected.candidate.sw,
             projected.candidate.key,
         ),
         reverse=True,
     )
+    by_terminal = sorted(
+        [
+            projected for projected in projected_candidates
+            if projected.candidate.has_haste and projected.static_score.immediate_pressure > 0.0
+        ],
+        key=lambda projected: (
+            projected.static_score.immediate_pressure >= snapshot.enemy_life,
+            projected.static_score.immediate_pressure,
+            projected.static_score.expected_player_damage,
+            projected.static_score.matchup_offense,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
 
+    # Insert tactically mandatory shapes first.  The insertion order is also the
+    # evaluation order when a turn reaches its time budget.
+    take(by_haste_damage, 2, "mandatory_haste_damage")
+    take(by_flying_damage, 2 if snapshot.enemy_flying_count > 0 else 1, "mandatory_flying_damage")
+    take(by_terminal, 3, "mandatory_terminal")
+    take(by_immediate_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_immediate_blocker")
+    take(by_block_win, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_highest_block_win")
+    take(by_kill_and_survive, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_kill_and_survive")
+    take(by_damage_breakpoint, 2, "mandatory_damage_breakpoint")
+    take(by_face_damage, 2, "mandatory_face_damage")
+    take(by_offense_access, 2, "mandatory_offense_access")
+    take(by_persistent_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_persistent_blocker")
+    take(by_width_control, 2 if snapshot.enemy_creature_count > 1 else 1, "mandatory_anti_width")
+    take(by_life_breakpoint, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_life_breakpoint")
+    take(by_highest_haste_defense, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_haste_defense")
     take(by_future, 8 if ready_resources <= 4 else 12, "future")
     take(by_damage, 4 if ready_resources <= 4 else 6, "damage")
     take(by_attack, 4 if ready_resources <= 4 else 5, "attack")
@@ -1042,15 +1270,7 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     take(by_hybrid, 3 if ready_resources <= 4 else 4, "hybrid")
     take(by_haste, 4, "haste")
     take(by_flying, 4, "flying")
-    take(by_immediate_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_immediate_blocker")
-    take(by_persistent_blocker, 3 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_persistent_blocker")
-    take(by_width_control, 2 if snapshot.enemy_creature_count > 1 else 1, "mandatory_anti_width")
-    take(by_face_damage, 2, "mandatory_face_damage")
-    take(by_offense_access, 2, "mandatory_offense_access")
-    take(by_highest_haste_defense, 2 if snapshot.enemy_potential_attacker_count > 0 else 1, "mandatory_haste_defense")
-    shortlisted = list(selected.values())
-    shortlisted.sort(key=_projected_candidate_sort_key, reverse=True)
-    return shortlisted[:16 if ready_resources <= 4 else 24]
+    return list(selected.values())[:limit]
 
 
 def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDecision, snapshot) -> float:
@@ -1097,10 +1317,17 @@ def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, p
         return 0.0
     if horizon.own_next_attack_lethal or horizon.coverage_prevents_repeated_lethal:
         return 0.0
+    pressure = _base_survival_pressure(snapshot)
+    safe_fifth_slot_penalty = 0.0
+    if (
+        pressure <= 2.0
+        and snapshot.enemy_total_sw <= 1
+        and predicted_attack.score.counter_lethal_risk <= 0.0
+    ):
+        safe_fifth_slot_penalty = projected_candidate.future_value * 0.6
     superior_future_gap = _estimate_future_slot_advantage(snapshot, projection, projected_candidate)
     if superior_future_gap <= 0.0:
-        return 0.0
-    pressure = _base_survival_pressure(snapshot)
+        return -safe_fifth_slot_penalty
     release_probability = 0.0
     if cap_context.weakest_unit_value <= 1.0:
         release_probability += 0.3
@@ -1127,7 +1354,7 @@ def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, p
             discounted_gap += projected_candidate.future_value * max(0.0, 0.32 - pressure * 0.06)
     if pressure <= 4.0 and horizon.own_next_attack_damage < max(4.0, snapshot.enemy_life * 0.5) and horizon.second_attack_damage <= 1.0:
         discounted_gap += projected_candidate.future_value * max(0.0, 0.65 - pressure * 0.07)
-    return -discounted_gap
+    return -(discounted_gap + safe_fifth_slot_penalty)
 
 
 def _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
@@ -1159,6 +1386,10 @@ def _score_flying_coverage_value(snapshot, projection, predicted_attack, project
     value = 0.0
     if horizon.coverage_prevents_repeated_lethal:
         value += REPEATED_LETHAL_PREVENTION_BONUS
+        if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
+            # Once the required flying block is covered, prefer a body that also
+            # shortens the race instead of spending the whole budget on defense.
+            value += projected_candidate.candidate.sw * 7.0
     if horizon.coverage_ready_turn == 1:
         unavoidable_second_damage = max(0.0, horizon.cumulative_unavoidable_damage - horizon.damage_before_coverage_ready)
     else:
@@ -1194,6 +1425,7 @@ def _estimate_future_slot_advantage(snapshot, projection, projected_candidate) -
         return 0.0
     own_units = tuple(unit for unit in projection.own_units if unit.unit_id != projection.hypothetical_unit_id)
     cache_key = (
+        snapshot,
         future_budget,
         tuple(_projection_unit_signature(unit) for unit in own_units),
         tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
@@ -1205,6 +1437,11 @@ def _estimate_future_slot_advantage(snapshot, projection, projected_candidate) -
             for candidate in generate_builder_creature_candidates(snapshot, future_budget)
             if is_legal_builder_candidate(candidate, future_budget)
         ]
+        legal = select_builder_creature_search_frontier(
+            legal,
+            snapshot,
+            limit=FRONTIER_BUILD_SCORING_LIMIT,
+        )
         best_future_value = 0.0
         for candidate in legal:
             static_score = score_builder_creature_candidate(
@@ -1220,10 +1457,18 @@ def _estimate_future_slot_advantage(snapshot, projection, projected_candidate) -
     return max(0.0, cached - projected_candidate.future_value)
 
 
-def _best_frontier_build_value(snapshot, projection, budget: int, required_ability: Ability | None = None) -> tuple[float, str]:
+def _best_frontier_build_value(
+    snapshot,
+    projection,
+    budget: int,
+    required_ability: Ability | None = None,
+    *,
+    deadline: float | None = None,
+) -> tuple[float, str]:
     if budget <= 0:
         return 0.0, "-"
     cache_key = (
+        snapshot,
         budget,
         getattr(required_ability, "value", "-"),
         tuple(_projection_unit_signature(unit) for unit in projection.own_units),
@@ -1244,6 +1489,11 @@ def _best_frontier_build_value(snapshot, projection, budget: int, required_abili
         if is_legal_builder_candidate(candidate, budget)
         and (required_ability is None or candidate.has_ability(required_ability))
     ]
+    legal = select_builder_creature_search_frontier(
+        legal,
+        adjusted_snapshot,
+        limit=FRONTIER_BUILD_SCORING_LIMIT,
+    )
     best_value = 0.0
     best_stats = "-"
     for candidate in legal:
@@ -1258,15 +1508,32 @@ def _best_frontier_build_value(snapshot, projection, budget: int, required_abili
         if future_value > best_value:
             best_value = future_value
             best_stats = f"{candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw}/{getattr(candidate.builder_ability, 'value', '-').lower()}"
+        if deadline is not None and monotonic() >= deadline:
+            break
     result = (round(best_value, 4), best_stats)
     _BUDGET_FRONTIER_CACHE[cache_key] = result
     return result
 
 
-def _build_frontier_context(snapshot, projection) -> tuple[float, str, float, str, float, str]:
-    best_now, best_now_stats = _best_frontier_build_value(snapshot, projection, projection.own_total_resources)
-    best_r1, best_r1_stats = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 1))
-    best_r2, best_r2_stats = _best_frontier_build_value(snapshot, projection, min(10, projection.own_total_resources + 2))
+def _build_frontier_context(snapshot, projection, *, deadline: float | None = None) -> tuple[float, str, float, str, float, str]:
+    best_now, best_now_stats = _best_frontier_build_value(
+        snapshot,
+        projection,
+        projection.own_total_resources,
+        deadline=deadline,
+    )
+    best_r1, best_r1_stats = _best_frontier_build_value(
+        snapshot,
+        projection,
+        min(10, projection.own_total_resources + 1),
+        deadline=deadline,
+    )
+    best_r2, best_r2_stats = _best_frontier_build_value(
+        snapshot,
+        projection,
+        min(10, projection.own_total_resources + 2),
+        deadline=deadline,
+    )
     return (
         best_now,
         best_now_stats,
@@ -1316,6 +1583,12 @@ def _score_role_novelty(snapshot, projection, predicted_attack, projected_candid
         novelty -= 1.2
     if candidate.has_haste and predicted_attack.score.player_damage <= 0.0 and candidate.sw == 0:
         novelty -= 1.4
+        if (
+            snapshot.own_life >= 10
+            and predicted_attack.score.counter_lethal_risk <= 0.0
+            and predicted_attack.score.projected_counter_damage < max(2.0, snapshot.own_life - 4.0)
+        ):
+            novelty -= 4.0
     if own_zero_attack >= 2 and candidate.aw == 0 and candidate.sw <= 1:
         novelty -= 0.8
     novelty -= similar_units * 0.45
@@ -1783,13 +2056,31 @@ def _runtime_unit_signature(creature) -> tuple:
 
 
 def _decision_matches_runtime(decision: BuilderTurnDecision, phase: str, runtime_signature: tuple) -> bool:
+    runtime_without_phase = _runtime_signature_without_phase(runtime_signature)
     if phase == PHASE_MAIN_1:
         return decision.state_signature == runtime_signature
     if phase == PHASE_BUILDER_ABILITY:
-        return decision.post_main_signature == runtime_signature or decision.state_signature == runtime_signature
+        return (
+            decision.post_main_signature == runtime_signature
+            or decision.state_signature == runtime_signature
+            or _runtime_signature_without_phase(decision.state_signature) == runtime_without_phase
+            or _runtime_signature_without_phase(decision.post_main_signature) == runtime_without_phase
+        )
     if phase == PHASE_DECLARE_ATTACKERS:
-        return decision.post_ability_signature == runtime_signature or decision.post_main_signature == runtime_signature
+        return (
+            decision.post_ability_signature == runtime_signature
+            or decision.post_main_signature == runtime_signature
+            or _runtime_signature_without_phase(decision.state_signature) == runtime_without_phase
+            or _runtime_signature_without_phase(decision.post_main_signature) == runtime_without_phase
+            or _runtime_signature_without_phase(decision.post_ability_signature) == runtime_without_phase
+        )
     return decision.state_signature == runtime_signature
+
+
+def _runtime_signature_without_phase(signature: tuple) -> tuple:
+    if len(signature) < 2:
+        return signature
+    return signature[:1] + signature[2:]
 
 
 def _projection_runtime_fingerprint(projection, *, phase: str, ability_used: bool) -> tuple:
@@ -1903,6 +2194,17 @@ def _debug_build_candidates(engine, player, snapshot, build_debug: dict, shortli
                 ("expected_heal", score.expected_heal),
                 ("kill_pressure", score.kill_pressure),
                 ("death_risk", score.death_risk),
+                ("attack_access_probability", score.attack_access_probability),
+                ("block_win_probability", score.block_win_probability),
+                ("attacker_kill_probability", score.attacker_kill_probability),
+                ("blocker_survival_probability", score.blocker_survival_probability),
+                ("damage_delivery_probability", score.damage_delivery_probability),
+                ("stranded_damage", score.stranded_damage),
+                ("overkill_damage", score.overkill_damage),
+                ("life_breakpoint", score.life_breakpoint),
+                ("immediate_prevented_damage", score.immediate_prevented_damage),
+                ("repeated_block_value", score.repeated_block_value),
+                ("repeated_prevented_damage", score.repeated_prevented_damage),
                 ("shortlist_reasons", projected.shortlist_reasons),
                 ("selected_in_turn", selected_signature == signature),
             ),
@@ -2005,6 +2307,9 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
             ("selection_score", current.score.selection_score),
             ("turn_total", current.score.total),
             ("attack", [] if attack is None else list(attack.candidate.attacker_ids)),
+            ("projected_enemy_main_action", None if attack is None else attack.score.projected_counter_main_action),
+            ("projected_enemy_main_stats", None if attack is None else attack.score.projected_counter_main_stats),
+            ("projected_enemy_attackers", [] if attack is None else list(attack.score.projected_counter_attackers)),
             ("board_value", current.score.board_value),
             ("resource_value", current.score.resource_value),
             ("creature_future_value", current.score.creature_future_value),

@@ -48,6 +48,33 @@ class BuilderCombatEstimate:
 
 
 @dataclass(frozen=True)
+class BuilderCombatMatchup:
+    attacker_win_probability: float
+    blocker_win_probability: float
+    raw_tie_probability: float
+    attacker_favored_tie_probability: float
+    attacker_kill_probability: float
+    blocker_kill_probability: float
+    attacker_survival_probability: float
+    blocker_survival_probability: float
+    attack_access_probability: float
+    block_win_probability: float
+    damage_delivery_probability: float
+    expected_player_damage: float
+    expected_damage_to_blocker: float
+    expected_damage_to_attacker: float
+    stranded_damage: float
+    overkill_damage: float
+    unblocked_player_damage: float
+    attacker_remaining_hp: float
+    blocker_remaining_hp: float
+    attacker_life_breakpoint: float
+    blocker_life_breakpoint: float
+    immediate_prevented_damage: float
+    repeated_block_value: float
+
+
+@dataclass(frozen=True)
 class BuilderUnblockedAttackEstimate:
     player_damage: float
     attacker_heal: float
@@ -228,6 +255,26 @@ def estimate_builder_combat(attacker, defender, die_sides: int = COMBAT_DIE_SIDE
     )
 
 
+def summarize_builder_combat_matchup(attacker, defender, die_sides: int = COMBAT_DIE_SIDES) -> BuilderCombatMatchup:
+    attacker_view = coerce_builder_combatant(attacker)
+    defender_view = coerce_builder_combatant(defender)
+    return _summarize_builder_combat_matchup_cached(
+        attacker_view.aw,
+        attacker_view.vw,
+        attacker_view.sw,
+        attacker_view.lw,
+        attacker_view.current_hp,
+        tuple(sorted(ability.value for ability in attacker_view.abilities)),
+        defender_view.aw,
+        defender_view.vw,
+        defender_view.sw,
+        defender_view.lw,
+        defender_view.current_hp,
+        tuple(sorted(ability.value for ability in defender_view.abilities)),
+        die_sides,
+    )
+
+
 @lru_cache(maxsize=None)
 def _estimate_builder_combat_cached(
     attacker_aw: int,
@@ -313,6 +360,98 @@ def _estimate_builder_combat_cached(
         expected_attacker_remaining_hp=expected_attacker_remaining_hp,
         defender_win_and_survive_probability=dice.defender_win_probability if defender_view.current_hp > attacker_view.sw else 0.0,
         attacker_win_and_survive_probability=dice.attacker_win_probability if attacker_view.current_hp > defender_view.sw else 0.0,
+    )
+
+
+@lru_cache(maxsize=None)
+def _summarize_builder_combat_matchup_cached(
+    attacker_aw: int,
+    attacker_vw: int,
+    attacker_sw: int,
+    attacker_lw: int,
+    attacker_current_hp: int,
+    attacker_abilities: tuple[str, ...],
+    defender_aw: int,
+    defender_vw: int,
+    defender_sw: int,
+    defender_lw: int,
+    defender_current_hp: int,
+    defender_abilities: tuple[str, ...],
+    die_sides: int,
+) -> BuilderCombatMatchup:
+    estimate = _estimate_builder_combat_cached(
+        attacker_aw,
+        attacker_vw,
+        attacker_sw,
+        attacker_lw,
+        attacker_current_hp,
+        attacker_abilities,
+        defender_aw,
+        defender_vw,
+        defender_sw,
+        defender_lw,
+        defender_current_hp,
+        defender_abilities,
+        die_sides,
+    )
+    attacker_view = BuilderCombatantView(
+        aw=attacker_aw,
+        vw=attacker_vw,
+        sw=attacker_sw,
+        lw=attacker_lw,
+        current_hp=attacker_current_hp,
+        abilities=frozenset(Ability(name) for name in attacker_abilities),
+    )
+    defender_view = BuilderCombatantView(
+        aw=defender_aw,
+        vw=defender_vw,
+        sw=defender_sw,
+        lw=defender_lw,
+        current_hp=defender_current_hp,
+        abilities=frozenset(Ability(name) for name in defender_abilities),
+    )
+    unblocked = estimate_unblocked_attack(attacker_view)
+    effective_damage_to_blocker = min(attacker_view.sw, max(0, defender_view.current_hp))
+    delivered_creature_damage = effective_damage_to_blocker * estimate.defender_death_probability
+    overkill_damage = max(0.0, attacker_view.sw - defender_view.current_hp) * estimate.defender_death_probability
+    stranded_damage = max(
+        0.0,
+        float(attacker_view.sw) - estimate.expected_player_damage - delivered_creature_damage,
+    )
+    damage_delivery_probability = 0.0
+    if attacker_view.sw > 0:
+        damage_delivery_probability = estimate.attacker_win_probability
+    if attacker_view.has_ability(Ability.TRAMPLE) and attacker_view.sw > defender_view.current_hp:
+        damage_delivery_probability = max(damage_delivery_probability, estimate.attacker_win_probability)
+    immediate_prevented_damage = max(0.0, float(attacker_view.sw) - estimate.expected_player_damage)
+    repeated_block_value = estimate.defender_survival_probability * (
+        immediate_prevented_damage
+        + estimate.attacker_death_probability * max(1.0, attacker_view.sw + attacker_view.aw * 0.35)
+    )
+    return BuilderCombatMatchup(
+        attacker_win_probability=estimate.attacker_win_probability,
+        blocker_win_probability=estimate.defender_win_probability,
+        raw_tie_probability=estimate.raw_tie_probability,
+        attacker_favored_tie_probability=estimate.attacker_favored_tie_probability,
+        attacker_kill_probability=estimate.defender_death_probability,
+        blocker_kill_probability=estimate.attacker_death_probability,
+        attacker_survival_probability=estimate.attacker_survival_probability,
+        blocker_survival_probability=estimate.defender_survival_probability,
+        attack_access_probability=estimate.attacker_win_probability,
+        block_win_probability=estimate.defender_win_probability,
+        damage_delivery_probability=damage_delivery_probability,
+        expected_player_damage=estimate.expected_player_damage,
+        expected_damage_to_blocker=estimate.expected_damage_to_defender,
+        expected_damage_to_attacker=estimate.expected_damage_to_attacker,
+        stranded_damage=stranded_damage,
+        overkill_damage=overkill_damage,
+        unblocked_player_damage=unblocked.player_damage,
+        attacker_remaining_hp=estimate.expected_attacker_remaining_hp,
+        blocker_remaining_hp=estimate.expected_defender_remaining_hp,
+        attacker_life_breakpoint=1.0 if attacker_view.current_hp > defender_view.sw else 0.0,
+        blocker_life_breakpoint=1.0 if defender_view.current_hp > attacker_view.sw else 0.0,
+        immediate_prevented_damage=immediate_prevented_damage,
+        repeated_block_value=repeated_block_value,
     )
 
 

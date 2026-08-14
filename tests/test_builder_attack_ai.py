@@ -318,6 +318,7 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertGreaterEqual(score.projected_counter_damage, 4.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
+        self.assertNotEqual(score.projected_counter_main_action, "pass")
 
     def test_ground_creature_does_not_count_as_flying_blocker_in_no_attack_followup(self) -> None:
         self.engine.ai_player.life = 2

@@ -6,6 +6,18 @@ from core.models import Ability
 from .types import BuilderCreatureCandidate, BuilderStrategicSnapshot
 
 
+_SEARCH_FRONTIER_PROFILES = (
+    (4, 0, 4, 1),  # immediate pressure
+    (4, 2, 2, 1),  # attack through medium defense
+    (2, 1, 4, 1),  # damage delivery
+    (1, 4, 1, 4),  # durable blocker
+    (2, 4, 2, 2),  # active defense
+    (2, 2, 2, 2),  # balanced body
+    (1, 2, 1, 5),  # high-life wall
+    (3, 1, 3, 3),  # resilient pressure
+)
+
+
 def candidate_cost(*, aw: int, vw: int, sw: int, lw: int, ability: Ability | None = None, has_haste: bool = False) -> int:
     return aw + vw + sw + max(0, lw - 1)
 
@@ -43,6 +55,132 @@ def generate_builder_creature_candidates(
 
 def builder_candidate_budgets(snapshot: BuilderStrategicSnapshot, available_resources: int) -> tuple[int, ...]:
     return _candidate_budgets(snapshot, available_resources)
+
+
+def select_builder_creature_search_frontier(
+    candidates: list[BuilderCreatureCandidate],
+    snapshot: BuilderStrategicSnapshot,
+    *,
+    limit: int,
+) -> list[BuilderCreatureCandidate]:
+    """Keep a small, diverse set for expensive tactical evaluation.
+
+    Candidate generation stays exhaustive so callers and tests can inspect every
+    legal build.  The game tree, however, only needs representative stat shapes
+    for each ability.  Round-robin selection prevents a single raw-score ranking
+    from dropping a tactically important wall, haste body, flyer, or damage
+    breakpoint.
+    """
+    if limit <= 0:
+        return []
+    if len(candidates) <= limit:
+        return list(candidates)
+
+    buckets: list[list[BuilderCreatureCandidate]] = []
+    ability_groups: list[list[BuilderCreatureCandidate]] = []
+    abilities = sorted(
+        {candidate.builder_ability for candidate in candidates},
+        key=lambda ability: getattr(ability, "value", ""),
+    )
+    for ability in abilities:
+        group = [candidate for candidate in candidates if candidate.builder_ability == ability]
+        if not group:
+            continue
+        ability_groups.append(group)
+        buckets.append(sorted(group, key=_cheap_candidate_search_key, reverse=True))
+        buckets.append(sorted(group, key=lambda candidate: (candidate.sw, candidate.aw, candidate.vw, candidate.lw, candidate.key), reverse=True))
+        buckets.append(sorted(group, key=lambda candidate: (candidate.aw, candidate.sw, candidate.lw, candidate.vw, candidate.key), reverse=True))
+        buckets.append(sorted(group, key=lambda candidate: (candidate.vw, candidate.lw, candidate.sw, candidate.aw, candidate.key), reverse=True))
+        buckets.append(sorted(group, key=lambda candidate: (candidate.lw, candidate.vw, candidate.sw, candidate.aw, candidate.key), reverse=True))
+        buckets.append(
+            sorted(
+                group,
+                key=lambda candidate: (
+                    min(candidate.aw, candidate.vw, candidate.sw),
+                    min(candidate.vw, candidate.lw - 1),
+                    candidate.sw,
+                    candidate.key,
+                ),
+                reverse=True,
+            )
+        )
+        named_profiles = [candidate for candidate in group if candidate.generation_reason != "exhaustive"]
+        if named_profiles:
+            buckets.append(sorted(named_profiles, key=_cheap_candidate_search_key, reverse=True))
+        for profile in _SEARCH_FRONTIER_PROFILES:
+            buckets.append(sorted(group, key=lambda candidate, current=profile: _profile_fit_key(candidate, current), reverse=True))
+
+    if snapshot.enemy_flying_count > 0:
+        flying = [candidate for candidate in candidates if candidate.has_ability(Ability.FLYING)]
+        buckets.insert(0, sorted(flying, key=lambda candidate: (candidate.vw, candidate.lw, candidate.sw, candidate.key), reverse=True))
+    if snapshot.enemy_potential_attacker_count > 0:
+        haste_blockers = [candidate for candidate in candidates if candidate.has_haste and candidate.vw > 0]
+        buckets.insert(0, sorted(haste_blockers, key=lambda candidate: (candidate.vw, candidate.lw, candidate.sw, candidate.key), reverse=True))
+
+    selected: dict[tuple, BuilderCreatureCandidate] = {}
+    # Guarantee representation before the round-robin walks the larger profile
+    # bucket list.  Small counter-search limits must still contain every ability.
+    for group in ability_groups:
+        candidate = max(group, key=_cheap_candidate_search_key)
+        selected.setdefault(candidate.key, candidate)
+        if len(selected) >= limit:
+            return list(selected.values())
+    for group in ability_groups:
+        candidate = max(group, key=lambda current: (current.vw, current.lw, current.sw, current.key))
+        selected.setdefault(candidate.key, candidate)
+        if len(selected) >= limit:
+            return list(selected.values())
+    offsets = [0] * len(buckets)
+    while len(selected) < limit:
+        made_progress = False
+        for bucket_index, bucket in enumerate(buckets):
+            while offsets[bucket_index] < len(bucket):
+                candidate = bucket[offsets[bucket_index]]
+                offsets[bucket_index] += 1
+                if candidate.key in selected:
+                    continue
+                selected[candidate.key] = candidate
+                made_progress = True
+                break
+            if len(selected) >= limit:
+                break
+        if not made_progress:
+            break
+
+    if len(selected) < limit:
+        for candidate in sorted(candidates, key=_cheap_candidate_search_key, reverse=True):
+            selected.setdefault(candidate.key, candidate)
+            if len(selected) >= limit:
+                break
+    return list(selected.values())
+
+
+def _cheap_candidate_search_key(candidate: BuilderCreatureCandidate) -> tuple:
+    ability_bonus = 0.0
+    if candidate.has_haste:
+        ability_bonus = candidate.sw * 0.35 + candidate.vw * 0.15
+    elif candidate.has_ability(Ability.FLYING):
+        ability_bonus = candidate.sw * 0.30
+    elif candidate.has_ability(Ability.VIGILANCE):
+        ability_bonus = candidate.sw * 0.16 + candidate.vw * 0.12
+    elif candidate.has_ability(Ability.TRAMPLE):
+        ability_bonus = candidate.sw * 0.22 + candidate.aw * 0.08
+    return (
+        candidate.sw * 1.20 + candidate.aw + candidate.vw * 0.92 + (candidate.lw - 1) * 0.78 + ability_bonus,
+        min(candidate.aw, candidate.vw, candidate.sw),
+        candidate.key,
+    )
+
+
+def _profile_fit_key(candidate: BuilderCreatureCandidate, profile: tuple[int, int, int, int]) -> tuple:
+    candidate_stats = (candidate.aw, candidate.vw, candidate.sw, max(0, candidate.lw - 1))
+    candidate_total = max(1, sum(candidate_stats))
+    profile_total = max(1, sum(profile))
+    distance = sum(
+        abs(current / candidate_total - target / profile_total)
+        for current, target in zip(candidate_stats, profile)
+    )
+    return (-distance, _cheap_candidate_search_key(candidate))
 
 
 def _candidate_budgets(snapshot: BuilderStrategicSnapshot, available_resources: int) -> tuple[int, ...]:

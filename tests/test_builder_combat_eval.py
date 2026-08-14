@@ -10,7 +10,7 @@ from core.ai.builder import (
     get_d6_sum_distribution,
     score_builder_creature_candidate,
 )
-from core.ai.builder.combat_eval import build_candidate_combatant_view
+from core.ai.builder.combat_eval import build_candidate_combatant_view, summarize_builder_combat_matchup
 from core.ai.builder.types import BuilderCreatureCandidate
 from core.game_logic import GameEngine
 from core.models import Ability
@@ -108,6 +108,23 @@ class BuilderCombatEvalTests(unittest.TestCase):
 
         self.assertNotAlmostEqual(attack_estimate.attacker_win_probability, reverse_estimate.attacker_win_probability, places=8)
         self.assertNotAlmostEqual(attack_estimate.expected_damage_to_defender, reverse_estimate.expected_damage_to_defender, places=8)
+
+    def test_matchup_cache_preserves_roles_and_attacker_favored_ties(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=0, sw=1, lw=2, abilities=frozenset(), cost=3),
+            current_hp=2,
+        )
+        blocker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=0, vw=2, sw=3, lw=2, abilities=frozenset(), cost=4),
+            current_hp=2,
+        )
+
+        matchup = summarize_builder_combat_matchup(attacker, blocker)
+        reverse = summarize_builder_combat_matchup(blocker, attacker)
+
+        self.assertAlmostEqual(matchup.attacker_favored_tie_probability, matchup.raw_tie_probability, places=8)
+        self.assertNotAlmostEqual(matchup.block_win_probability, reverse.block_win_probability, places=8)
+        self.assertNotAlmostEqual(matchup.attacker_kill_probability, reverse.attacker_kill_probability, places=8)
 
     def test_zero_dice_special_cases_are_explicit(self) -> None:
         attacker_zero = estimate_dice_win_probabilities(0, 2)
@@ -322,3 +339,39 @@ class BuilderCombatEvalTests(unittest.TestCase):
 
         self.assertGreater(haste_score.immediate_pressure, non_haste_score.immediate_pressure)
         self.assertGreater(haste_score.total, non_haste_score.total)
+
+    def test_extra_damage_is_discounted_when_damage_one_already_kills_life_one_attacker(self) -> None:
+        attacker = self.make_builder_creature(0, aw=2, vw=0, sw=3, lw=1, ready=True, abilities=(Ability.HASTE,))
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        low_damage = BuilderCreatureCandidate(aw=0, vw=3, sw=1, lw=1, abilities=frozenset({Ability.HASTE}), cost=4)
+        high_damage = BuilderCreatureCandidate(aw=0, vw=3, sw=2, lw=1, abilities=frozenset({Ability.HASTE}), cost=5)
+
+        low_score = score_builder_creature_candidate(low_damage, snapshot, available_resources=4, enemy_creatures=[attacker])
+        high_score = score_builder_creature_candidate(high_damage, snapshot, available_resources=5, enemy_creatures=[attacker])
+
+        self.assertAlmostEqual(low_score.attacker_kill_probability, high_score.attacker_kill_probability, places=8)
+        self.assertGreaterEqual(low_score.blocker_survival_probability, high_score.blocker_survival_probability)
+
+    def test_ground_damage_is_marked_stranded_when_a_legal_blocker_stops_delivery(self) -> None:
+        self.make_builder_creature(0, aw=0, vw=3, sw=1, lw=3, ready=True)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        ground_shell = BuilderCreatureCandidate(aw=0, vw=0, sw=2, lw=1, abilities=frozenset({Ability.HASTE}), cost=2)
+
+        score = score_builder_creature_candidate(
+            ground_shell,
+            snapshot,
+            available_resources=2,
+            enemy_creatures=list(self.engine.human_player.battlefield),
+        )
+
+        self.assertGreater(score.stranded_damage, 0.0)
+        self.assertLess(score.damage_delivery_probability, 0.5)
+
+    def test_low_attack_flying_keeps_positive_delivery_probability(self) -> None:
+        flying = BuilderCreatureCandidate(aw=0, vw=1, sw=2, lw=1, abilities=frozenset({Ability.FLYING}), cost=3)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+
+        score = score_builder_creature_candidate(flying, snapshot, available_resources=3, enemy_creatures=list(self.engine.human_player.battlefield))
+
+        self.assertGreater(score.damage_delivery_probability, 0.5)
+        self.assertGreater(score.evasion, 0.0)

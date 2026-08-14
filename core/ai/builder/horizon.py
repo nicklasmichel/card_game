@@ -2,20 +2,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from time import monotonic
 
 from core.builder_rules import BUILDER_CREATURE_CAP
 from core.models import Ability
 
 from .attack_policy import BuilderAttackCandidate, BuilderAttackDecision, evaluate_best_builder_attack
-from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
+from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate, select_builder_creature_search_frontier
 from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .scoring import score_builder_creature_candidate
 from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
 from .snapshot import build_builder_snapshot
-from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action, project_resource_action
+from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action
 from .turn_types import BuilderTurnActionCandidate
 
 HORIZON_BUILD_LIMIT = 4
+HORIZON_CANDIDATE_SCORING_LIMIT = 24
+_HORIZON_MAIN_ACTION_CACHE: dict[tuple, tuple[tuple[int, str, object], ...]] = {}
 NEXT_TURN_LETHAL_BONUS = 900.0
 REPEATED_LETHAL_PREVENTION_BONUS = 520.0
 
@@ -80,6 +83,8 @@ class _HorizonLine:
 def evaluate_main_action_horizon(
     projection: BuilderTurnProjection,
     predicted_attack: BuilderAttackDecision,
+    *,
+    deadline: float | None = None,
 ) -> BuilderHorizonReport:
     enemy_turn_projection = project_attack_to_next_turn(
         projection,
@@ -91,7 +96,7 @@ def evaluate_main_action_horizon(
         for unit in enemy_turn_projection.own_units
         if unit.is_ready() and unit.sw > 0
     )
-    lines = _build_horizon_lines(enemy_turn_projection, known_enemy_attackers)
+    lines = _build_horizon_lines(enemy_turn_projection, known_enemy_attackers, deadline=deadline)
     if not lines:
         return BuilderHorizonReport()
     offense_line = min(lines, key=_offense_line_sort_key)
@@ -152,9 +157,16 @@ def evaluate_block_horizon(
     )
 
 
-def _build_horizon_lines(enemy_turn_projection: BuilderTurnProjection, known_enemy_attackers: tuple[int, ...]) -> list[_HorizonLine]:
+def _build_horizon_lines(
+    enemy_turn_projection: BuilderTurnProjection,
+    known_enemy_attackers: tuple[int, ...],
+    *,
+    deadline: float | None,
+) -> list[_HorizonLine]:
     lines: list[_HorizonLine] = []
-    for main_action_kind, projected_state in _generate_enemy_main_projections(enemy_turn_projection):
+    for main_action_kind, projected_state in _generate_enemy_main_projections(enemy_turn_projection, deadline=deadline):
+        if lines and deadline is not None and monotonic() >= deadline:
+            break
         best_attack = evaluate_best_builder_attack(
             projected_state.players[projected_state.player_id],
             projected_state,
@@ -183,6 +195,8 @@ def _build_horizon_lines(enemy_turn_projection: BuilderTurnProjection, known_ene
                 )
         seen_attacks: set[tuple[int, ...]] = set()
         for attack_decision in attack_options:
+            if lines and deadline is not None and monotonic() >= deadline:
+                break
             attack_key = tuple(attack_decision.candidate.attacker_ids)
             if attack_key in seen_attacks:
                 continue
@@ -233,10 +247,8 @@ def _build_horizon_lines(enemy_turn_projection: BuilderTurnProjection, known_ene
     return lines
 
 
-def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjection):
+def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjection, *, deadline: float | None = None):
     yield "pass", project_pass_action(enemy_turn_projection)
-    if enemy_turn_projection.own_total_resources < 10:
-        yield "resource", project_resource_action(enemy_turn_projection)
     if len(enemy_turn_projection.own_units) >= BUILDER_CREATURE_CAP:
         return
     counter_player = enemy_turn_projection.players[enemy_turn_projection.player_id]
@@ -246,66 +258,112 @@ def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjectio
         for candidate in generate_builder_creature_candidates(snapshot, enemy_turn_projection.own_ready_resources)
         if is_legal_builder_candidate(candidate, enemy_turn_projection.own_ready_resources)
     ]
-    selected: dict[tuple, tuple[str, object]] = {}
+    legal_builds = select_builder_creature_search_frontier(
+        legal_builds,
+        snapshot,
+        limit=HORIZON_CANDIDATE_SCORING_LIMIT,
+    )
+    cache_key = (
+        enemy_turn_projection.state_signature,
+        enemy_turn_projection.own_ready_resources,
+        enemy_turn_projection.enemy_life,
+    )
+    cached = _HORIZON_MAIN_ACTION_CACHE.get(cache_key)
+    if cached is None:
+        selected: dict[tuple, tuple[int, str, object]] = {}
+        completed_scoring = True
 
-    def consider(label: str, candidate) -> None:
-        if candidate is None:
-            return
-        selected.setdefault(candidate.key, (label, candidate))
+        def consider(priority: int, label: str, candidate) -> None:
+            if candidate is None:
+                return
+            existing = selected.get(candidate.key)
+            if existing is None or priority < existing[0]:
+                selected[candidate.key] = (priority, label, candidate)
 
-    if legal_builds:
-        scored = [
-            (
-                score_builder_creature_candidate(
+        if legal_builds:
+            scored = []
+            for candidate in legal_builds:
+                scored.append((
+                    score_builder_creature_candidate(
+                        candidate,
+                        snapshot,
+                        available_resources=enemy_turn_projection.own_ready_resources,
+                        enemy_creatures=list(enemy_turn_projection.enemy_units),
+                        own_creatures=list(enemy_turn_projection.own_units),
+                    ),
                     candidate,
-                    snapshot,
-                    available_resources=enemy_turn_projection.own_ready_resources,
-                    enemy_creatures=list(enemy_turn_projection.enemy_units),
-                    own_creatures=list(enemy_turn_projection.own_units),
-                ).total,
-                candidate,
+                ))
+                if deadline is not None and monotonic() >= deadline:
+                    completed_scoring = False
+                    break
+            scored.sort(
+                key=lambda row: (
+                    row[0].total,
+                    row[0].immediate_pressure,
+                    row[0].matchup_defense,
+                    row[0].matchup_offense,
+                    row[1].key,
+                ),
+                reverse=True,
             )
-            for candidate in legal_builds
-        ]
-        scored.sort(key=lambda row: (row[0], row[1].sw, row[1].aw, row[1].vw, row[1].lw, row[1].key), reverse=True)
-        consider("build_best", scored[0][1])
-        consider(
-            "build_haste",
-            next((candidate for _, candidate in scored if candidate.has_haste), None),
-        )
-        consider(
-            "build_flying",
-            max(
-                (candidate for candidate in legal_builds if candidate.has_ability(Ability.FLYING)),
-                key=lambda candidate: (
-                    candidate.sw,
-                    candidate.aw,
-                    candidate.vw,
-                    candidate.lw,
-                    candidate.key,
+            haste = [row for row in scored if row[1].has_haste]
+            flying = [row for row in scored if row[1].has_ability(Ability.FLYING)]
+            delayed = [row for row in scored if not row[1].has_haste]
+            defensive = [row for row in scored if row[1].vw > 0]
+            terminal = [
+                row for row in scored
+                if row[1].has_haste and (
+                    row[0].immediate_pressure >= enemy_turn_projection.enemy_life
+                    or row[0].expected_player_damage >= enemy_turn_projection.enemy_life
+                )
+            ]
+            haste.sort(
+                key=lambda row: (
+                    row[0].immediate_pressure,
+                    row[0].expected_player_damage,
+                    row[0].attack_access_probability,
+                    row[1].key,
                 ),
-                default=None,
-            ),
-        )
-        consider(
-            "build_delayed",
-            next((candidate for _, candidate in scored if not candidate.has_haste and candidate.sw >= 3), None),
-        )
-        consider(
-            "build_defense",
-            max(
-                legal_builds,
-                key=lambda candidate: (
-                    candidate.vw + candidate.lw,
-                    candidate.sw,
-                    candidate.aw,
-                    candidate.key,
+                reverse=True,
+            )
+            flying.sort(
+                key=lambda row: (
+                    row[0].evasion,
+                    row[0].matchup_offense,
+                    row[1].key,
                 ),
-                default=None,
-            ),
-        )
-    ordered_candidates = list(selected.values())[:HORIZON_BUILD_LIMIT]
-    for label, candidate in ordered_candidates:
+                reverse=True,
+            )
+            delayed.sort(
+                key=lambda row: (
+                    row[0].matchup_offense,
+                    row[0].damage_delivery_probability,
+                    -row[0].stranded_damage,
+                    row[1].key,
+                ),
+                reverse=True,
+            )
+            defensive.sort(
+                key=lambda row: (
+                    row[0].repeated_block_value,
+                    row[0].block_win_probability,
+                    row[0].life_breakpoint,
+                    row[1].key,
+                ),
+                reverse=True,
+            )
+            for current in terminal[:3]:
+                consider(0, "build_terminal", current[1])
+            consider(1, "build_haste", None if not haste else haste[0][1])
+            consider(2, "build_flying", None if not flying else flying[0][1])
+            consider(3, "build_delayed", None if not delayed else delayed[0][1])
+            consider(4, "build_defense", None if not defensive else defensive[0][1])
+            consider(5, "build_best", scored[0][1])
+        cached = tuple(sorted(selected.values(), key=lambda row: (row[0], row[1], row[2].key)))
+        if completed_scoring:
+            _HORIZON_MAIN_ACTION_CACHE[cache_key] = cached
+    ordered_candidates = list(cached)[:HORIZON_BUILD_LIMIT]
+    for _, label, candidate in ordered_candidates:
         action = BuilderTurnActionCandidate(
             action_kind="creature",
             creature_candidate=candidate,
