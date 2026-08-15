@@ -54,20 +54,16 @@ def run(self) -> None:
                 self.handle_log_scroll(direction)
 
         self.consume_visual_events()
-        if not self.paused and not self.start_player_selection_open:
-            self.engine.poll_ai_thinking()
-            if not self.engine.has_pending_ai_action():
-                self.engine.start_ai_thinking()
-        if not self.start_player_selection_open:
-            self.engine.auto_resolve_human_no_blockers_if_needed()
-            self.engine.resolve_stalled_dice_battle_if_needed()
-        self.engine.flush_log_file_writes(max_lines=24)
-        if self.engine.exit_requested:
+        self.session.update(
+            allow_ai=not self.paused and not self.start_player_selection_open,
+            allow_automatic_rules=not self.start_player_selection_open,
+        )
+        if self.session.should_exit:
             running = False
         self.draw()
         self.clock.tick_busy_loop(FPS)
 
-    self.engine.flush_log_file_writes()
+    self.session.close()
     pygame.quit()
 
 
@@ -129,7 +125,7 @@ def trigger_primary_action_button(self) -> None:
         if not spec.enabled:
             continue
         if not self.handle_ui_action(spec.action):
-            self.engine.handle_action(spec.action)
+            self.session.submit_action(spec.action)
             self.update_decision_timer(force_reset=True)
         return
 
@@ -149,9 +145,9 @@ def handle_mouse_up(self, position: tuple[int, int]) -> None:
     if self.dragged_hand_card_id is None:
         return
     if self.drag_active and self.can_drag_hand_card_to_creature() and self.can_drop_on_creature_area(position):
-        self.engine.play_hand_card_in_summoning_zone(self.dragged_hand_card_id)
+        self.session.submit_hand_card_play(self.dragged_hand_card_id)
     else:
-        self.engine.handle_click("hand", self.dragged_hand_card_id)
+        self.session.submit_click("hand", self.dragged_hand_card_id)
     self.clear_drag_state()
     self.update_decision_timer(force_reset=True)
 
@@ -172,13 +168,13 @@ def handle_mouse_click(self, position: tuple[int, int]) -> None:
     for rect, spec in self.buttons:
         if spec.enabled and rect.collidepoint(position):
             if not self.handle_ui_action(spec.action):
-                self.engine.handle_action(spec.action)
+                self.session.submit_action(spec.action)
                 self.update_decision_timer(force_reset=True)
             return
     for area in self.click_targets:
         target = self.get_target_at_position(area, position)
         if target is not None:
-            self.engine.handle_click(area, target[1])
+            self.session.submit_click(area, target[1])
             self.update_decision_timer(force_reset=True)
             return
 

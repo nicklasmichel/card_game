@@ -178,7 +178,8 @@ def advance_after_attackers_declared(self) -> None:
         self.log(f"{self.defending_player.name} is choosing blockers.")
         return
     if self.defending_player.is_human:
-        self.ai_assign_enraged_blocks()
+        if not self.active_player.is_human:
+            self.ai_assign_enraged_blocks()
         if not self.available_blockers(self.defending_player):
             self.log("No creatures can block. Damage goes through automatically.")
             self.begin_pre_first_combat_window()
@@ -209,10 +210,21 @@ def toggle_blocker_assignment(self, creature_id: int) -> None:
     self.log(f"{blocker.name} selected as blocker. Choose an attacker.")
 
 
-def toggle_selected_attack_target(self, creature_id: int) -> None:
+def toggle_selected_attack_target(
+    self,
+    creature_id: int,
+    *,
+    acting_player_id: int | None = None,
+) -> None:
     if self.phase != PHASE_DECLARE_BLOCKERS:
         return
-    if self.defending_player.is_human:
+    if acting_player_id is None:
+        acting_player_id = (
+            self.defending_player.player_id
+            if self.defending_player.is_human
+            else self.active_player.player_id
+        )
+    if acting_player_id == self.defending_player.player_id:
         if creature_id not in self.block_assignments:
             return
         attacker = self.get_unit_by_id(creature_id)
@@ -250,7 +262,7 @@ def toggle_selected_attack_target(self, creature_id: int) -> None:
         self.selected_blocker_id = None
         self.log(f"{blocker.name} blocks {attacker.name}.")
         return
-    if not self.active_player.is_human:
+    if acting_player_id != self.active_player.player_id:
         return
     attacker = self.get_unit_by_id(self.selected_attack_target_id or -1)
     blocker = self.get_unit_by_id(creature_id)

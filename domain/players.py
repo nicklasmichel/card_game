@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from core.config import STARTING_LIFE
 from .cards import CardCost, CardInstance, ResourceCard
-from .enums import Ability, Element
+from .enums import Ability, ControllerKind, Element
 
 
 @dataclass
@@ -127,6 +127,30 @@ class PlayerState:
     summoner_tapped: bool = False
     turns_started: int = 0
     mulligan_used: bool = False
+    controller_kind: ControllerKind | None = None
+
+    def __post_init__(self) -> None:
+        if self.controller_kind is None:
+            self.controller_kind = ControllerKind.LOCAL_HUMAN if self.is_human else ControllerKind.AI
+        else:
+            self.is_human = self.controller_kind is not ControllerKind.AI
+
+    @property
+    def is_ai_controlled(self) -> bool:
+        return self.controller_kind is ControllerKind.AI
+
+    @property
+    def is_locally_controlled(self) -> bool:
+        return self.controller_kind is ControllerKind.LOCAL_HUMAN
+
+    @property
+    def is_remotely_controlled(self) -> bool:
+        return self.controller_kind is ControllerKind.REMOTE_HUMAN
+
+    def set_controller(self, controller_kind: ControllerKind) -> None:
+        """Change controller ownership while keeping the legacy flag in sync."""
+        self.controller_kind = controller_kind
+        self.is_human = controller_kind is not ControllerKind.AI
 
     def untap_for_turn(self) -> None:
         for resource in self.resources:

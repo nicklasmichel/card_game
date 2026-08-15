@@ -559,38 +559,68 @@ def ai_declare_attackers(self) -> None:
     self.confirm_attackers()
 
 
-def handle_click(self, area: str, item_id: int) -> None:
+def handle_click(
+    self,
+    area: str,
+    item_id: int,
+    *,
+    acting_player_id: int | None = None,
+) -> None:
+    if acting_player_id is None:
+        if self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
+            acting_player_id = self.defending_player.player_id
+        else:
+            acting_player_id = self.active_player.player_id
+    actor = next(
+        (player for player in self.players if player.player_id == acting_player_id),
+        None,
+    )
+    if actor is None:
+        return
     if area == "hand":
+        if actor != self.active_player:
+            return
         self.toggle_hand_card(item_id)
         return
 
-    if area == "player_1_creatures":
-        if self.phase == PHASE_BUILDER_ABILITY and self.active_player.is_human:
+    if area not in {"player_1_creatures", "player_2_creatures"}:
+        return
+
+    target_owner = self.get_unit_owner(item_id)
+    if self.phase == PHASE_BUILDER_ABILITY:
+        if actor == self.active_player:
             self.select_builder_ability_target(item_id)
-            return
-        if self.phase == PHASE_DECLARE_ATTACKERS and self.active_player.is_human:
+        return
+    if self.phase == PHASE_DECLARE_ATTACKERS:
+        if actor == self.active_player and target_owner == self.active_player:
             self.toggle_attacker(item_id)
-            return
-        if self.phase == PHASE_DECLARE_BLOCKERS and self.defending_player.is_human:
+        return
+    if self.phase != PHASE_DECLARE_BLOCKERS:
+        return
+    if actor == self.defending_player:
+        if target_owner == self.defending_player:
             self.toggle_blocker_assignment(item_id)
-            return
-        if self.phase == PHASE_DECLARE_BLOCKERS and self.active_player.is_human:
+        elif target_owner == self.active_player:
+            self.toggle_selected_attack_target(
+                item_id,
+                acting_player_id=acting_player_id,
+            )
+        return
+    if actor == self.active_player:
+        if target_owner == self.active_player:
             attacker = self.get_unit_by_id(item_id)
-            if attacker is None or self.get_unit_owner(item_id) != self.active_player:
-                return
-            if item_id not in self.block_assignments or not (
+            if attacker is None or item_id not in self.block_assignments or not (
                 attacker.has_ability(Ability.ENRAGED) or attacker.has_ability(Ability.PROVOKE)
             ):
                 return
-            self.selected_attack_target_id = None if self.selected_attack_target_id == item_id else item_id
-        return
-
-    if area == "player_2_creatures":
-        if self.phase == PHASE_BUILDER_ABILITY and self.active_player.is_human:
-            self.select_builder_ability_target(item_id)
-            return
-        if self.phase == PHASE_DECLARE_BLOCKERS:
-            self.toggle_selected_attack_target(item_id)
+            self.selected_attack_target_id = (
+                None if self.selected_attack_target_id == item_id else item_id
+            )
+        elif target_owner == self.defending_player:
+            self.toggle_selected_attack_target(
+                item_id,
+                acting_player_id=acting_player_id,
+            )
 
 
 def request_end_turn(self) -> None:

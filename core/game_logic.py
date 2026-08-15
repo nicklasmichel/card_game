@@ -15,8 +15,10 @@ from core.models import (
     CardCost,
     CardInstance,
     CardType,
+    ControllerKind,
     DiceRoundRecord,
     Element,
+    MatchMode,
     PendingBuilderAbilityUse,
     PendingBuilderCreatureBuild,
     PendingDirectAttack,
@@ -159,7 +161,8 @@ class GameEngine:
         clear_combat_temporary_effects,
     )
 
-    def __init__(self, auto_start: bool = True) -> None:
+    def __init__(self, auto_start: bool = True, match_mode: MatchMode = MatchMode.PVE) -> None:
+        self.match_mode = MatchMode(match_mode)
         self.templates = {}
         self.players: List[PlayerState] = []
         self.active_player_index = 0
@@ -376,8 +379,17 @@ class GameEngine:
         self.game_id = f"game-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{self.seed}"
         self.next_instance_id = 1
         self.players = [
-            PlayerState(0, "Spieler", True),
-            PlayerState(1, "Gegner", False),
+            PlayerState(0, "Spieler", True, controller_kind=ControllerKind.LOCAL_HUMAN),
+            PlayerState(
+                1,
+                "Gegner",
+                self.match_mode is MatchMode.PVP,
+                controller_kind=(
+                    ControllerKind.REMOTE_HUMAN
+                    if self.match_mode is MatchMode.PVP
+                    else ControllerKind.AI
+                ),
+            ),
         ]
         self.log_messages.clear()
         self.game_over_summary_lines.clear()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pygame
 
+from core.branding import APP_NAME, APP_TAGLINE
+
 from ui.style import CARD_BORDER, HIGHLIGHT, MUTED_TEXT, OVERLAY_COLOR, PANEL_COLOR, TEXT_COLOR
 
 
@@ -131,7 +133,9 @@ def draw_start_player_overlay(self) -> None:
     )
     pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=8)
     pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=8)
-    self.blit_centered_text(title_font, "Who starts?", TEXT_COLOR, pygame.Rect(panel.x, panel.y + 28, panel.width, 44))
+    self.blit_centered_text(title_font, APP_NAME, TEXT_COLOR, pygame.Rect(panel.x, panel.y + 16, panel.width, 44))
+    self.blit_centered_text(self.font, APP_TAGLINE, MUTED_TEXT, pygame.Rect(panel.x, panel.y + 62, panel.width, 28))
+    self.blit_centered_text(self.font, "Who starts?", TEXT_COLOR, pygame.Rect(panel.x, panel.y + 96, panel.width, 28))
 
     choices = [
         ("Player 1", "player_1"),
@@ -141,7 +145,7 @@ def draw_start_player_overlay(self) -> None:
     gap = 24
     button_width = (panel.width - 48 - gap * 2) // 3
     button_height = 150
-    button_y = panel.y + 136
+    button_y = panel.y + 142
     start_x = panel.x + 24
     self.start_player_option_rects = []
     for index, (label, selection) in enumerate(choices):

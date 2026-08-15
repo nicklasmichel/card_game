@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Tuple
 
 import pygame
 
-from core.game_logic import GameEngine
+from core.branding import APP_WINDOW_TITLE
 from core.models import (
     ButtonSpec,
     PHASE_DECLARE_ATTACKERS,
@@ -15,6 +15,7 @@ from core.models import (
     PHASE_GAME_OVER,
     PHASE_MAIN_1,
 )
+from core.session import GameSession, LocalPveSession
 from ui.card_rendering import (
     blit_centered_text,
     blit_centered_text_to_surface,
@@ -130,7 +131,7 @@ from ui.visuals import (
 
 
 
-class TcgPrototypeApp:
+class GodaoApp:
     draw_playfield_section_box = draw_playfield_section_box
     build_hand_card_surface = build_hand_card_surface
     draw_hand_card = draw_hand_card
@@ -232,7 +233,7 @@ class TcgPrototypeApp:
     handle_mouse_click = handle_mouse_click
     draw = draw
 
-    def __init__(self) -> None:
+    def __init__(self, session: GameSession | None = None) -> None:
         os.environ["SDL_VIDEO_CENTERED"] = "1"
         pygame.init()
         display_info = pygame.display.Info()
@@ -255,13 +256,14 @@ class TcgPrototypeApp:
         self.card_gap = 18 if self.window_width >= 1800 else 13
         self.side_panel_width = 470 if self.window_width >= 1800 else 430
         self.main_area_width = self.window_width - self.side_panel_width - 30
-        pygame.display.set_caption("TCG Prototype")
+        pygame.display.set_caption(APP_WINDOW_TITLE)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 20)
         self.small_font = pygame.font.SysFont("arial", 12)
         self.title_font = pygame.font.SysFont("arial", 24, bold=True)
         self.layout_scale = 1.0
-        self.engine = GameEngine(auto_start=False)
+        self.session = session or LocalPveSession(auto_start=False)
+        self.engine = self.session.state
         self.resource_back_images = self.load_resource_back_images()
         self.summoner_images = self.load_summoner_images()
         self.ui_symbol_images = self.load_ui_symbol_images()
@@ -319,7 +321,7 @@ class TcgPrototypeApp:
         self.start_player_selection_open = False
         self.start_player_option_rects = []
         self.clear_drag_state()
-        self.engine.start_new_game(starting_player_id=starting_player_id)
+        self.session.start_new_game(starting_player_id=starting_player_id)
 
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
@@ -372,7 +374,7 @@ class TcgPrototypeApp:
 
 
 def run() -> None:
-    app = TcgPrototypeApp()
+    app = GodaoApp()
     app.run()
 
 

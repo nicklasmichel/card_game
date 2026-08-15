@@ -6,7 +6,7 @@ from .cards import (
 )
 from .builder import PendingBuilderAbilityUse, PendingBuilderCreatureBuild
 from .combat import CombatUnitSnapshot, DiceRoundRecord, PendingDiceBattle, PendingDirectAttack
-from .enums import Ability, CardType, Element
+from .enums import Ability, CardType, ControllerKind, Element, MatchMode
 from .phases import (
     PHASE_BUILDER_CREATURE,
     PHASE_BUILDER_ABILITY,
@@ -28,8 +28,10 @@ __all__ = [
     "CardTemplate",
     "CardType",
     "CombatUnitSnapshot",
+    "ControllerKind",
     "DiceRoundRecord",
     "Element",
+    "MatchMode",
     "PendingBuilderCreatureBuild",
     "PendingBuilderAbilityUse",
     "PHASE_BUILDER_ABILITY",

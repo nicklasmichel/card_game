@@ -227,3 +227,27 @@ Creature 1 is unblocked and deals 2 damage to Player 1.
 Creature 4 is unblocked and deals 1 damage to Player 1.
 Creature 6 is unblocked and deals 1 damage to Player 1.
 Player 2 wins. Player 1 has 0 or less life.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.

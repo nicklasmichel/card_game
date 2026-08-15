@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import unittest
+from core.branding import APP_NAME, APP_TAGLINE, APP_WINDOW_TITLE
 from core.config import STARTING_LIFE
 from core.game_logic import GameEngine
 from core.models import PHASE_DICE_BATTLE
 
 
 class GameStartTests(unittest.TestCase):
+    def test_product_branding_is_godao(self) -> None:
+        self.assertEqual(APP_NAME, "GODAO")
+        self.assertEqual(APP_TAGLINE, "Game of Decisions and Odds")
+        self.assertEqual(APP_WINDOW_TITLE, "GODAO — Game of Decisions and Odds")
+
     def test_engine_can_be_created_without_starting_a_game(self) -> None:
         engine = GameEngine(auto_start=False)
 

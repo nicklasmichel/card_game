@@ -21,7 +21,9 @@ from core.models import (
     CardInstance,
     CardTemplate,
     CardType,
+    ControllerKind,
     Element,
+    MatchMode,
     PendingBuilderAbilityUse,
     PendingBuilderCreatureBuild,
     PHASE_BUILDER_ABILITY,
@@ -189,8 +191,26 @@ def initialize_builder_game(
 
     reset_builder_game_caches()
     self.players = [
-        PlayerState(0, "Player 1", True, summoner_key="builder", life=STARTING_LIFE),
-        PlayerState(1, "Player 2", False, summoner_key="builder", life=STARTING_LIFE),
+        PlayerState(
+            0,
+            "Player 1",
+            True,
+            summoner_key="builder",
+            life=STARTING_LIFE,
+            controller_kind=ControllerKind.LOCAL_HUMAN,
+        ),
+        PlayerState(
+            1,
+            "Player 2",
+            self.match_mode is MatchMode.PVP,
+            summoner_key="builder",
+            life=STARTING_LIFE,
+            controller_kind=(
+                ControllerKind.REMOTE_HUMAN
+                if self.match_mode is MatchMode.PVP
+                else ControllerKind.AI
+            ),
+        ),
     ]
     self.turn_number = 0
     self.phase = PHASE_MAIN_1
