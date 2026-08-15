@@ -44,6 +44,9 @@ def get_action_panel_title(self) -> str:
 
 
 def get_action_panel_prompt(self) -> str:
+    local_decision_check = getattr(self, "local_player_has_primary_decision", None)
+    if callable(local_decision_check) and not local_decision_check():
+        return f"Waiting for {self.engine.active_player.name}."
     if self.engine.is_ai_thinking():
         return self.engine.current_prompt()
     if self.engine.pending_ai_action is not None:
@@ -279,7 +282,17 @@ def draw_action_detail_sections(self, rect: pygame.Rect, start_y: int, max_botto
 
 
 def draw_side_actions(self, rect: pygame.Rect) -> None:
-    action_specs = self.engine.get_button_specs()
+    local_decision_check = getattr(self, "local_player_has_primary_decision", None)
+    local_player_can_act = (
+        local_decision_check()
+        if callable(local_decision_check)
+        else True
+    )
+    action_specs = (
+        self.engine.get_button_specs()
+        if local_player_can_act
+        else []
+    )
     phase_label = get_action_panel_title(self)
     button_font = get_panel_header_font(self)
     compact_button_font = pygame.font.SysFont("arial", max(self.font.get_height() + 2, 22), bold=True)

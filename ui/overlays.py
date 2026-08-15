@@ -138,8 +138,8 @@ def draw_start_player_overlay(self) -> None:
     self.blit_centered_text(self.font, "Who starts?", TEXT_COLOR, pygame.Rect(panel.x, panel.y + 96, panel.width, 28))
 
     choices = [
-        ("Player 1", "player_1"),
-        ("Player 2", "player_2"),
+        (self.engine.players[0].name, "player_1"),
+        (self.engine.players[1].name, "player_2"),
         ("Random", "random"),
     ]
     gap = 24

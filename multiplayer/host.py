@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from functools import wraps
+from threading import RLock
 
 from core.command_dispatch import apply_game_command
 from core.game_logic import GameEngine
@@ -17,6 +19,16 @@ from multiplayer.snapshot import GameStateSnapshot, authoritative_state_hash
 
 MAX_REMEMBERED_HOST_COMMANDS = 4096
 MAX_PENDING_PLAYER_EVENTS = 256
+MAX_QUEUED_REMOTE_COMMANDS = 256
+
+
+def _synchronized(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class AuthoritativeHostSession:
@@ -38,11 +50,13 @@ class AuthoritativeHostSession:
         if self._players[local_player_id].controller_kind is not ControllerKind.LOCAL_HUMAN:
             raise ValueError(f"Player {local_player_id} is not the local host player.")
         self._local_player_id = local_player_id
+        self._lock = RLock()
         self._closed = False
         self._revision = 0
         self._unassigned_event_sequence = 0
         self._event_sequences = {player_id: 0 for player_id in self._players}
         self._pending_events = {player_id: [] for player_id in self._players}
+        self._queued_remote_commands: list[tuple[GameCommand, int]] = []
         self._processed_commands: OrderedDict[
             str,
             tuple[int, GameCommand, GameEvent],
@@ -71,8 +85,8 @@ class AuthoritativeHostSession:
     @property
     def remote_player_ids(self) -> tuple[int, ...]:
         return tuple(
-            player_id
-            for player_id, player in self._players.items()
+            player.player_id
+            for player in self._state.players
             if player.controller_kind is ControllerKind.REMOTE_HUMAN
         )
 
@@ -93,6 +107,18 @@ class AuthoritativeHostSession:
     def submit_command(self, command: GameCommand) -> GameEvent:
         return self.receive_command(command, authenticated_player_id=self.local_player_id)
 
+    @_synchronized
+    def enqueue_remote_command(
+        self,
+        command: GameCommand,
+        *,
+        authenticated_player_id: int,
+    ) -> None:
+        if len(self._queued_remote_commands) >= MAX_QUEUED_REMOTE_COMMANDS:
+            raise OverflowError("Remote command queue is full.")
+        self._queued_remote_commands.append((command, authenticated_player_id))
+
+    @_synchronized
     def receive_command(
         self,
         command: GameCommand,
@@ -125,11 +151,24 @@ class AuthoritativeHostSession:
             )
 
         before_hash = authoritative_state_hash(self._state)
+        player_names = {
+            player_id: player.name
+            for player_id, player in self._players.items()
+        }
         apply_game_command(
             self._state,
             command,
             acting_player_id=authenticated_player_id,
         )
+        resets_players = command.kind is CommandKind.START_GAME or (
+            command.kind is CommandKind.ACTION
+            and command.payload["action"] == "new_game"
+        )
+        if resets_players:
+            self._refresh_players()
+            for player_id, name in player_names.items():
+                if player_id in self._players:
+                    self._players[player_id].name = name
         after_hash = authoritative_state_hash(self._state)
         if before_hash == after_hash:
             return self._reject(
@@ -150,10 +189,25 @@ class AuthoritativeHostSession:
         self._broadcast_snapshots(command_id=command.command_id)
         return event
 
+    @_synchronized
     def snapshot_for_player(self, player_id: int) -> GameStateSnapshot:
         self._require_known_player(player_id)
         return GameStateSnapshot.from_engine(self._state, player_id, self._revision)
 
+    @_synchronized
+    def set_player_name(self, player_id: int, name: str) -> None:
+        self._refresh_players()
+        self._require_known_player(player_id)
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("Player name must not be empty.")
+        if self._players[player_id].name == normalized_name:
+            return
+        self._players[player_id].name = normalized_name
+        self._revision += 1
+        self._broadcast_snapshots(command_id=None)
+
+    @_synchronized
     def queue_snapshot(self, player_id: int) -> GameEvent:
         self._ensure_open()
         self._require_known_player(player_id)
@@ -167,19 +221,30 @@ class AuthoritativeHostSession:
     def drain_events(self) -> list[GameEvent]:
         return self.drain_player_events(self.local_player_id)
 
+    @_synchronized
     def drain_player_events(self, player_id: int) -> list[GameEvent]:
         self._require_known_player(player_id)
         events = self._pending_events[player_id][:]
         self._pending_events[player_id].clear()
         return events
 
+    @_synchronized
     def update(
         self,
         *,
         allow_ai: bool = True,
         allow_automatic_rules: bool = True,
+        allow_commands: bool = True,
     ) -> None:
         self._ensure_open()
+        if allow_commands:
+            queued_commands = self._queued_remote_commands[:]
+            self._queued_remote_commands.clear()
+            for command, authenticated_player_id in queued_commands:
+                self.receive_command(
+                    command,
+                    authenticated_player_id=authenticated_player_id,
+                )
         can_advance_automatically = (
             allow_automatic_rules
             and self._state.phase in {PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE}
@@ -194,6 +259,7 @@ class AuthoritativeHostSession:
             self._broadcast_snapshots(command_id=None)
         self._state.flush_log_file_writes(max_lines=24)
 
+    @_synchronized
     def close(self) -> None:
         if self._closed:
             return
@@ -303,6 +369,12 @@ class AuthoritativeHostSession:
     def _require_known_player(self, player_id: int) -> None:
         if player_id not in self._players:
             raise ValueError(f"Unknown player_id: {player_id}")
+
+    def _refresh_players(self) -> None:
+        self._players = {
+            player.player_id: player
+            for player in self._state.players
+        }
 
     def _ensure_open(self) -> None:
         if self._closed:

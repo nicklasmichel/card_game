@@ -57,6 +57,7 @@ class GameSession(Protocol):
         *,
         allow_ai: bool = True,
         allow_automatic_rules: bool = True,
+        allow_commands: bool = True,
     ) -> None:
         ...
 
@@ -162,6 +163,7 @@ class LocalPveSession:
         *,
         allow_ai: bool = True,
         allow_automatic_rules: bool = True,
+        allow_commands: bool = True,
     ) -> None:
         self._ensure_open()
         if allow_ai:

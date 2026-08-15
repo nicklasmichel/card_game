@@ -251,3 +251,15 @@ New game started in builder mode. Player 2 begins.
 Turn 1: Player 2 is active.
 New game started in builder mode. Player 2 begins.
 Turn 1: Player 2 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 2 begins.
+Turn 1: Player 2 is active.
+New game started in builder mode. Player 1 begins.
+Turn 1: Player 1 is active.

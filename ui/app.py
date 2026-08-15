@@ -107,6 +107,18 @@ from ui.overlays import (
     draw_pause_overlay,
     draw_start_player_overlay,
 )
+from ui.network_menu import (
+    draw_match_mode_overlay,
+    draw_network_status_overlay,
+    handle_match_mode_click,
+    handle_match_mode_keydown,
+    local_player_has_primary_decision,
+    network_blocks_gameplay,
+    replace_session,
+    select_match_mode,
+    shutdown_network,
+    update_network_state,
+)
 from ui.runtime import (
     draw,
     get_decision_marker,
@@ -198,6 +210,8 @@ class GodaoApp:
     draw_game_over_overlay = draw_game_over_overlay
     draw_pause_overlay = draw_pause_overlay
     draw_start_player_overlay = draw_start_player_overlay
+    draw_match_mode_overlay = draw_match_mode_overlay
+    draw_network_status_overlay = draw_network_status_overlay
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
@@ -232,6 +246,14 @@ class GodaoApp:
     handle_mouse_motion = handle_mouse_motion
     handle_mouse_click = handle_mouse_click
     draw = draw
+    select_match_mode = select_match_mode
+    _replace_session = replace_session
+    update_network_state = update_network_state
+    network_blocks_gameplay = network_blocks_gameplay
+    local_player_has_primary_decision = local_player_has_primary_decision
+    handle_match_mode_click = handle_match_mode_click
+    handle_match_mode_keydown = handle_match_mode_keydown
+    shutdown_network = shutdown_network
 
     def __init__(self, session: GameSession | None = None) -> None:
         os.environ["SDL_VIDEO_CENTERED"] = "1"
@@ -262,6 +284,7 @@ class GodaoApp:
         self.small_font = pygame.font.SysFont("arial", 12)
         self.title_font = pygame.font.SysFont("arial", 24, bold=True)
         self.layout_scale = 1.0
+        session_was_provided = session is not None
         self.session = session or LocalPveSession(auto_start=False)
         self.engine = self.session.state
         self.resource_back_images = self.load_resource_back_images()
@@ -302,7 +325,17 @@ class GodaoApp:
             "combat_lane": [],
             "player_1_resources": [],
         }
-        self.start_player_selection_open = True
+        self.host_server = None
+        self.network_role = "external" if session_was_provided else "menu"
+        self.network_peer_was_connected = False
+        self.network_error_text = ""
+        self.join_address_text = ""
+        self.join_address_input_open = False
+        self.match_mode_selection_open = not session_was_provided
+        self.match_mode_option_rects: List[Tuple[pygame.Rect, str]] = []
+        self.start_player_selection_open = (
+            session_was_provided and self.session.local_player_id == 0
+        )
         self.start_player_option_rects: List[Tuple[pygame.Rect, str]] = []
 
     def open_start_player_selection(self) -> None:

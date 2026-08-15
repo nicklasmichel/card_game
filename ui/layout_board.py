@@ -225,7 +225,7 @@ def draw_area_status_block(self, player, rect: pygame.Rect) -> pygame.Rect:
     line_height = metrics["line_height"]
     gap = metrics["gap"]
     edge_margin = 10
-    is_human = bool(getattr(player, "is_human", False))
+    is_human = player.player_id == self.session.local_player_id
     block_rect = pygame.Rect(
         rect.centerx - metrics["block_width"] // 2,
         rect.bottom - edge_margin - metrics["block_height"] if is_human else rect.y + edge_margin,

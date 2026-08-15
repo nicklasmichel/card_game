@@ -244,6 +244,17 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         self.assertEqual(self.host.state.player_two.total_resources(), 1)
         self.assertEqual(self.host.revision, 2)
 
+    def test_queued_remote_command_waits_while_host_is_paused(self) -> None:
+        self.start_with_remote_player()
+        command = GameCommand.action(1, "builder_add_resource", command_id="paused-command")
+        self.host.enqueue_remote_command(command, authenticated_player_id=1)
+
+        self.host.update(allow_commands=False)
+
+        self.assertEqual(self.host.state.player_two.total_resources(), 0)
+        self.host.update(allow_commands=True)
+        self.assertEqual(self.host.state.player_two.total_resources(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

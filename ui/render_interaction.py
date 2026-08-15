@@ -55,7 +55,10 @@ def can_drag_hand_card_to_creature(self, card_id: int | None = None) -> bool:
     target_card_id = self.dragged_hand_card_id if card_id is None else card_id
     if target_card_id is None:
         return False
-    if self.engine.phase != PHASE_BUILDER_ABILITY or not self.engine.active_player.is_human:
+    if (
+        self.engine.phase != PHASE_BUILDER_ABILITY
+        or self.engine.active_player.player_id != self.session.local_player_id
+    ):
         return False
     card = next(
         (existing for existing in self.engine.human_player.hand if existing.instance_id == target_card_id),

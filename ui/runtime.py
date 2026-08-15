@@ -14,6 +14,13 @@ def run(self) -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+            elif self.match_mode_selection_open:
+                if event.type == pygame.KEYDOWN:
+                    self.handle_match_mode_keydown(event)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    self.handle_match_mode_click(event.pos)
+            elif self.network_blocks_gameplay():
+                continue
             elif (
                 event.type == pygame.KEYDOWN
                 and event.key == pygame.K_RETURN
@@ -53,16 +60,24 @@ def run(self) -> None:
                 direction = -36 if event.button == 4 else 36
                 self.handle_log_scroll(direction)
 
+        self.update_network_state()
         self.consume_visual_events()
+        gameplay_overlay_open = (
+            self.match_mode_selection_open
+            or self.start_player_selection_open
+            or self.network_blocks_gameplay()
+        )
         self.session.update(
-            allow_ai=not self.paused and not self.start_player_selection_open,
-            allow_automatic_rules=not self.start_player_selection_open,
+            allow_ai=not self.paused and not gameplay_overlay_open,
+            allow_automatic_rules=not gameplay_overlay_open,
+            allow_commands=not self.paused,
         )
         if self.session.should_exit:
             running = False
         self.draw()
         self.clock.tick_busy_loop(FPS)
 
+    self.shutdown_network()
     self.session.close()
     pygame.quit()
 
@@ -206,5 +221,7 @@ def draw(self) -> None:
         self.draw_game_over_overlay()
     self.draw_start_player_overlay()
     self.draw_card_preview_overlay()
+    self.draw_network_status_overlay()
+    self.draw_match_mode_overlay()
 
     pygame.display.flip()
