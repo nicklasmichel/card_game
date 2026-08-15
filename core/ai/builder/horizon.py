@@ -12,6 +12,7 @@ from .candidates import generate_builder_creature_candidates, is_legal_builder_c
 from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .scoring import score_builder_creature_candidate
 from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
+from .search_control import builder_search_should_stop, count_builder_search_work, store_bounded_cache_entry
 from .snapshot import build_builder_snapshot
 from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action
 from .turn_types import BuilderTurnActionCandidate
@@ -102,8 +103,10 @@ def evaluate_main_action_horizon(
     offense_line = min(lines, key=_offense_line_sort_key)
     defense_line = max(lines, key=_defense_line_sort_key)
     own_next_damage = round(offense_line.own_next_attack.score.guaranteed_player_damage, 4)
-    own_next_lethal = own_next_damage >= offense_line.next_turn_projection.enemy_life > 0
     exact = offense_line.attack_decision.search_metadata.exact_search and offense_line.own_next_attack.search_metadata.exact_search
+    # A fallback result is useful as a heuristic, but it is not proof of a
+    # forced lethal line and must never unlock the large lethal bonus.
+    own_next_lethal = own_next_damage >= offense_line.next_turn_projection.enemy_life > 0 and exact
     return BuilderHorizonReport(
         own_next_attack_damage=own_next_damage,
         own_next_attack_lethal=own_next_lethal,
@@ -165,8 +168,9 @@ def _build_horizon_lines(
 ) -> list[_HorizonLine]:
     lines: list[_HorizonLine] = []
     for main_action_kind, projected_state in _generate_enemy_main_projections(enemy_turn_projection, deadline=deadline):
-        if lines and deadline is not None and monotonic() >= deadline:
+        if lines and builder_search_should_stop(deadline):
             break
+        count_builder_search_work("horizon_lines_started")
         best_attack = evaluate_best_builder_attack(
             projected_state.players[projected_state.player_id],
             projected_state,
@@ -185,17 +189,19 @@ def _build_horizon_lines(
                 None,
             )
             if no_attack_score is not None:
-                attack_options.append(
-                    BuilderAttackDecision(
-                        candidate=BuilderAttackCandidate(attacker_ids=()),
-                        score=no_attack_score,
-                        defensive_response=no_attack_score.chosen_block_assignment,
-                        search_metadata=best_attack.search_metadata,
-                    )
+                no_attack_decision = BuilderAttackDecision(
+                    candidate=BuilderAttackCandidate(attacker_ids=()),
+                    score=no_attack_score,
+                    defensive_response=no_attack_score.chosen_block_assignment,
+                    search_metadata=best_attack.search_metadata,
                 )
+                # The opponent may always decline to attack and retain every
+                # blocker. Evaluate that adversarial response before the
+                # deadline can truncate the horizon.
+                attack_options = [no_attack_decision, best_attack]
         seen_attacks: set[tuple[int, ...]] = set()
         for attack_decision in attack_options:
-            if lines and deadline is not None and monotonic() >= deadline:
+            if lines and builder_search_should_stop(deadline):
                 break
             attack_key = tuple(attack_decision.candidate.attacker_ids)
             if attack_key in seen_attacks:
@@ -283,6 +289,9 @@ def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjectio
         if legal_builds:
             scored = []
             for candidate in legal_builds:
+                if scored and builder_search_should_stop(deadline):
+                    completed_scoring = False
+                    break
                 scored.append((
                     score_builder_creature_candidate(
                         candidate,
@@ -293,7 +302,7 @@ def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjectio
                     ),
                     candidate,
                 ))
-                if deadline is not None and monotonic() >= deadline:
+                if builder_search_should_stop(deadline):
                     completed_scoring = False
                     break
             scored.sort(
@@ -361,7 +370,7 @@ def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjectio
             consider(5, "build_best", scored[0][1])
         cached = tuple(sorted(selected.values(), key=lambda row: (row[0], row[1], row[2].key)))
         if completed_scoring:
-            _HORIZON_MAIN_ACTION_CACHE[cache_key] = cached
+            store_bounded_cache_entry(_HORIZON_MAIN_ACTION_CACHE, cache_key, cached, max_entries=2048)
     ordered_candidates = list(cached)[:HORIZON_BUILD_LIMIT]
     for _, label, candidate in ordered_candidates:
         action = BuilderTurnActionCandidate(
@@ -439,7 +448,7 @@ def _analyze_known_enemy_timeline(
     next_enemy_lookup = {unit.unit_id: unit for unit in next_turn_projection.enemy_units}
     first_attack_total = max(0.0, float(attack_projection.enemy_life) - float(next_turn_projection.own_life))
 
-    next_ready_blockers = [unit for unit in next_turn_projection.own_units if unit.vw > 0 and not unit.tapped and not unit.cannot_block]
+    next_ready_blockers = [unit for unit in next_turn_projection.own_units if not unit.tapped and not unit.cannot_block]
     raw_second_attackers = [next_enemy_lookup[attacker_id] for attacker_id in relevant_attackers if attacker_id in next_enemy_lookup and next_enemy_lookup[attacker_id].sw > 0]
     second_raw_damage = sum(estimate_unblocked_attack(attacker).player_damage for attacker in raw_second_attackers)
     second_assignment, second_assignment_damage = _best_second_attack_assignment(raw_second_attackers, next_ready_blockers)
@@ -552,7 +561,7 @@ def _best_second_attack_assignment(attackers, blockers) -> tuple[tuple[tuple[int
 
 
 def _legal_blocker_map(projection: BuilderTurnProjection, attacker_ids: tuple[int, ...]) -> tuple[tuple[int, tuple[int, ...]], ...]:
-    blockers = [unit for unit in projection.enemy_units if unit.vw > 0 and not unit.tapped and not unit.cannot_block]
+    blockers = [unit for unit in projection.enemy_units if not unit.tapped and not unit.cannot_block]
     rows = []
     for attacker_id in attacker_ids:
         attacker = projection.get_unit_by_id(attacker_id)

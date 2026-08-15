@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
 from .snapshot import build_builder_snapshot
-from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate
+from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate, select_builder_creature_search_frontier
+from .search_control import builder_search_cache, builder_search_should_stop, count_builder_search_work
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ WEAKEST_GLASS_CANNON_PENALTY = 1.15
 WEAKEST_SOFT_WALL_PENALTY = 1.2
 CAP_PRESSURE_REPLACEMENT_WEIGHT = 0.92
 CAP_PRESSURE_WEAK_SLOT_BONUS = 0.55
+CAP_REPLACEMENT_SCORING_LIMIT = 48
 
 
 def estimate_builder_slot_unit_value(unit) -> float:
@@ -56,6 +58,11 @@ def compute_builder_cap_context(player, engine, *, creature_cap: int, resource_b
     snapshot = build_builder_snapshot(player, engine)
     if resource_budget is None:
         resource_budget = player.total_resources()
+    cache = builder_search_cache("cap_context")
+    cache_key = _cap_context_cache_key(player, engine, creature_cap, resource_budget)
+    if cache is not None and cache_key in cache:
+        count_builder_search_work("cap_cache_hits")
+        return cache[cache_key]
     legal_candidates = [
         candidate
         for candidate in generate_builder_creature_candidates(snapshot, max(0, resource_budget))
@@ -63,10 +70,18 @@ def compute_builder_cap_context(player, engine, *, creature_cap: int, resource_b
     ]
     if not legal_candidates:
         return BuilderCapContext(creature_count, creature_cap, True, weakest.unit_id, weakest_value, weakest_value, 0.0, 0.0)
+    legal_candidates = select_builder_creature_search_frontier(
+        legal_candidates,
+        snapshot,
+        limit=CAP_REPLACEMENT_SCORING_LIMIT,
+    )
 
     enemy_battlefield = list(engine.players[1 - player.player_id].battlefield)
     best_replacement_value = float("-inf")
     for candidate in legal_candidates:
+        if best_replacement_value != float("-inf") and builder_search_should_stop():
+            break
+        count_builder_search_work("cap_candidates_scored")
         candidate_score = score_builder_creature_candidate(
             candidate,
             snapshot,
@@ -99,7 +114,7 @@ def compute_builder_cap_context(player, engine, *, creature_cap: int, resource_b
         replacement_value * CAP_PRESSURE_REPLACEMENT_WEIGHT * max(0.25, pressure_factor)
         + weak_slot_bonus * CAP_PRESSURE_WEAK_SLOT_BONUS,
     )
-    return BuilderCapContext(
+    result = BuilderCapContext(
         creature_count=creature_count,
         creature_cap=creature_cap,
         at_cap=True,
@@ -108,4 +123,37 @@ def compute_builder_cap_context(player, engine, *, creature_cap: int, resource_b
         best_replacement_value=round(best_replacement_value, 4),
         replacement_value=round(replacement_value, 4),
         cap_pressure=round(cap_pressure, 4),
+    )
+    if cache is not None and not builder_search_should_stop():
+        cache[cache_key] = result
+    return result
+
+
+def _cap_context_cache_key(player, engine, creature_cap: int, resource_budget: int) -> tuple:
+    state_signature = getattr(engine, "state_signature", None)
+    if state_signature is None:
+        enemy = engine.players[1 - player.player_id]
+        state_signature = (
+            player.life,
+            enemy.life,
+            player.total_resources(),
+            player.available_resources(),
+            enemy.total_resources(),
+            tuple(_cap_unit_signature(unit) for unit in player.battlefield),
+            tuple(_cap_unit_signature(unit) for unit in enemy.battlefield),
+        )
+    return player.player_id, creature_cap, resource_budget, state_signature
+
+
+def _cap_unit_signature(unit) -> tuple:
+    return (
+        unit.unit_id,
+        unit.aw,
+        unit.vw,
+        unit.sw,
+        unit.lw,
+        unit.current_hp,
+        bool(getattr(unit, "tapped", False)),
+        bool(getattr(unit, "summoning_sickness", False)),
+        tuple(sorted(getattr(ability, "value", str(ability)) for ability in unit.abilities)),
     )

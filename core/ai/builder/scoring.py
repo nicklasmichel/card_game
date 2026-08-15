@@ -89,14 +89,26 @@ DEFENSIVE_CONTACT_BONUS = 0.65
 
 
 def estimate_creature_board_value(creature: BattlefieldCreature) -> float:
-    value = (
-        creature.aw * RAW_STAT_WEIGHTS["aw"]
-        + creature.vw * RAW_STAT_WEIGHTS["vw"]
-        + creature.sw * RAW_STAT_WEIGHTS["sw"]
-        + creature.current_hp * RAW_STAT_WEIGHTS["hp"]
+    view = coerce_builder_combatant(creature)
+    return _estimate_creature_board_value_cached(
+        view.aw,
+        view.vw,
+        view.sw,
+        view.current_hp,
+        tuple(sorted(ability.value for ability in view.abilities)),
     )
-    for ability in creature.abilities:
-        value += ABILITY_BASE_WEIGHTS.get(ability, 0.0)
+
+
+@lru_cache(maxsize=4096)
+def _estimate_creature_board_value_cached(aw: int, vw: int, sw: int, current_hp: int, abilities: tuple[str, ...]) -> float:
+    value = (
+        aw * RAW_STAT_WEIGHTS["aw"]
+        + vw * RAW_STAT_WEIGHTS["vw"]
+        + sw * RAW_STAT_WEIGHTS["sw"]
+        + current_hp * RAW_STAT_WEIGHTS["hp"]
+    )
+    for ability_name in abilities:
+        value += ABILITY_BASE_WEIGHTS.get(Ability(ability_name), 0.0)
     return round(value, 3)
 
 
@@ -736,13 +748,13 @@ def _view_from_signature(signature: tuple) -> BuilderCombatantView:
 
 def _optimal_enemy_damage(enemy_attackers: list, own_blockers: list) -> float:
     attacker_signatures = tuple(sorted(_combatant_signature(attacker) for attacker in enemy_attackers if coerce_builder_combatant(attacker).sw > 0))
-    blocker_signatures = tuple(sorted(_combatant_signature(blocker) for blocker in own_blockers if coerce_builder_combatant(blocker).vw > 0))
+    blocker_signatures = tuple(sorted(_combatant_signature(blocker) for blocker in own_blockers))
     if not attacker_signatures:
         return 0.0
     return _optimal_enemy_damage_cached(attacker_signatures, blocker_signatures)
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=4096)
 def _optimal_enemy_damage_cached(attacker_signatures: tuple, blocker_signatures: tuple) -> float:
     attackers = [_view_from_signature(signature) for signature in attacker_signatures]
     blockers = [_view_from_signature(signature) for signature in blocker_signatures]

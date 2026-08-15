@@ -20,6 +20,7 @@ from core.ai.builder.snapshot import build_builder_snapshot
 from core.ai.builder.search_budget import FINAL_DECISION_SEARCH_BUDGET
 from core.ai.builder.turn_policy import (
     _build_projected_candidates,
+    _generate_main_action_projections,
     _shortlist_projected_candidates,
     evaluate_builder_next_main_value,
 )
@@ -137,6 +138,21 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertFalse(unit.summoning_sickness)
         self.assertIn(unit.unit_id, next_own_turn.available_attacker_ids)
 
+    def test_resource_projection_is_generated_before_creature_projections(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 3)
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        projected, _, _ = _build_projected_candidates(self.engine.ai_player, self.engine, snapshot)
+        shortlisted = _shortlist_projected_candidates(projected, snapshot)
+
+        first_action, _, first_candidate = next(
+            _generate_main_action_projections(self.engine.ai_player, self.engine, base, shortlisted)
+        )
+
+        self.assertTrue(shortlisted)
+        self.assertEqual(first_action.action_kind, "resource")
+        self.assertIsNone(first_candidate)
+
     def test_runtime_fingerprint_ignores_builder_hand_when_abilities_are_disabled(self) -> None:
         self.assertFalse(BUILDER_ABILITIES_ENABLED)
         template = type("T", (), {"template_id": "builder_ability_flying"})()
@@ -234,6 +250,41 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertFalse(report.own_next_attack_lethal)
         self.assertIsNone(report.turns_to_own_lethal)
 
+    def test_inexact_horizon_cannot_confirm_next_turn_lethal(self) -> None:
+        self.engine.human_player.life = 5
+        self.engine.ai_player.life = 20
+        for _ in range(self.engine.BUILDER_CREATURE_CAP):
+            self.make_builder_creature(
+                1,
+                aw=0,
+                vw=0,
+                sw=2,
+                lw=1,
+                ready=False,
+                abilities=(Ability.FLYING,),
+            )
+        for index in range(self.engine.BUILDER_CREATURE_CAP):
+            self.make_builder_creature(
+                0,
+                aw=0,
+                vw=1,
+                sw=4 if index == 0 else 0,
+                lw=2,
+                ready=True,
+                abilities=(Ability.HASTE,),
+            )
+
+        base = build_current_turn_projection(self.engine.ai_player, self.engine)
+        predicted_attack = evaluate_best_builder_attack(base.players[base.player_id], base)
+        report = evaluate_main_action_horizon(base, predicted_attack, deadline=0.0)
+
+        self.assertEqual(report.offense_response_attackers, ())
+        self.assertGreaterEqual(report.own_next_attack_damage, self.engine.human_player.life)
+        self.assertFalse(report.lethal_line_exact)
+        self.assertTrue(report.lethal_line_fallback_used)
+        self.assertFalse(report.own_next_attack_lethal)
+        self.assertIsNone(report.turns_to_own_lethal)
+
     def test_ai_can_choose_haste_when_it_removes_immediate_followup_damage(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.engine.ai_player.life = 2
@@ -250,7 +301,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.set_builder_resources(self.engine.ai_player, 8)
         self.engine.ai_player.life = 10
         self.engine.human_player.life = 20
-        self.make_builder_creature(0, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        self.make_builder_creature(0, aw=4, vw=1, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
         for _ in range(2):
             self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
 
@@ -275,7 +326,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.set_builder_resources(self.engine.ai_player, 8)
         self.engine.ai_player.life = 10
         self.engine.human_player.life = 20
-        self.make_builder_creature(0, aw=4, vw=0, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        self.make_builder_creature(0, aw=4, vw=1, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
         for _ in range(2):
             self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
         for _ in range(2):
@@ -284,7 +335,7 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertEqual(decision.action_candidate.creature_candidate.key, (0, 1, 7, 1, "FLYING"))
+        self.assertEqual(decision.action_candidate.creature_candidate.builder_ability, Ability.FLYING)
         self.assertTrue(decision.score.coverage_prevents_repeated_lethal)
         self.assertEqual(decision.score.second_attack_damage, 5.0)
         self.assertEqual(decision.score.cumulative_unavoidable_damage, 5.0)
@@ -354,6 +405,54 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         self.assertNotEqual(decision.action_candidate.creature_candidate.signature, (0, 0, 5, 1))
+
+    def test_turn_19_regression_does_not_build_suicidal_haste_body_for_slot_release(self) -> None:
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.engine.turn_number = 19
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 5
+        self.set_builder_resources(self.engine.ai_player, 3)
+        self.set_builder_resources(self.engine.human_player, 5)
+        for stats, ability in (
+            ((0, 1, 1, 2), Ability.HASTE),
+            ((1, 1, 1, 1), Ability.HASTE),
+            ((0, 1, 2, 1), Ability.FLYING),
+            ((1, 1, 1, 1), Ability.HASTE),
+        ):
+            self.make_builder_creature(
+                1,
+                aw=stats[0],
+                vw=stats[1],
+                sw=stats[2],
+                lw=stats[3],
+                ready=True,
+                abilities=(ability,),
+            )
+        for stats, ability in (
+            ((0, 1, 1, 1), Ability.HASTE),
+            ((0, 2, 2, 1), Ability.HASTE),
+            ((2, 1, 2, 1), Ability.FLYING),
+            ((0, 3, 2, 1), Ability.HASTE),
+        ):
+            self.make_builder_creature(
+                0,
+                aw=stats[0],
+                vw=stats[1],
+                sw=stats[2],
+                lw=stats[3],
+                ready=True,
+                abilities=(ability,),
+            )
+
+        decision = plan_builder_turn(self.engine.ai_player, self.engine)
+        chosen = decision.action_candidate.creature_candidate
+
+        self.assertFalse(
+            decision.action_candidate.action_kind == "creature"
+            and chosen is not None
+            and chosen.key == (0, 0, 3, 1, "HASTE")
+        )
 
     def test_attack_at_cap_values_block_and_nonblock_for_weak_damage_body(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
@@ -502,7 +601,8 @@ class BuilderTurnAITests(unittest.TestCase):
         self.engine.ai_player.life = 6
         self.engine.debug_log_to_messages = True
         self.make_builder_creature(1, aw=0, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.HASTE,))
-        self.make_builder_creature(1, aw=1, vw=0, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+        unusable_blocker = self.make_builder_creature(1, aw=1, vw=0, sw=1, lw=2, ready=True, abilities=(Ability.HASTE,))
+        unusable_blocker.cannot_block = True
         for stats in ((2, 0, 3, 1), (3, 0, 2, 1), (2, 0, 3, 1), (2, 0, 3, 1)):
             self.make_builder_creature(0, aw=stats[0], vw=stats[1], sw=stats[2], lw=stats[3], ready=True, abilities=(Ability.HASTE,))
 
@@ -523,7 +623,7 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "resource")
 
-    def test_regression_curve_after_first_valid_haste_prefers_resource_over_redundant_second_body(self) -> None:
+    def test_defense_zero_body_can_be_worth_building_after_block_rule_change(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.set_builder_resources(self.engine.human_player, 3)
         self.engine.ai_player.life = 18
@@ -532,7 +632,8 @@ class BuilderTurnAITests(unittest.TestCase):
 
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
-        self.assertEqual(decision.action_candidate.action_kind, "resource")
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertEqual(decision.action_candidate.creature_candidate.vw, 0)
 
     def test_regression_full_weak_board_values_open_response_slot_against_future_flyer(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 5)

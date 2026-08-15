@@ -13,6 +13,7 @@ from .config import BUILDER_AI_WEIGHTS
 from .debug import (
     builder_debug_enabled,
     builder_debug_include_fingerprints,
+    builder_debug_precision,
     builder_debug_top_n,
     builder_debug_verbose,
     contribution_pairs,
@@ -29,9 +30,16 @@ from .combat_assignments import (
     generate_block_assignment_tuples,
     player_damage_distribution_for_combat,
 )
-from .combat_eval import can_legally_be_forced_to_block, can_legally_block, estimate_builder_combat, estimate_unblocked_attack
+from .combat_eval import (
+    can_legally_be_forced_to_block,
+    can_legally_block,
+    estimate_builder_combat,
+    estimate_unblocked_attack,
+    project_builder_combat_outcome,
+)
 from .snapshot import build_builder_snapshot
 from .search_budget import BuilderSearchBudget, FINAL_DECISION_SEARCH_BUDGET, TURN_LOOKAHEAD_SEARCH_BUDGET
+from .search_control import builder_search_should_stop, count_builder_search_work, store_bounded_cache_entry
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
 from .turn_projection import (
     BuilderTurnProjection,
@@ -61,7 +69,6 @@ LOW_IMPACT_ATTACK_PENALTY = 1.35
 CAP_SLOT_RELEASE_WEIGHT = 0.7
 CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT = 0.9
 CAP_UNBLOCKED_PRESSURE_BONUS = 0.22
-NEXT_MAIN_ACTION_WEIGHT = 3.5
 FULL_ATTACK_ENUMERATION_THRESHOLD = 8
 ENRAGED_TARGET_LIMIT = 2
 COUNTERATTACK_SEARCH_BUDGET = BuilderSearchBudget(
@@ -76,6 +83,8 @@ FINAL_FOLLOWUP_SHORTLIST_LIMIT = 1
 COUNTER_MAIN_ACTION_BUILD_LIMIT = 4
 COUNTER_CANDIDATE_SCORING_LIMIT = 8
 LOOKAHEAD_COUNTER_BEAM_WIDTH = 3
+ADVERSARIAL_NO_BLOCK_BEAM_WIDTH = 3
+ADVERSARIAL_BLOCK_RESPONSE_BEAM_WIDTH = 3
 PRUNED_LOOKAHEAD_SCORE = -1_000_000.0
 _COUNTER_MAIN_ACTION_CACHE: dict[tuple, tuple[tuple[int, str, object], ...]] = {}
 
@@ -172,8 +181,12 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     evaluated_block_assignments = 0
     block_pruned = 0
     block_exact = True
+    response_beams: dict[BuilderAttackCandidate, tuple[BuilderAttackScore, ...]] = {}
     counter_cache: dict[tuple, BuilderCounterResult] | None = {} if include_counterattack else None
     for candidate in candidates:
+        if scored_candidates and builder_search_should_stop():
+            break
+        count_builder_search_work("attack_candidates_scored")
         score, block_metadata = _score_builder_attack_candidate_details(
             candidate,
             player,
@@ -183,7 +196,10 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
             cap_context=cap_context,
             include_counterattack=False if include_counterattack else include_counterattack,
         )
+        if block_metadata.get("deadline_truncated") and candidate.attacker_ids:
+            break
         scored_candidates.append((candidate, score))
+        response_beams[candidate] = tuple(block_metadata.get("response_beam", (score,)))
         generated_block_assignments += block_metadata["generated_block_assignments"]
         evaluated_block_assignments += block_metadata["evaluated_block_assignments"]
         block_pruned += block_metadata["pruned_candidates"]
@@ -274,19 +290,48 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
                     )
                 )
                 continue
-            score = _apply_enemy_followup_pressure(
-                score,
-                candidate=candidate,
-                block_assignment=score.chosen_block_assignment,
-                player=player,
-                enemy=enemy,
-                combat_die_sides=int(getattr(combat_context, "combat_die_sides", COMBAT_DIE_SIDES)),
-                search_budget=search_budget,
-                counter_cache=counter_cache,
-                full_search=index in followup_indexes,
-                baseline_counter=baseline_counter,
-                cap_context=cap_context,
-            )
+            full_followup_search = index in followup_indexes
+            response_options = (score,)
+            if index < ADVERSARIAL_NO_BLOCK_BEAM_WIDTH:
+                response_options = response_beams.get(candidate, response_options)
+                if not candidate.enraged_targets and not any(
+                    not response.chosen_block_assignment for response in response_options
+                ):
+                    # Declining a trade can preserve the defender's next attack,
+                    # so no-block must remain a candidate even when its immediate
+                    # combat score was outside the static response beam.
+                    response_options += (
+                        evaluate_attack_assignment(
+                            candidate,
+                            (),
+                            player,
+                            enemy,
+                            combat_context,
+                            cap_context=cap_context,
+                        ),
+                    )
+
+            adversarial_scores: list[BuilderAttackScore] = []
+            for response in response_options:
+                if adversarial_scores and builder_search_should_stop():
+                    break
+                count_builder_search_work("adversarial_responses_scored")
+                adversarial_scores.append(
+                    _apply_enemy_followup_pressure(
+                        response,
+                        candidate=candidate,
+                        block_assignment=response.chosen_block_assignment,
+                        player=player,
+                        enemy=enemy,
+                        combat_die_sides=int(getattr(combat_context, "combat_die_sides", COMBAT_DIE_SIDES)),
+                        search_budget=search_budget,
+                        counter_cache=counter_cache,
+                        full_search=full_followup_search,
+                        baseline_counter=baseline_counter,
+                        cap_context=cap_context,
+                    )
+                )
+            score = min(adversarial_scores, key=_adversarial_block_response_sort_key)
             rescored.append((candidate, score))
         scored_candidates = rescored
     scored_candidates.sort(key=_attack_candidate_sort_key, reverse=True)
@@ -334,6 +379,15 @@ def _select_followup_shortlist_indexes(
     if no_attack_index is not None:
         selected.add(no_attack_index)
     return selected
+
+
+def _adversarial_block_response_sort_key(score: BuilderAttackScore) -> tuple:
+    return (
+        score.total,
+        score.player_damage,
+        score.enemy_kill_value,
+        tuple(score.chosen_block_assignment),
+    )
 
 
 def choose_builder_attackers(player, engine) -> list:
@@ -512,8 +566,18 @@ def _score_builder_attack_candidate_details(
     )
     pair_cache: dict[tuple[int, int], tuple] = {}
     block_value_cache: dict[int, float] = {}
-    scored_assignments = [
-        evaluate_attack_assignment(
+    scored_assignments = []
+    for assignment in assignments:
+        if scored_assignments and builder_search_should_stop():
+            block_metadata["deadline_truncated"] = True
+            block_metadata["exact_search"] = False
+            block_metadata["pruned_candidates"] = block_metadata.get("pruned_candidates", 0) + max(
+                0,
+                len(assignments) - len(scored_assignments),
+            )
+            break
+        count_builder_search_work("block_responses_scored")
+        scored_assignments.append(evaluate_attack_assignment(
             candidate,
             assignment,
             player,
@@ -522,13 +586,13 @@ def _score_builder_attack_candidate_details(
             pair_cache=pair_cache,
             block_value_cache=block_value_cache,
             cap_context=cap_context,
-        )
-        for assignment in assignments
-    ]
+        ))
     if include_counterattack:
         counter_cache: dict[tuple, BuilderCounterResult] = {}
         rescored_assignments = []
         for current in scored_assignments:
+            if rescored_assignments and builder_search_should_stop():
+                break
             if current.lethal_value < GUARANTEED_LETHAL_BONUS:
                 current = _apply_enemy_followup_pressure(
                     current,
@@ -546,6 +610,7 @@ def _score_builder_attack_candidate_details(
             rescored_assignments.append(current)
         scored_assignments = rescored_assignments
     scored_assignments.sort(key=lambda score: (score.total, score.player_damage, score.enemy_kill_value, tuple(score.chosen_block_assignment)))
+    block_metadata["response_beam"] = tuple(scored_assignments[:ADVERSARIAL_BLOCK_RESPONSE_BEAM_WIDTH])
     best_response = scored_assignments[0]
     return best_response, block_metadata
 
@@ -566,7 +631,9 @@ def _apply_enemy_followup_pressure(
 ) -> BuilderAttackScore:
     if base_score.guaranteed_player_damage >= enemy.life > 0:
         return base_score
-    evaluate_next_main = _should_evaluate_next_main_slot_denial(cap_context, candidate, base_score)
+    # Cap pressure and replacement relief are already priced into the combat
+    # assignment. Projecting another main-action reward here double-counts a
+    # freed slot and can make a zero-impact suicide look overwhelmingly good.
     counter_result = _estimate_candidate_counterattack(
         candidate,
         block_assignment,
@@ -576,7 +643,7 @@ def _apply_enemy_followup_pressure(
         search_budget=search_budget,
         counter_cache=counter_cache,
         full_search=full_search,
-        evaluate_next_main=evaluate_next_main,
+        evaluate_next_main=False,
     )
     counter_score = counter_result.score
     adjusted_total = base_score.total
@@ -589,11 +656,9 @@ def _apply_enemy_followup_pressure(
     lost_block_penalty = concrete_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
     counter_damage_penalty = counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
     counter_lethal_penalty = counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
-    next_main_value_bonus = counter_result.next_main_value * NEXT_MAIN_ACTION_WEIGHT
     adjusted_total -= lost_block_penalty
     adjusted_total -= counter_damage_penalty
     adjusted_total -= counter_lethal_penalty
-    adjusted_total += next_main_value_bonus
     lethal_penalty = 0.0
     if counter_score.guaranteed_player_damage >= player.life > 0:
         lethal_penalty = BUILDER_AI_WEIGHTS.enemy_lethal_penalty
@@ -620,12 +685,6 @@ def _apply_enemy_followup_pressure(
             round(counter_score.lethal_probability, 4),
             round(-BUILDER_AI_WEIGHTS.enemy_lethal_probability, 4),
             round(-counter_lethal_penalty, 4),
-        ),
-        (
-            "next_main_value",
-            round(counter_result.next_main_value, 4),
-            round(NEXT_MAIN_ACTION_WEIGHT, 4),
-            round(next_main_value_bonus, 4),
         ),
         (
             "enemy_lethal_penalty",
@@ -939,7 +998,7 @@ def _attack_unit_signature(unit) -> tuple:
     )
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=4096)
 def _estimate_block_value_cached(blocker_signature: tuple, enemy_signatures: tuple, enemy_life: float) -> float:
     from .combat_eval import BuilderCombatantView
 
@@ -1023,6 +1082,8 @@ def _estimate_candidate_counterattack(
     else:
         build_limit = 1
     for main_action_kind, main_action_stats, projected_state in _generate_counter_main_action_projections(counter_projection, build_limit=build_limit):
+        if best_result is not None and builder_search_should_stop():
+            break
         if main_action_kind == "resource" and not evaluate_next_main:
             continue
         current = _evaluate_counter_projection_attack(
@@ -1046,6 +1107,8 @@ def _estimate_candidate_counterattack(
             counter_projection,
             build_limit=2,
         ):
+            if builder_search_should_stop():
+                break
             if not main_action_kind.startswith("build_"):
                 continue
             current = _evaluate_counter_projection_attack(
@@ -1121,21 +1184,15 @@ def _build_counterattack_projection(
         blocker = blockers.get(blocker_id)
         if attacker is None or blocker is None:
             continue
-        estimate = estimate_builder_combat(attacker, blocker)
-        attacker_hp = int(attacker.current_hp)
-        blocker_hp = int(blocker.current_hp)
-        if estimate.attacker_death_probability >= 1.0:
+        outcome = project_builder_combat_outcome(attacker, blocker, combat_die_sides)
+        if not outcome.attacker_survives:
             removed_ids.add(attacker_id)
         else:
-            attacker_hp = max(1, attacker_hp - int(round(estimate.expected_damage_to_attacker)))
-            attacker_hp = min(int(attacker.lw), attacker_hp + int(round(estimate.expected_attacker_heal)))
-            post_hp[attacker_id] = attacker_hp
-        if estimate.defender_death_probability >= 1.0:
+            post_hp[attacker_id] = outcome.attacker_remaining_hp
+        if not outcome.defender_survives:
             removed_ids.add(blocker_id)
         else:
-            blocker_hp = max(1, blocker_hp - int(round(estimate.expected_damage_to_defender)))
-            blocker_hp = min(int(blocker.lw), blocker_hp + int(round(estimate.expected_defender_heal)))
-            post_hp[blocker_id] = blocker_hp
+            post_hp[blocker_id] = outcome.defender_remaining_hp
 
     for attacker_id in attacker_ids:
         if attacker_id in assignment_map or attacker_id in removed_ids:
@@ -1287,7 +1344,7 @@ def _generate_counter_main_action_projections(counter_projection: BuilderTurnPro
             )
             consider(6, "build_best", scored[0][1])
             haste_attackers = [row for row in scored if row[1].has_haste]
-            haste_blockers = [row for row in scored if row[1].has_haste and row[1].vw > 0]
+            haste_blockers = [row for row in scored if row[1].has_haste]
             delayed = [row for row in scored if not row[1].has_haste]
             flying = [row for row in scored if row[1].has_ability(Ability.FLYING)]
             defensive = [row for row in scored if row[1].vw > 0]
@@ -1360,7 +1417,7 @@ def _generate_counter_main_action_projections(counter_projection: BuilderTurnPro
             consider(4, "build_delayed", None if not delayed else delayed[0][1])
             consider(5, "build_defense", None if not defensive else defensive[0][1])
         cached = tuple(sorted(selected.values(), key=lambda row: (row[0], row[1], row[2].key)))
-        _COUNTER_MAIN_ACTION_CACHE[cache_key] = cached
+        store_bounded_cache_entry(_COUNTER_MAIN_ACTION_CACHE, cache_key, cached, max_entries=2048)
     ordered = list(cached)
     for _, label, current in ordered[: max(1, build_limit)]:
         action = BuilderTurnActionCandidate(
@@ -1581,20 +1638,6 @@ def _counter_result_sort_key(result: BuilderCounterResult, defender_life: int) -
     )
 
 
-def _should_evaluate_next_main_slot_denial(cap_context, candidate: BuilderAttackCandidate, base_score: BuilderAttackScore) -> bool:
-    if cap_context is None or not getattr(cap_context, "at_cap", False):
-        return False
-    if not candidate.attacker_ids:
-        return False
-    if len(candidate.attacker_ids) > 2:
-        return False
-    if base_score.player_damage > 1.25 or base_score.enemy_kill_value > 0.5 or base_score.lethal_value >= GUARANTEED_LETHAL_BONUS:
-        return False
-    if cap_context.cap_pressure < 1.2 and cap_context.replacement_value < 1.0:
-        return False
-    return True
-
-
 def _counter_legal_blocker_map(projection: BuilderTurnProjection, attacker_ids: tuple[int, ...]) -> tuple[tuple[int, tuple[int, ...]], ...]:
     defender = projection.players[projection.enemy_id]
     available_blockers = list(projection.available_blockers(defender))
@@ -1776,6 +1819,7 @@ def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> N
             )
     runner_up = scored_candidates[1] if len(scored_candidates) > 1 else None
     best_score = scored_candidates[0][1] if scored_candidates else None
+    precision = builder_debug_precision()
     emit_builder_debug_line(
         engine,
         "AI ATTACK",
@@ -1786,7 +1830,12 @@ def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> N
             ("total", 0.0 if best_score is None else best_score.total),
             ("runner_up", "N/A" if runner_up is None else list(runner_up[0].attacker_ids)),
             ("runner_up_total", "N/A" if runner_up is None else runner_up[1].total),
-            ("gap", "N/A" if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
+            (
+                "gap",
+                "N/A"
+                if runner_up is None or best_score is None
+                else round(round(best_score.total, precision) - round(runner_up[1].total, precision), precision),
+            ),
             ("delta_keys", "N/A" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
         ),
     )

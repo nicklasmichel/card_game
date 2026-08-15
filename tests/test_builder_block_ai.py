@@ -160,6 +160,16 @@ class BuilderBlockAITests(unittest.TestCase):
 
         self.assertEqual(assignments[attacker.unit_id], blocker.unit_id)
 
+    def test_defense_zero_chump_block_is_used_to_prevent_lethal(self) -> None:
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=4, lw=3, ready=True, abilities=(Ability.FLYING,))
+        blocker = self.make_builder_creature(0, aw=1, vw=0, sw=1, lw=1, ready=True, abilities=(Ability.FLYING,))
+        self.engine.human_player.life = 4
+        self.set_attackers(attacker)
+
+        assignments = choose_builder_blocks(self.engine.human_player, self.engine)
+
+        self.assertEqual(assignments[attacker.unit_id], blocker.unit_id)
+
     def test_trample_chump_can_be_worse_than_taking_damage(self) -> None:
         attacker = self.make_builder_creature(1, aw=2, vw=1, sw=6, lw=4, ready=True, abilities=(Ability.TRAMPLE,))
         blocker = self.make_builder_creature(0, aw=10, vw=2, sw=10, lw=1, ready=True, abilities=(Ability.FLYING,))

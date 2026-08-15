@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 from core.builder_rules import BUILDER_CREATURE_ABILITIES, builder_creature_ability_set, is_valid_builder_creature_ability
 from core.models import Ability
 
@@ -45,12 +47,20 @@ def generate_builder_creature_candidates(
 ) -> list[BuilderCreatureCandidate]:
     if available_resources < 0:
         return []
-    candidates: dict[tuple[int, int, int, int, str], BuilderCreatureCandidate] = {}
     budgets = _candidate_budgets(snapshot, available_resources)
+    candidates: dict[tuple[int, int, int, int, str], BuilderCreatureCandidate] = {}
     for budget in budgets:
-        for ability in BUILDER_CREATURE_ABILITIES:
-            _generate_budget_candidates(candidates, budget, ability=ability)
+        for candidate in _generate_cached_budget_candidates(budget):
+            candidates[candidate.key] = candidate
     return sorted(candidates.values(), key=lambda candidate: (candidate.cost, candidate.key, candidate.generation_reason))
+
+
+@lru_cache(maxsize=32)
+def _generate_cached_budget_candidates(budget: int) -> tuple[BuilderCreatureCandidate, ...]:
+    candidates: dict[tuple[int, int, int, int, str], BuilderCreatureCandidate] = {}
+    for ability in BUILDER_CREATURE_ABILITIES:
+        _generate_budget_candidates(candidates, budget, ability=ability)
+    return tuple(sorted(candidates.values(), key=lambda candidate: (candidate.cost, candidate.key, candidate.generation_reason)))
 
 
 def builder_candidate_budgets(snapshot: BuilderStrategicSnapshot, available_resources: int) -> tuple[int, ...]:
@@ -114,7 +124,7 @@ def select_builder_creature_search_frontier(
         flying = [candidate for candidate in candidates if candidate.has_ability(Ability.FLYING)]
         buckets.insert(0, sorted(flying, key=lambda candidate: (candidate.vw, candidate.lw, candidate.sw, candidate.key), reverse=True))
     if snapshot.enemy_potential_attacker_count > 0:
-        haste_blockers = [candidate for candidate in candidates if candidate.has_haste and candidate.vw > 0]
+        haste_blockers = [candidate for candidate in candidates if candidate.has_haste]
         buckets.insert(0, sorted(haste_blockers, key=lambda candidate: (candidate.vw, candidate.lw, candidate.sw, candidate.key), reverse=True))
 
     selected: dict[tuple, BuilderCreatureCandidate] = {}

@@ -100,27 +100,6 @@ def _resolve_battle_rounds(
     *,
     apply_result: bool,
 ) -> None:
-    if self.get_creature_attack_value(attacker) <= 0 and self.get_creature_defense_value(blocker) <= 0:
-        battle.attacker_rolls = []
-        battle.blocker_rolls = []
-        battle.attack_sum = 0
-        battle.defense_sum = 0
-        battle.winner = "attacker"
-        battle.creature_damage = 0
-        battle.history.append(
-            DiceRoundRecord(
-                round_number=1,
-                attacker_rolls=[],
-                blocker_rolls=[],
-                attack_sum=0,
-                defense_sum=0,
-                outcome_text="Beide Seiten haben 0 Wuerfel. Der Angreifer gewinnt den Gleichstand. Kein Kampfschaden.",
-            )
-        )
-        battle.resolution_complete = True
-        if apply_result:
-            _apply_battle_result(self, battle, attacker, blocker)
-        return
     die_sides = _combat_die_sides(self)
     battle.attacker_rolls = [self.rng.randint(1, die_sides) for _ in range(max(0, self.get_creature_attack_value(attacker)))]
     battle.blocker_rolls = [self.rng.randint(1, die_sides) for _ in range(max(0, self.get_creature_defense_value(blocker)))]

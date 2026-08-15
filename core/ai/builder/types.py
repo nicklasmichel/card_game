@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.builder_rules import coerce_builder_creature_ability
+from core.builder_rules import BUILDER_CREATURE_ABILITY_SET
 from core.models import Ability
 
 
@@ -65,10 +65,12 @@ class BuilderCreatureCandidate:
 
     @property
     def builder_ability(self) -> Ability | None:
-        try:
-            return coerce_builder_creature_ability(self.abilities)
-        except ValueError:
+        if len(self.abilities) != 1:
             return None
+        ability = next(iter(self.abilities))
+        if ability == Ability.VIGILANT:
+            ability = Ability.VIGILANCE
+        return ability if ability in BUILDER_CREATURE_ABILITY_SET else None
 
     def has_ability(self, ability: Ability) -> bool:
         return ability in self.abilities

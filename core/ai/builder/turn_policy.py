@@ -35,6 +35,7 @@ from .debug import (
 from .horizon import NEXT_TURN_LETHAL_BONUS, REPEATED_LETHAL_PREVENTION_BONUS, BuilderHorizonReport, evaluate_main_action_horizon
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
 from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
+from .search_control import builder_search_scope, builder_search_should_stop, store_bounded_cache_entry
 from .snapshot import build_builder_snapshot
 from .turn_projection import (
     build_current_turn_projection,
@@ -115,7 +116,7 @@ class BuilderTurnWeights:
 TURN_WEIGHTS = BuilderTurnWeights()
 
 
-def plan_builder_turn(player, engine) -> BuilderTurnDecision:
+def plan_builder_turn(player, engine, *, cancel_event=None) -> BuilderTurnDecision:
     runtime_signature = build_builder_runtime_fingerprint(player, engine)
     cached = getattr(engine.ai, "_last_builder_turn_decision", None)
     if cached is not None and _decision_matches_runtime(cached, engine.phase, runtime_signature):
@@ -124,27 +125,38 @@ def plan_builder_turn(player, engine) -> BuilderTurnDecision:
     time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
     deadline = monotonic() + time_limit
 
-    if engine.phase == PHASE_MAIN_1 and not player.main_action_used_this_turn:
-        decision = _plan_builder_full_turn(player, engine, runtime_signature, deadline=deadline)
-    elif engine.phase == PHASE_BUILDER_ABILITY:
-        decision = _plan_builder_continuation(
-            player,
-            engine,
-            runtime_signature,
-            allow_ability=BUILDER_ABILITIES_ENABLED and not engine.builder_ability_used_this_turn,
-            deadline=deadline,
-        )
-    elif engine.phase == PHASE_DECLARE_ATTACKERS:
-        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
-    else:
-        decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
+    with builder_search_scope(deadline=deadline, cancel_event=cancel_event) as search_control:
+        if engine.phase == PHASE_MAIN_1 and not player.main_action_used_this_turn:
+            decision = _plan_builder_full_turn(player, engine, runtime_signature, deadline=deadline)
+        elif engine.phase == PHASE_BUILDER_ABILITY:
+            decision = _plan_builder_continuation(
+                player,
+                engine,
+                runtime_signature,
+                allow_ability=BUILDER_ABILITIES_ENABLED and not engine.builder_ability_used_this_turn,
+                deadline=deadline,
+            )
+        elif engine.phase == PHASE_DECLARE_ATTACKERS:
+            decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
+        else:
+            decision = _plan_builder_continuation(player, engine, runtime_signature, allow_ability=False, deadline=deadline)
+        search_metrics = search_control.metrics()
+        setattr(engine.ai, "_last_builder_search_metrics", search_metrics)
 
     setattr(engine.ai, "_last_builder_turn_decision", decision)
+    if builder_debug_enabled():
+        emit_builder_debug_line(
+            engine,
+            "AI PERF",
+            player=player,
+            decision="turn_search",
+            pairs=tuple(search_metrics.items()),
+        )
     return decision
 
 
-def choose_builder_turn_plan(player, engine) -> BuilderTurnDecision:
-    return plan_builder_turn(player, engine)
+def choose_builder_turn_plan(player, engine, *, cancel_event=None) -> BuilderTurnDecision:
+    return plan_builder_turn(player, engine, cancel_event=cancel_event)
 
 
 def materialize_builder_turn_decision(
@@ -355,7 +367,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                 _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, current_decision)
                 _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [current_decision], fallback_used)
                 return current_decision
-            if decisions and monotonic() >= deadline:
+            if decisions and builder_search_should_stop(deadline):
                 break
             continue
         decisions.extend(
@@ -375,7 +387,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                 deadline=deadline,
             )
         )
-        if decisions and monotonic() >= deadline:
+        if decisions and builder_search_should_stop(deadline):
             break
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     decision = decisions[0]
@@ -454,7 +466,6 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
 
 def _generate_main_action_projections(player, engine, base_projection, shortlisted):
     yielded = False
-    resource_row = None
     if player.total_resources() < engine.BUILDER_MAX_RESOURCES:
         resource_candidate = BuilderTurnActionCandidate(
             action_kind="resource",
@@ -463,7 +474,10 @@ def _generate_main_action_projections(player, engine, base_projection, shortlist
             projected_ready_resources=player.available_resources() + 1,
             generation_reason="resource_growth",
         )
-        resource_row = (resource_candidate, project_resource_action(base_projection), None)
+        yielded = True
+        # Resource growth is cheap to evaluate and must not disappear merely
+        # because creature projections consume the turn-wide time budget.
+        yield resource_candidate, project_resource_action(base_projection), None
 
     if len(base_projection.own_units) < engine.BUILDER_CREATURE_CAP:
         for projected_candidate in shortlisted:
@@ -476,9 +490,6 @@ def _generate_main_action_projections(player, engine, base_projection, shortlist
             )
             yielded = True
             yield action_candidate, project_creature_action(base_projection, action_candidate), projected_candidate
-    if resource_row is not None:
-        yielded = True
-        yield resource_row
     if not yielded:
         pass_candidate = BuilderTurnActionCandidate(
             action_kind="pass",
@@ -559,7 +570,7 @@ def _evaluate_ability_plans_for_projection(
             deadline=deadline,
         )
         decisions.append(decision)
-        if decisions and monotonic() >= deadline:
+        if decisions and builder_search_should_stop(deadline):
             break
     return decisions
 
@@ -689,7 +700,7 @@ def _build_projected_candidates(
                 future_value=extract_candidate_future_value(static_score, candidate, snapshot),
             )
         )
-        if projected and deadline is not None and monotonic() >= deadline:
+        if projected and builder_search_should_stop(deadline):
             break
     projected.sort(key=_projected_candidate_sort_key, reverse=True)
     return projected, False, {
@@ -1115,7 +1126,7 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         reverse=True,
     )
     by_immediate_blocker = sorted(
-        [projected for projected in projected_candidates if projected.candidate.has_haste and projected.candidate.vw > 0],
+        [projected for projected in projected_candidates if projected.candidate.has_haste],
         key=lambda projected: (
             projected.static_score.immediate_prevented_damage,
             projected.static_score.block_win_probability,
@@ -1453,7 +1464,7 @@ def _estimate_future_slot_advantage(snapshot, projection, projected_candidate) -
             )
             best_future_value = max(best_future_value, extract_candidate_future_value(static_score, candidate, snapshot))
         cached = best_future_value
-        _FUTURE_SLOT_VALUE_CACHE[cache_key] = cached
+        store_bounded_cache_entry(_FUTURE_SLOT_VALUE_CACHE, cache_key, cached, max_entries=2048)
     return max(0.0, cached - projected_candidate.future_value)
 
 
@@ -1508,10 +1519,10 @@ def _best_frontier_build_value(
         if future_value > best_value:
             best_value = future_value
             best_stats = f"{candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw}/{getattr(candidate.builder_ability, 'value', '-').lower()}"
-        if deadline is not None and monotonic() >= deadline:
+        if builder_search_should_stop(deadline):
             break
     result = (round(best_value, 4), best_stats)
-    _BUDGET_FRONTIER_CACHE[cache_key] = result
+    store_bounded_cache_entry(_BUDGET_FRONTIER_CACHE, cache_key, result, max_entries=2048)
     return result
 
 
@@ -1689,7 +1700,7 @@ def _score_action_survival_urgency(snapshot, projection, predicted_attack, actio
     legal_blockers = sum(
         1
         for unit in projection.own_units
-        if not unit.tapped and unit.vw > 0 and _can_affect_projected_counterattack(unit, projected_counter_attackers)
+        if not unit.tapped and _can_affect_projected_counterattack(unit, projected_counter_attackers)
     )
     if expected_damage <= 0.0 and lethal_risk <= 0.0:
         stability = legal_blockers * 0.12 + max(0.0, life_after - 2.0) * 0.05
@@ -1930,7 +1941,7 @@ def _score_action_risk(snapshot, projection, predicted_attack, projected_candida
         and predicted_attack.score.lethal_value < WIN_BONUS
     ):
         risk -= SUICIDE_ATTACK_PENALTY
-    if snapshot.enemy_has_board and not any(not unit.tapped and unit.vw > 0 for unit in projection.own_units):
+    if snapshot.enemy_has_board and not any(not unit.tapped and not unit.cannot_block for unit in projection.own_units):
         risk -= 1.2 + pressure * 0.14
     if BUILDER_ABILITIES_ENABLED and ability_action.action_kind == "grant_ability" and ability_action.card_ability == Ability.VIGILANCE:
         target = projection.get_unit_by_id(ability_action.target_id or -1)
@@ -1969,7 +1980,7 @@ def _projected_counterattack_units(projection, predicted_attack: BuilderAttackDe
 
 
 def _can_affect_projected_counterattack(unit, projected_counter_attackers) -> bool:
-    if getattr(unit, "vw", 0) <= 0 or getattr(unit, "tapped", False):
+    if getattr(unit, "cannot_block", False) or getattr(unit, "tapped", False):
         return False
     if not projected_counter_attackers:
         return True
@@ -2367,8 +2378,8 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
                     ("new_unit_tapped", action.creature_candidate.enters_tapped),
                     ("new_unit_sick", action.creature_candidate.enters_tapped),
                     ("new_unit_can_attack", action.creature_candidate.has_haste),
-                    ("new_unit_can_block", action.creature_candidate.vw > 0 and not action.creature_candidate.enters_tapped),
-                    ("new_unit_block_reason", "-" if action.creature_candidate.vw > 0 and not action.creature_candidate.enters_tapped else ("defense_zero" if action.creature_candidate.vw <= 0 else "tapped")),
+                    ("new_unit_can_block", not action.creature_candidate.enters_tapped),
+                    ("new_unit_block_reason", "-" if not action.creature_candidate.enters_tapped else "tapped"),
                 )
             )
         emit_builder_debug_line(engine, "AI PLAN", player=player, decision="main", pairs=tuple(pairs))

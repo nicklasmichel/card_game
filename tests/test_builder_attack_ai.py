@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 import unittest
+from dataclasses import replace
+from unittest.mock import patch
 from core.ai.builder import (
     BuilderAttackCandidate,
     can_legally_be_forced_to_block,
@@ -118,6 +120,45 @@ class BuilderAttackAITests(unittest.TestCase):
         candidate, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
 
         self.assertEqual(candidate.attacker_ids, ())
+
+    def test_adversarial_followup_checks_intermediate_block_response(self) -> None:
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=3, ready=True)
+        self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=3, ready=True)
+        self.make_builder_creature(0, aw=1, vw=2, sw=1, lw=3, ready=True)
+        self.engine.human_player.life = 20
+        candidate = BuilderAttackCandidate(attacker_ids=(attacker.unit_id,))
+        assignments = generate_builder_block_assignments(
+            candidate,
+            self.engine.ai_player,
+            self.engine.human_player,
+            self.engine,
+        )
+        static_score = score_builder_attack_candidate(
+            candidate,
+            self.engine.ai_player,
+            self.engine,
+            include_counterattack=False,
+        )
+        alternate = next(
+            assignment
+            for assignment in assignments
+            if assignment and assignment != static_score.chosen_block_assignment
+        )
+
+        def fake_followup(base_score, *, candidate, block_assignment, **_kwargs):
+            if not candidate.attacker_ids:
+                return replace(base_score, total=-1000.0)
+            if block_assignment == alternate:
+                return replace(base_score, total=-100.0)
+            if block_assignment == static_score.chosen_block_assignment:
+                return replace(base_score, total=50.0)
+            return replace(base_score, total=25.0)
+
+        with patch("core.ai.builder.attack_policy._apply_enemy_followup_pressure", side_effect=fake_followup):
+            chosen, score, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertEqual(chosen.attacker_ids, candidate.attacker_ids)
+        self.assertEqual(score.chosen_block_assignment, alternate)
 
     def test_vigilant_attack_gets_preservation_value(self) -> None:
         vigilant = self.make_builder_creature(1, aw=2, vw=2, sw=2, lw=3, ready=True, abilities=(Ability.VIGILANT,))
@@ -374,7 +415,7 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertGreaterEqual(score.projected_counter_damage, 9.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
 
-    def test_opponent_can_choose_no_block_to_keep_ai_weak_body_trapped_at_cap(self) -> None:
+    def test_opponent_can_choose_block_that_worsens_ai_counter_position(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.is_human = False
@@ -395,7 +436,8 @@ class BuilderAttackAITests(unittest.TestCase):
             self.engine,
         )
 
-        self.assertEqual(score.chosen_block_assignment, ())
+        self.assertEqual(score.chosen_block_assignment, ((weak.unit_id, blocker.unit_id),))
+        self.assertGreater(score.projected_counter_damage, 0.0)
         self.assertIsNotNone(blocker)
 
     def test_attack_selection_can_hold_back_partial_blockers(self) -> None:
@@ -435,11 +477,30 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertTrue(self.engine.can_creature_block_attacker(blocker, attacker))
 
-    def test_defense_zero_creature_cannot_block_under_runtime_rule(self) -> None:
-        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
-        zero_defense = self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, ready=True)
+    def test_defense_zero_creature_can_block_under_runtime_rule(self) -> None:
+        attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, abilities=(Ability.FLYING,), ready=True)
+        zero_defense = self.make_builder_creature(0, aw=2, vw=0, sw=2, lw=1, abilities=(Ability.FLYING,), ready=True)
 
-        self.assertFalse(self.engine.can_creature_block_attacker(zero_defense, attacker))
+        self.assertIn(zero_defense, self.engine.available_blockers(self.engine.human_player))
+        self.assertTrue(self.engine.can_creature_block_attacker(zero_defense, attacker))
+
+    def test_defense_zero_flyer_prevents_false_lethal_from_two_flyers(self) -> None:
+        self.engine.human_player.life = 6
+        first = self.make_builder_creature(1, aw=0, vw=1, sw=3, lw=1, abilities=(Ability.FLYING,), ready=True)
+        second = self.make_builder_creature(1, aw=0, vw=1, sw=3, lw=1, abilities=(Ability.FLYING,), ready=True)
+        blocker = self.make_builder_creature(0, aw=0, vw=0, sw=5, lw=2, abilities=(Ability.FLYING,), ready=True)
+
+        score = score_builder_attack_candidate(
+            BuilderAttackCandidate(attacker_ids=(first.unit_id, second.unit_id)),
+            self.engine.ai_player,
+            self.engine,
+            include_counterattack=False,
+        )
+
+        self.assertEqual(len(score.chosen_block_assignment), 1)
+        self.assertIn(blocker.unit_id, {blocker_id for _, blocker_id in score.chosen_block_assignment})
+        self.assertEqual(score.guaranteed_player_damage, 3.0)
+        self.assertLess(score.guaranteed_player_damage, self.engine.human_player.life)
 
     def test_attack_selection_with_five_attackers_and_five_blockers_is_fast(self) -> None:
         for _ in range(5):

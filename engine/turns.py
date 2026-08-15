@@ -45,7 +45,6 @@ def available_blockers(self, player: PlayerState) -> List[BattlefieldCreature]:
         for creature in player.battlefield
         if not creature.tapped
         and not getattr(creature, "cannot_block", False)
-        and self.get_creature_defense_value(creature) > 0
     ]
 
 

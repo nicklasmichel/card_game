@@ -7,6 +7,7 @@ from core.models import Ability
 
 from .combat_eval import can_legally_be_forced_to_block, can_legally_block, estimate_builder_combat
 from .search_budget import FINAL_DECISION_SEARCH_BUDGET
+from .search_control import builder_search_should_stop
 from .scoring import estimate_creature_board_value
 
 FULL_BLOCK_ENUMERATION_ATTACKER_THRESHOLD = 6
@@ -63,6 +64,8 @@ def generate_block_assignment_tuples(
             forced_map,
             limit=budget.max_heuristic_block_responses,
         )
+    if builder_search_should_stop():
+        exact_search = False
     if metadata is not None:
         metadata.update(
             {
@@ -106,6 +109,8 @@ def _enumerate_block_assignments(
     current: dict[int, int],
     used_blockers: set[int],
 ) -> None:
+    if assignments and builder_search_should_stop():
+        return
     if index >= len(attackers):
         assignments.append(dict(current))
         return

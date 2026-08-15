@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from random import Random
-from threading import Lock
+from threading import Event, Lock
 from typing import Dict, List, Optional
 
 from core.ai_logic import SimpleAI
@@ -203,6 +203,7 @@ class GameEngine:
         self.ai_think_result: Optional[dict] = None
         self.ai_think_error: Optional[str] = None
         self.ai_think_thread = None
+        self.ai_think_cancel_event = Event()
         self.ai_think_token = 0
         self.ai_think_lock = Lock()
         self.pending_builder_creature: Optional[PendingBuilderCreatureBuild] = None

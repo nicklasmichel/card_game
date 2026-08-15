@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from time import monotonic
 
 import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
@@ -16,10 +17,11 @@ from .combat_assignments import (
     player_damage_distribution_for_combat,
 )
 from .attack_policy import BuilderAttackCandidate
-from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
+from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack, project_builder_combat_outcome
 from .debug import (
     builder_debug_enabled,
     builder_debug_include_fingerprints,
+    builder_debug_precision,
     builder_debug_top_n,
     builder_debug_verbose,
     contribution_pairs,
@@ -31,6 +33,7 @@ from .debug import (
 )
 from .horizon import evaluate_block_horizon
 from .scoring import estimate_creature_board_value
+from .search_control import builder_search_scope, builder_search_should_stop, count_builder_search_work
 from .turn_projection import build_current_turn_projection, normalize_builder_abilities
 from .turn_types import ProjectedUnitView
 
@@ -331,7 +334,25 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     )
 
 
-def choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
+def choose_builder_blocks(defending_player, engine, *, cancel_event=None) -> dict[int, int | None]:
+    time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
+    with builder_search_scope(deadline=monotonic() + time_limit, cancel_event=cancel_event) as search_control:
+        result = _choose_builder_blocks(defending_player, engine)
+        search_metrics = search_control.metrics()
+
+    setattr(engine.ai, "_last_builder_block_search_metrics", search_metrics)
+    if builder_debug_enabled():
+        emit_builder_debug_line(
+            engine,
+            "AI PERF",
+            player=defending_player,
+            decision="blocks",
+            pairs=tuple(search_metrics.items()),
+        )
+    return result
+
+
+def _choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
     candidates = generate_builder_block_candidates(defending_player, engine)
     cap_context = compute_builder_cap_context(
         defending_player,
@@ -352,19 +373,23 @@ def choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
             tuple(),
         ),
     )
-    scored = [
-        (
-            candidate,
-            score_builder_block_candidate(
+    scored = []
+    for candidate in candidates:
+        if scored and builder_search_should_stop():
+            break
+        count_builder_search_work("block_candidates_scored")
+        scored.append(
+            (
+                candidate,
+                score_builder_block_candidate(
                 candidate,
                 defending_player,
                 engine,
                 cap_context=cap_context,
                 horizon_context=horizon_context,
-            ),
+                ),
+            )
         )
-        for candidate in candidates
-    ]
     scored.sort(key=_block_candidate_sort_key, reverse=True)
     if scored:
         best_candidate, best_score = scored[0]
@@ -430,19 +455,19 @@ def _estimate_known_next_flying_damage(defending_player, engine, *, attackers: l
         blocker = blocker_lookup.get(blocker_id)
         if blocker is None:
             continue
-        estimate = estimate_builder_combat(attacker, blocker)
-        if estimate.attacker_death_probability >= 1.0:
+        outcome = project_builder_combat_outcome(
+            attacker,
+            blocker,
+            int(getattr(engine, "combat_die_sides", config.COMBAT_DIE_SIDES)),
+        )
+        if not outcome.attacker_survives:
             removed_enemy_ids.add(attacker.unit_id)
         else:
-            attacker_hp = max(1, int(attacker.current_hp) - int(round(estimate.expected_damage_to_attacker)))
-            attacker_hp = min(int(attacker.lw), attacker_hp + int(round(estimate.expected_attacker_heal)))
-            post_hp[attacker.unit_id] = attacker_hp
-        if estimate.defender_death_probability >= 1.0:
+            post_hp[attacker.unit_id] = outcome.attacker_remaining_hp
+        if not outcome.defender_survives:
             removed_own_ids.add(blocker.unit_id)
         else:
-            blocker_hp = max(1, int(blocker.current_hp) - int(round(estimate.expected_damage_to_defender)))
-            blocker_hp = min(int(blocker.lw), blocker_hp + int(round(estimate.expected_defender_heal)))
-            post_hp[blocker.unit_id] = blocker_hp
+            post_hp[blocker.unit_id] = outcome.defender_remaining_hp
 
     enemy_player = engine.players[1 - defending_player.player_id]
     for unit in enemy_player.battlefield:
@@ -485,7 +510,7 @@ def _estimate_known_next_flying_damage(defending_player, engine, *, attackers: l
         )
 
     flying_attackers = [unit for unit in surviving_enemy if unit.has_ability(Ability.FLYING) and unit.sw > 0]
-    flying_blockers = [unit for unit in surviving_own if unit.has_ability(Ability.FLYING) and unit.vw > 0 and not unit.cannot_block]
+    flying_blockers = [unit for unit in surviving_own if unit.has_ability(Ability.FLYING) and not unit.cannot_block]
     if not flying_attackers:
         return 0.0
     assignments = generate_block_assignment_tuples(flying_attackers, flying_blockers, {})
@@ -546,8 +571,6 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
             reason = "cannot_block"
         elif getattr(blocker, "tapped", False):
             reason = "tapped"
-        elif int(getattr(blocker, "vw", 0)) <= 0:
-            reason = "defense_zero"
         else:
             reason = "no_legal_targets"
         unavailable_rows.append(f"{blocker.unit_id}:{reason}")
@@ -628,6 +651,7 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
             )
     runner_up = scored_candidates[1] if len(scored_candidates) > 1 else None
     best_score = scored_candidates[0][1] if scored_candidates else None
+    precision = builder_debug_precision()
     emit_builder_debug_line(
         engine,
         "AI BLOCK",
@@ -645,7 +669,12 @@ def _debug_block_decision(engine, defending_player, scored_candidates, best_cand
             ("next_attack_lethal_prevention", 0.0 if best_score is None else best_score.next_attack_lethal_prevention),
             ("runner_up", "N/A" if runner_up is None else list(runner_up[0].assignments)),
             ("runner_up_total", "N/A" if runner_up is None else runner_up[1].total),
-            ("gap", "N/A" if runner_up is None or best_score is None else round(best_score.total - runner_up[1].total, 4)),
+            (
+                "gap",
+                "N/A"
+                if runner_up is None or best_score is None
+                else round(round(best_score.total, precision) - round(runner_up[1].total, precision), precision),
+            ),
             ("delta_keys", "N/A" if runner_up is None or best_score is None else score_delta_keys(best_score, runner_up[1])),
             ("decision_score", 0.0 if best_score is None else best_score.total),
             ("final_reason", "max_total"),

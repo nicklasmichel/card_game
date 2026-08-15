@@ -187,6 +187,9 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         plan_builder_turn(plan_engine.ai_player, plan_engine)
         self.assertTrue(self.debug_lines(plan_engine.log_messages, "[AI BUILD]"))
         self.assertTrue(self.debug_lines(plan_engine.log_messages, "[AI PLAN]"))
+        self.assertTrue(self.debug_lines(plan_engine.log_messages, "[AI PERF]"))
+        self.assertIn("elapsed_ms=", "\n".join(plan_engine.log_messages))
+        self.assertIn("stop_reason=", "\n".join(plan_engine.log_messages))
         self.assertIn("candidate=resource", "\n".join(plan_engine.log_messages))
         self.assertIn("candidate=creature", "\n".join(plan_engine.log_messages))
 
@@ -208,6 +211,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         choose_builder_blocks(block_engine.ai_player, block_engine)
         block_logs = "\n".join(block_engine.log_messages)
         self.assertTrue(self.debug_lines(block_engine.log_messages, "[AI BLOCK]"))
+        self.assertTrue(self.debug_lines(block_engine.log_messages, "[AI PERF]"))
         self.assertIn("blocks=[]", block_logs)
         self.assertIn("blocks=[[", block_logs)
         self.assertIn("all_ready_creatures=", block_logs)
@@ -228,7 +232,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertIn("ability_cost=", plan_logs)
         self.assertIn("haste_cost=", plan_logs)
         self.assertIn("enters_tapped=", plan_logs)
-        self.assertIn("block_reason=defense_zero", plan_logs)
+        self.assertNotIn("block_reason=defense_zero", plan_logs)
         self.assertNotIn("forced=", plan_logs.lower())
 
         attack_engine = self.make_attack_engine()
@@ -383,7 +387,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertIn("slot_release_guaranteed=false", logs)
         self.assertTrue("slot_status_if_no_block=occupied" in logs or "slot_release_possible=true" in logs)
 
-    def test_verbose_state_logs_defense_zero_and_new_unit_readiness(self) -> None:
+    def test_verbose_state_logs_defense_zero_as_legal_blocker(self) -> None:
         self.set_debug(2, top_n=1, build_top_n=1)
         engine = self.make_plan_engine()
         self.make_builder_creature(engine, 1, aw=3, vw=0, sw=1, lw=1, ready=True)
@@ -391,8 +395,8 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         plan_builder_turn(engine.ai_player, engine)
         logs = "\n".join(engine.log_messages)
 
-        self.assertIn("can_block=false", logs)
-        self.assertIn("block_reason=defense_zero", logs)
+        self.assertIn("can_block=true", logs)
+        self.assertNotIn("block_reason=defense_zero", logs)
         self.assertIn("new_unit_tapped=", logs)
         self.assertIn("new_unit_can_attack=", logs)
         self.assertIn("new_unit_can_block=", logs)

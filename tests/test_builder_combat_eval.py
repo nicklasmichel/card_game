@@ -8,6 +8,7 @@ from core.ai.builder import (
     estimate_builder_combat,
     estimate_dice_win_probabilities,
     get_d6_sum_distribution,
+    project_builder_combat_outcome,
     score_builder_creature_candidate,
 )
 from core.ai.builder.combat_eval import build_candidate_combatant_view, summarize_builder_combat_matchup
@@ -108,6 +109,30 @@ class BuilderCombatEvalTests(unittest.TestCase):
 
         self.assertNotAlmostEqual(attack_estimate.attacker_win_probability, reverse_estimate.attacker_win_probability, places=8)
         self.assertNotAlmostEqual(attack_estimate.expected_damage_to_defender, reverse_estimate.expected_damage_to_defender, places=8)
+
+    def test_future_projection_uses_one_legal_combat_branch(self) -> None:
+        favored_attacker = self.make_builder_creature(1, aw=3, vw=1, sw=3, lw=2, ready=True)
+        blocker = self.make_builder_creature(0, aw=1, vw=1, sw=3, lw=2, ready=True)
+
+        outcome = project_builder_combat_outcome(favored_attacker, blocker)
+
+        self.assertTrue(outcome.attacker_wins)
+        self.assertTrue(outcome.attacker_survives)
+        self.assertFalse(outcome.defender_survives)
+        self.assertEqual(outcome.attacker_remaining_hp, favored_attacker.current_hp)
+        self.assertEqual(outcome.defender_remaining_hp, 0)
+
+    def test_future_projection_selects_defender_branch_when_more_likely(self) -> None:
+        attacker = self.make_builder_creature(1, aw=1, vw=1, sw=3, lw=2, ready=True)
+        favored_blocker = self.make_builder_creature(0, aw=1, vw=3, sw=3, lw=2, ready=True)
+
+        outcome = project_builder_combat_outcome(attacker, favored_blocker)
+
+        self.assertFalse(outcome.attacker_wins)
+        self.assertFalse(outcome.attacker_survives)
+        self.assertTrue(outcome.defender_survives)
+        self.assertEqual(outcome.attacker_remaining_hp, 0)
+        self.assertEqual(outcome.defender_remaining_hp, favored_blocker.current_hp)
 
     def test_matchup_cache_preserves_roles_and_attacker_favored_ties(self) -> None:
         attacker = build_candidate_combatant_view(

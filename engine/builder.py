@@ -185,6 +185,9 @@ def initialize_builder_game(
     auto_begin: bool = True,
     log_start: bool = True,
 ) -> None:
+    from core.ai.builder.cache_control import reset_builder_game_caches
+
+    reset_builder_game_caches()
     self.players = [
         PlayerState(0, "Player 1", True, summoner_key="builder", life=STARTING_LIFE),
         PlayerState(1, "Player 2", False, summoner_key="builder", life=STARTING_LIFE),

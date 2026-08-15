@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from threading import Event
+from time import sleep
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
 from tests.helpers import EngineTestCase
@@ -56,6 +59,45 @@ class AiConfirmationTests(EngineTestCase):
         self.assertTrue(self.engine.has_pending_ai_action())
         self.assertEqual(self.engine.pending_ai_action["kind"], "builder_add_resource")
 
+    def test_cancel_ai_thinking_stops_cooperative_worker(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        entered = Event()
+        stopped = Event()
+
+        def wait_for_cancel(_engine, *, cancel_event=None):
+            entered.set()
+            while cancel_event is not None and not cancel_event.is_set():
+                sleep(0.001)
+            stopped.set()
+            return None
+
+        with patch("engine.interface._compute_prepared_ai_action", side_effect=wait_for_cancel):
+            self.assertTrue(self.engine.start_ai_thinking())
+            self.assertTrue(entered.wait(timeout=1.0))
+            worker = self.engine.ai_think_thread
+            cancel_event = self.engine.ai_think_cancel_event
+
+            self.engine.cancel_ai_thinking()
+            worker.join(timeout=1.0)
+
+        self.assertTrue(cancel_event.is_set())
+        self.assertTrue(stopped.is_set())
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(self.engine.is_ai_thinking())
+        self.assertFalse(self.engine.has_pending_ai_action())
+
+    def test_ai_thinking_error_uses_fast_fallback(self) -> None:
+        self.engine.phase = PHASE_MAIN_1
+        with patch("engine.interface._compute_prepared_ai_action", side_effect=RuntimeError("test failure")):
+            self.assertTrue(self.engine.start_ai_thinking())
+            worker = self.engine.ai_think_thread
+            worker.join(timeout=1.0)
+            self.assertTrue(self.engine.poll_ai_thinking())
+
+        self.assertEqual(self.engine.pending_ai_action["kind"], "builder_add_resource")
+        self.assertIn("fast fallback", self.engine.pending_ai_action["description"])
+        self.assertTrue(any("AI thinking failed" in line for line in self.engine.log_messages))
+
     def test_ai_attack_step_waits_for_confirmation(self) -> None:
         attacker = self.engine.create_builder_creature(self.engine.ai_player, aw=2, vw=1, sw=2, lw=1)
         assert attacker is not None
@@ -94,15 +136,42 @@ class AiConfirmationTests(EngineTestCase):
 
         self.assertTrue(prepared)
         self.assertEqual(self.engine.pending_ai_action["kind"], "declare_blocks")
+        self.assertIn("block_assignments", self.engine.pending_ai_action)
         self.assertEqual(
             [(button.label, button.enabled, button.action) for button in self.engine.get_button_specs()],
             [("Next", True, "confirm_ai_action")],
         )
 
-        self.engine.handle_action("confirm_ai_action")
+        with patch.object(self.engine, "ai_assign_blocks", wraps=self.engine.ai_assign_blocks) as assign_blocks:
+            self.engine.handle_action("confirm_ai_action")
 
+        assign_blocks.assert_not_called()
         self.assertFalse(self.engine.has_pending_ai_action())
         self.assertNotEqual(self.engine.phase, PHASE_DECLARE_BLOCKERS)
+
+    def test_human_attack_leaves_ai_block_search_for_background_worker(self) -> None:
+        self.engine.active_player_index = self.engine.human_player.player_id
+        attacker = self.engine.create_builder_creature(self.engine.human_player, aw=2, vw=1, sw=2, lw=2)
+        blocker = self.engine.create_builder_creature(self.engine.ai_player, aw=1, vw=2, sw=1, lw=2)
+        assert attacker is not None and blocker is not None
+        attacker.tapped = False
+        attacker.summoning_sick = False
+        blocker.tapped = False
+        blocker.summoning_sick = False
+        self.engine.selected_attackers = [attacker.unit_id]
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+
+        with patch.object(self.engine, "ai_assign_blocks", wraps=self.engine.ai_assign_blocks) as assign_blocks:
+            self.engine.confirm_attackers()
+
+        assign_blocks.assert_not_called()
+        self.assertEqual(self.engine.phase, PHASE_DECLARE_BLOCKERS)
+        self.assertEqual(self.engine.block_assignments, {attacker.unit_id: None})
+        self.assertTrue(self.engine.start_ai_thinking())
+        worker = self.engine.ai_think_thread
+        worker.join(timeout=2.0)
+        self.assertTrue(self.engine.poll_ai_thinking())
+        self.assertEqual(self.engine.pending_ai_action["kind"], "declare_blocks")
 
     def test_human_can_confirm_blocks_while_ai_is_active_player(self) -> None:
         attacker = self.engine.create_builder_creature(self.engine.ai_player, aw=2, vw=1, sw=2, lw=2)

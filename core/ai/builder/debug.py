@@ -333,8 +333,6 @@ def _block_status(unit, enemy_units: list) -> tuple[bool, str]:
         return False, "cannot_block"
     if _is_tapped(unit):
         return False, "tapped"
-    if int(getattr(unit, "vw", 0)) <= 0:
-        return False, "defense_zero"
     if not enemy_units:
         return True, "-"
     from .combat_eval import can_legally_block

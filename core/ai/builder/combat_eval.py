@@ -7,6 +7,7 @@ from core.config import COMBAT_DIE_SIDES
 from core.models import Ability, BattlefieldCreature
 
 from .turn_projection import normalize_builder_abilities
+from .turn_types import ProjectedUnitView
 from .types import BuilderCreatureCandidate
 
 
@@ -45,6 +46,19 @@ class BuilderCombatEstimate:
     expected_attacker_remaining_hp: float
     defender_win_and_survive_probability: float
     attacker_win_and_survive_probability: float
+
+
+@dataclass(frozen=True)
+class BuilderProjectedCombatOutcome:
+    """One legal representative branch for a probabilistic dice combat."""
+
+    attacker_wins: bool
+    selected_probability: float
+    attacker_survives: bool
+    defender_survives: bool
+    attacker_remaining_hp: int
+    defender_remaining_hp: int
+    player_damage: int
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,7 @@ class DiceWinEstimate:
     raw_tie_probability: float
 
 
+@lru_cache(maxsize=2048)
 def build_candidate_combatant_view(
     candidate: BuilderCreatureCandidate,
     *,
@@ -135,6 +150,8 @@ def coerce_builder_combatant(subject, *, ready: bool | None = None) -> BuilderCo
             cannot_block=getattr(subject, "cannot_block", False),
             name=subject.name,
         )
+    if isinstance(subject, ProjectedUnitView):
+        return _coerce_projected_unit_cached(subject, ready)
     if all(hasattr(subject, attribute) for attribute in ("aw", "vw", "sw", "lw", "current_hp", "abilities")):
         computed_ready = (
             ready
@@ -155,7 +172,22 @@ def coerce_builder_combatant(subject, *, ready: bool | None = None) -> BuilderCo
     raise TypeError(f"Unsupported combatant type: {type(subject)!r}")
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=4096)
+def _coerce_projected_unit_cached(subject: ProjectedUnitView, ready: bool | None) -> BuilderCombatantView:
+    return BuilderCombatantView(
+        aw=subject.aw,
+        vw=subject.vw,
+        sw=subject.sw,
+        lw=subject.lw,
+        current_hp=subject.current_hp,
+        abilities=normalize_builder_abilities(subject.abilities),
+        ready=subject.is_ready() if ready is None else ready,
+        cannot_block=subject.cannot_block,
+        name=subject.name,
+    )
+
+
+@lru_cache(maxsize=128)
 def get_die_sum_distribution(num_dice: int, die_sides: int = COMBAT_DIE_SIDES) -> dict[int, float]:
     if num_dice < 0:
         raise ValueError("num_dice must be >= 0")
@@ -174,12 +206,12 @@ def get_die_sum_distribution(num_dice: int, die_sides: int = COMBAT_DIE_SIDES) -
     return {total: ways / total_outcomes for total, ways in sorted(counts.items())}
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=64)
 def get_d6_sum_distribution(num_dice: int) -> dict[int, float]:
     return get_die_sum_distribution(num_dice, COMBAT_DIE_SIDES)
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=1024)
 def estimate_dice_win_probabilities(attacker_aw: int, defender_vw: int, die_sides: int = COMBAT_DIE_SIDES) -> DiceWinEstimate:
     if attacker_aw < 0 or defender_vw < 0:
         raise ValueError("dice counts must be >= 0")
@@ -213,8 +245,6 @@ def can_legally_block(attacker, blocker, *, require_ready: bool = True) -> bool:
     attacker_view = coerce_builder_combatant(attacker)
     blocker_view = coerce_builder_combatant(blocker)
     if blocker_view.cannot_block:
-        return False
-    if blocker_view.vw <= 0:
         return False
     if require_ready and not blocker_view.ready:
         return False
@@ -255,6 +285,51 @@ def estimate_builder_combat(attacker, defender, die_sides: int = COMBAT_DIE_SIDE
     )
 
 
+def project_builder_combat_outcome(attacker, defender, die_sides: int = COMBAT_DIE_SIDES) -> BuilderProjectedCombatOutcome:
+    """Project the most likely whole combat branch instead of mixing outcomes.
+
+    Expected damage is useful for scoring, but subtracting rounded expected damage
+    from both creatures can create a board state that no dice result can produce.
+    Future-turn search uses this representative branch; ties favor the attacker,
+    matching the combat rules.
+    """
+    attacker_view = coerce_builder_combatant(attacker)
+    defender_view = coerce_builder_combatant(defender)
+    estimate = estimate_builder_combat(attacker_view, defender_view, die_sides)
+    attacker_wins = estimate.attacker_win_probability >= estimate.defender_win_probability
+
+    attacker_hp = int(attacker_view.current_hp)
+    defender_hp = int(defender_view.current_hp)
+    player_damage = 0
+    if attacker_wins:
+        effective_damage = min(int(attacker_view.sw), max(0, defender_hp))
+        player_damage = (
+            max(0, int(attacker_view.sw) - defender_hp)
+            if attacker_view.has_ability(Ability.TRAMPLE)
+            else 0
+        )
+        defender_hp = max(0, defender_hp - int(attacker_view.sw))
+        if attacker_view.has_ability(Ability.LIFE_STEAL):
+            attacker_hp = min(int(attacker_view.lw), attacker_hp + effective_damage + player_damage)
+        selected_probability = estimate.attacker_win_probability
+    else:
+        effective_damage = min(int(defender_view.sw), max(0, attacker_hp))
+        attacker_hp = max(0, attacker_hp - int(defender_view.sw))
+        if defender_view.has_ability(Ability.LIFE_STEAL):
+            defender_hp = min(int(defender_view.lw), defender_hp + effective_damage)
+        selected_probability = estimate.defender_win_probability
+
+    return BuilderProjectedCombatOutcome(
+        attacker_wins=attacker_wins,
+        selected_probability=selected_probability,
+        attacker_survives=attacker_hp > 0,
+        defender_survives=defender_hp > 0,
+        attacker_remaining_hp=attacker_hp,
+        defender_remaining_hp=defender_hp,
+        player_damage=player_damage,
+    )
+
+
 def summarize_builder_combat_matchup(attacker, defender, die_sides: int = COMBAT_DIE_SIDES) -> BuilderCombatMatchup:
     attacker_view = coerce_builder_combatant(attacker)
     defender_view = coerce_builder_combatant(defender)
@@ -275,7 +350,7 @@ def summarize_builder_combat_matchup(attacker, defender, die_sides: int = COMBAT
     )
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=8192)
 def _estimate_builder_combat_cached(
     attacker_aw: int,
     attacker_vw: int,
@@ -363,7 +438,7 @@ def _estimate_builder_combat_cached(
     )
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=8192)
 def _summarize_builder_combat_matchup_cached(
     attacker_aw: int,
     attacker_vw: int,
@@ -457,6 +532,11 @@ def _summarize_builder_combat_matchup_cached(
 
 def estimate_unblocked_attack(attacker) -> BuilderUnblockedAttackEstimate:
     attacker_view = coerce_builder_combatant(attacker)
+    return _estimate_unblocked_attack_cached(attacker_view)
+
+
+@lru_cache(maxsize=4096)
+def _estimate_unblocked_attack_cached(attacker_view: BuilderCombatantView) -> BuilderUnblockedAttackEstimate:
     missing_hp = max(0, attacker_view.lw - attacker_view.current_hp)
     heal = min(missing_hp, attacker_view.sw) if attacker_view.has_ability(Ability.LIFE_STEAL) else 0
     return BuilderUnblockedAttackEstimate(

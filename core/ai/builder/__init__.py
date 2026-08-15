@@ -1,6 +1,7 @@
 from .combat_eval import (
     BuilderCombatEstimate,
     BuilderCombatantView,
+    BuilderProjectedCombatOutcome,
     BuilderUnblockedAttackEstimate,
     build_candidate_combatant_view,
     can_legally_be_forced_to_block,
@@ -10,6 +11,7 @@ from .combat_eval import (
     estimate_dice_win_probabilities,
     estimate_unblocked_attack,
     get_d6_sum_distribution,
+    project_builder_combat_outcome,
 )
 from .horizon import BuilderEnemyAttackTimelineEntry, BuilderHorizonReport, evaluate_block_horizon, evaluate_main_action_horizon
 from .attack_policy import (
@@ -76,6 +78,7 @@ __all__ = [
     "BuilderBlockScore",
     "BuilderCombatEstimate",
     "BuilderCombatantView",
+    "BuilderProjectedCombatOutcome",
     "BuilderCandidateScore",
     "BuilderCreatureCandidate",
     "BuilderStrategicSnapshot",
@@ -113,6 +116,7 @@ __all__ = [
     "estimate_builder_combat",
     "estimate_dice_win_probabilities",
     "estimate_unblocked_attack",
+    "project_builder_combat_outcome",
     "evaluate_best_builder_attack",
     "evaluate_attack_assignment",
     "evaluate_block_horizon",

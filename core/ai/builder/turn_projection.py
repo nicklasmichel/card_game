@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES, BUILDER_CREATURE_CAP
 from core.models import Ability, BattlefieldCreature, PlayerState
@@ -12,6 +13,11 @@ SYNTHETIC_UNIT_BASE_ID = 1000000
 
 
 def normalize_builder_abilities(abilities) -> frozenset[Ability]:
+    return _normalize_builder_abilities_cached(frozenset(abilities))
+
+
+@lru_cache(maxsize=128)
+def _normalize_builder_abilities_cached(abilities: frozenset[Ability]) -> frozenset[Ability]:
     normalized = set(abilities)
     if Ability.LIFELINK in normalized:
         normalized.add(Ability.LIFE_STEAL)
@@ -83,7 +89,7 @@ class BuilderTurnProjection:
         return [self._unit_map[unit_id] for unit_id in self.available_attacker_ids if unit_id in self._unit_map]
 
     def available_blockers(self, player: ProjectedPlayerView) -> list[ProjectedUnitView]:
-        return [unit for unit in player.battlefield if not unit.tapped and not unit.cannot_block and unit.vw > 0]
+        return [unit for unit in player.battlefield if not unit.tapped and not unit.cannot_block]
 
     def get_unit_by_id(self, unit_id: int):
         return self._unit_map.get(unit_id)
@@ -303,7 +309,7 @@ def project_attack_to_next_turn(
     attacker_ids: tuple[int, ...],
     block_assignment: tuple[tuple[int, int], ...] = (),
 ) -> BuilderTurnProjection:
-    from .combat_eval import estimate_builder_combat, estimate_unblocked_attack
+    from .combat_eval import estimate_unblocked_attack, project_builder_combat_outcome
 
     attacked_ids = set(attacker_ids)
     assignment_map = dict(block_assignment)
@@ -319,22 +325,18 @@ def project_attack_to_next_turn(
         blocker = blockers.get(blocker_id)
         if attacker is None or blocker is None:
             continue
-        estimate = estimate_builder_combat(attacker, blocker)
-        player_damage += estimate.expected_player_damage
+        outcome = project_builder_combat_outcome(attacker, blocker, base_projection.combat_die_sides)
+        player_damage += outcome.player_damage
 
-        if estimate.attacker_death_probability >= 1.0:
+        if not outcome.attacker_survives:
             removed_attacker_ids.add(attacker_id)
         else:
-            attacker_hp = max(1, int(attacker.current_hp) - int(round(estimate.expected_damage_to_attacker)))
-            attacker_hp = min(int(attacker.lw), attacker_hp + int(round(estimate.expected_attacker_heal)))
-            post_hp[attacker_id] = attacker_hp
+            post_hp[attacker_id] = outcome.attacker_remaining_hp
 
-        if estimate.defender_death_probability >= 1.0:
+        if not outcome.defender_survives:
             removed_blocker_ids.add(blocker_id)
         else:
-            blocker_hp = max(1, int(blocker.current_hp) - int(round(estimate.expected_damage_to_defender)))
-            blocker_hp = min(int(blocker.lw), blocker_hp + int(round(estimate.expected_defender_heal)))
-            post_hp[blocker_id] = blocker_hp
+            post_hp[blocker_id] = outcome.defender_remaining_hp
 
     for attacker_id in attacked_ids:
         if attacker_id in assignment_map or attacker_id in removed_attacker_ids:

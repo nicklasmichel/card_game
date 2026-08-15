@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from threading import Thread
+from threading import Event, Thread
 from typing import List
 
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES
 from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT, get_builder_creature_ability_label
-from core.ai.builder import build_builder_runtime_fingerprint, materialize_builder_turn_decision
+from core.ai.builder import build_builder_runtime_fingerprint, choose_builder_blocks, materialize_builder_turn_decision
 from core.ai.builder.attack_policy import log_builder_attack_decision
 from core.ai.builder.debug import log_builder_runtime_action
 from core.models import (
@@ -36,6 +36,9 @@ def is_ai_thinking(self) -> bool:
 
 def cancel_ai_thinking(self) -> None:
     with self.ai_think_lock:
+        cancel_event = getattr(self, "ai_think_cancel_event", None)
+        if cancel_event is not None:
+            cancel_event.set()
         self.ai_think_token += 1
         self.ai_thinking = False
         self.ai_think_result = None
@@ -81,7 +84,7 @@ def _can_prepare_ai_turn_action(self) -> bool:
     return ai_main_or_attack or ai_blocks
 
 
-def _compute_prepared_ai_action(self) -> dict | None:
+def _compute_prepared_ai_action(self, *, cancel_event=None) -> dict | None:
     if not _can_prepare_ai_turn_action(self):
         return None
 
@@ -89,7 +92,7 @@ def _compute_prepared_ai_action(self) -> dict | None:
         self.ai_turn_initialized = True
 
     if self.phase == PHASE_MAIN_1:
-        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
+        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self, cancel_event=cancel_event)
         if planner_decision.action_candidate.action_kind == "resource" and self.can_builder_add_resource(self.active_player):
             return {
                 "kind": "builder_add_resource",
@@ -157,7 +160,7 @@ def _compute_prepared_ai_action(self) -> dict | None:
                     else f"{_actor_name(self)} ends the turn."
                 ),
             }
-        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
+        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self, cancel_event=cancel_event)
         planned_ability = planner_decision.ability_action
         if planned_ability.action_kind == "skip":
             planned_attack_ids = (
@@ -187,7 +190,7 @@ def _compute_prepared_ai_action(self) -> dict | None:
         }
 
     if self.phase == PHASE_DECLARE_ATTACKERS:
-        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self)
+        planner_decision = self.ai.choose_builder_turn_plan(self.active_player, self, cancel_event=cancel_event)
         attack_decision = planner_decision.predicted_attack_decision
         if attack_decision is not None:
             log_builder_attack_decision(self, self.active_player, attack_decision)
@@ -207,12 +210,122 @@ def _compute_prepared_ai_action(self) -> dict | None:
         }
 
     if self.phase == PHASE_DECLARE_BLOCKERS:
+        block_assignments = choose_builder_blocks(self.defending_player, self, cancel_event=cancel_event)
         return {
             "kind": "declare_blocks",
             "description": f"{_defending_actor_name(self)} assigns blockers.",
+            "block_assignments": block_assignments,
         }
 
     return None
+
+
+def _compute_fast_fallback_ai_action(self) -> dict | None:
+    if not _can_prepare_ai_turn_action(self):
+        return None
+    if self.phase == PHASE_MAIN_1:
+        action = self.ai.choose_builder_runtime_main_action(self.active_player, self)
+        if action == "resource" and self.can_builder_add_resource(self.active_player):
+            return {
+                "kind": "builder_add_resource",
+                "description": f"{_actor_name(self)} adds a resource (fast fallback).",
+            }
+        if action == "creature":
+            plan = self.ai.choose_builder_runtime_creature_plan(self.active_player, self)
+            if plan is not None:
+                return {
+                    "kind": "builder_create_creature",
+                    "description": f"{_actor_name(self)} builds creature: {_format_builder_creature_plan(plan)} (fast fallback).",
+                    "plan": plan,
+                }
+        return {
+            "kind": "builder_pass_main_action",
+            "description": f"{_actor_name(self)} passes the main action (fast fallback).",
+        }
+
+    if self.phase == PHASE_BUILDER_ABILITY:
+        runtime_ability = self.ai.choose_builder_runtime_ability_action(self.active_player, self)
+        if BUILDER_ABILITIES_ENABLED and runtime_ability is not None:
+            return {
+                "kind": "builder_use_ability",
+                "description": f"{_actor_name(self)} uses an ability card (fast fallback).",
+                "ability_action": runtime_ability,
+            }
+        has_attackers = bool(self.available_attackers(self.active_player))
+        return {
+            "kind": "to_combat" if has_attackers else "end_turn",
+            "description": (
+                f"{_actor_name(self)} enters combat (fast fallback)."
+                if has_attackers
+                else f"{_actor_name(self)} ends the turn (fast fallback)."
+            ),
+        }
+
+    if self.phase == PHASE_DECLARE_ATTACKERS:
+        attackers = list(self.available_attackers(self.active_player))
+        mandatory_ids = {creature.unit_id for creature in self.get_mandatory_attackers(self.active_player)}
+        if sum(max(0, creature.sw) for creature in attackers) < self.defending_player.life:
+            preferred = [
+                creature
+                for creature in attackers
+                if creature.unit_id in mandatory_ids
+                or creature.has_ability(Ability.VIGILANCE)
+                or creature.has_ability(Ability.VIGILANT)
+                or creature.has_ability(Ability.FLYING)
+            ]
+            attackers = preferred or [creature for creature in attackers if creature.unit_id in mandatory_ids]
+        return {
+            "kind": "declare_attackers",
+            "description": f"{_actor_name(self)} declares a fast fallback attack.",
+            "attacker_ids": [creature.unit_id for creature in attackers],
+        }
+
+    if self.phase == PHASE_DECLARE_BLOCKERS:
+        assignments = _greedy_fast_fallback_blocks(self)
+        return {
+            "kind": "declare_blocks",
+            "description": f"{_defending_actor_name(self)} assigns blockers (fast fallback).",
+            "block_assignments": assignments,
+        }
+    return None
+
+
+def _greedy_fast_fallback_blocks(self) -> dict[int, int | None]:
+    attackers = [self.get_unit_by_id(attacker_id) for attacker_id in self.block_assignments]
+    attackers = [attacker for attacker in attackers if attacker is not None]
+    blockers = list(self.available_blockers(self.defending_player))
+    result = dict(self.block_assignments)
+    used = {blocker_id for blocker_id in result.values() if blocker_id is not None}
+    attackers.sort(
+        key=lambda attacker: (
+            1 if attacker.has_ability(Ability.TRAMPLE) else 0,
+            attacker.sw,
+            attacker.aw,
+            -attacker.unit_id,
+        ),
+        reverse=True,
+    )
+    for attacker in attackers:
+        if result.get(attacker.unit_id) is not None:
+            continue
+        legal = [
+            blocker
+            for blocker in blockers
+            if blocker.unit_id not in used and self.can_creature_block_attacker(blocker, attacker)
+        ]
+        if not legal:
+            continue
+        blocker = min(
+            legal,
+            key=lambda current: (
+                current.sw + current.current_hp + current.aw + current.vw,
+                -current.vw,
+                current.unit_id,
+            ),
+        )
+        result[attacker.unit_id] = blocker.unit_id
+        used.add(blocker.unit_id)
+    return result
 
 
 def prepare_ai_turn_action(self) -> bool:
@@ -233,11 +346,11 @@ def _finish_ai_thinking(self, token: int, action: dict | None, error: str | None
         self.ai_think_error = error
 
 
-def _run_ai_think_worker(self, token: int) -> None:
+def _run_ai_think_worker(self, token: int, cancel_event) -> None:
     action = None
     error = None
     try:
-        action = _compute_prepared_ai_action(self)
+        action = _compute_prepared_ai_action(self, cancel_event=cancel_event)
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
     _finish_ai_thinking(self, token, action, error)
@@ -258,7 +371,9 @@ def start_ai_thinking(self) -> bool:
         self.ai_thinking = True
         self.ai_think_result = None
         self.ai_think_error = None
-        worker = Thread(target=_run_ai_think_worker, args=(self, token), daemon=True)
+        cancel_event = Event()
+        self.ai_think_cancel_event = cancel_event
+        worker = Thread(target=_run_ai_think_worker, args=(self, token, cancel_event), daemon=True)
         self.ai_think_thread = worker
         worker.start()
     return True
@@ -279,8 +394,12 @@ def poll_ai_thinking(self) -> bool:
         self.ai_think_result = None
         self.ai_think_error = None
     if error is not None:
-        self.log(f"AI thinking failed ({error}). Falling back to direct planning.")
-        return self.prepare_ai_turn_action()
+        self.log(f"AI thinking failed ({error}). Using the fast fallback.")
+        fallback = _compute_fast_fallback_ai_action(self)
+        if fallback is not None:
+            self.pending_ai_action = fallback
+            return True
+        return False
     if result is not None:
         self.pending_ai_action = result
         return True
@@ -382,8 +501,30 @@ def execute_prepared_ai_action(self) -> None:
         return
 
     if kind == "declare_blocks":
-        self.ai_assign_blocks()
-        self.finish_block_assignment()
+        fallback_assignments = action.get("block_assignments")
+        if fallback_assignments is None:
+            self.ai_assign_blocks()
+        else:
+            used_blocker_ids = {
+                blocker_id
+                for blocker_id in self.block_assignments.values()
+                if blocker_id is not None
+            }
+            for attacker_id, blocker_id in fallback_assignments.items():
+                if attacker_id in self.enraged_forced_attackers or blocker_id is None:
+                    continue
+                attacker = self.get_unit_by_id(attacker_id)
+                blocker = self.get_unit_by_id(blocker_id)
+                if (
+                    attacker is not None
+                    and blocker is not None
+                    and blocker.unit_id not in used_blocker_ids
+                    and self.can_creature_block_attacker(blocker, attacker)
+                ):
+                    self.block_assignments[attacker_id] = blocker_id
+                    used_blocker_ids.add(blocker.unit_id)
+                    self.log(f"{self.defending_player.name} blocks {attacker.name} with {blocker.name}.")
+        self.finish_block_assignment(ai_assignment_prepared=True)
         return
 
     if kind == "to_combat":

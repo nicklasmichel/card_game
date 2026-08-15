@@ -55,8 +55,8 @@ class HeuristicStrategicAI:
     def choose_builder_main_action(self, player: PlayerState, engine) -> str:
         return choose_builder_main_action_v2(player, engine)
 
-    def choose_builder_turn_plan(self, player: PlayerState, engine):
-        return choose_builder_turn_plan_v2(player, engine)
+    def choose_builder_turn_plan(self, player: PlayerState, engine, *, cancel_event=None):
+        return choose_builder_turn_plan_v2(player, engine, cancel_event=cancel_event)
 
     def choose_builder_creature_plan(self, player: PlayerState, engine) -> dict | None:
         return choose_builder_creature_plan_v2(player, engine)

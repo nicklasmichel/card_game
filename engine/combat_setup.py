@@ -21,8 +21,6 @@ def can_creature_block_attacker(self, blocker, attacker) -> bool:
         return False
     if getattr(blocker, "cannot_block", False):
         return False
-    if self.get_creature_defense_value(blocker) <= 0:
-        return False
     if blocker.tapped:
         return False
     if attacker.has_ability(Ability.FLYING) and not blocker.has_ability(Ability.FLYING):
@@ -178,8 +176,6 @@ def advance_after_attackers_declared(self) -> None:
             self.begin_pre_first_combat_window()
             return
         self.log(f"{self.defending_player.name} is choosing blockers.")
-        self.ai_assign_blocks()
-        self.finish_block_assignment()
         return
     if self.defending_player.is_human:
         self.ai_assign_enraged_blocks()
@@ -287,10 +283,10 @@ def clear_block_assignments(self) -> None:
     self.log("All block assignments were cleared.")
 
 
-def finish_block_assignment(self) -> None:
+def finish_block_assignment(self, *, ai_assignment_prepared: bool = False) -> None:
     if self.phase != PHASE_DECLARE_BLOCKERS:
         return
-    if not self.defending_player.is_human and self.active_player.is_human:
+    if not ai_assignment_prepared and not self.defending_player.is_human and self.active_player.is_human:
         if not any(
             blocker_id is not None
             for attacker_id, blocker_id in self.block_assignments.items()

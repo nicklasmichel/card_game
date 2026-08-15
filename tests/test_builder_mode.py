@@ -452,7 +452,7 @@ class BuilderModeTests(unittest.TestCase):
     def test_flying_can_only_be_blocked_by_flying(self) -> None:
         flying_attacker = self.make_builder_creature(0, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
         ground_blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.TRAMPLE,))
-        flying_blocker = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.FLYING,))
+        flying_blocker = self.make_builder_creature(1, aw=1, vw=0, sw=1, lw=2, ready=True, abilities=(Ability.FLYING,))
 
         self.assertFalse(self.engine.can_creature_block_attacker(ground_blocker, flying_attacker))
         self.assertTrue(self.engine.can_creature_block_attacker(flying_blocker, flying_attacker))
