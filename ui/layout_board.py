@@ -197,23 +197,30 @@ def draw_builder_resource_counter_text(self, player, x: int, y: int) -> pygame.R
 
 
 def get_area_status_metrics(self, player) -> dict[str, int]:
+    name_text = player.name
     life_text = f"Life {player.life}/{STARTING_LIFE}"
     creatures_text = f"Creatures {len(player.battlefield)}/{BUILDER_CREATURE_CAP}"
     resources_text = f"Resources {player.total_resources()}/{BUILDER_MAX_RESOURCES}"
     line_height = self.title_font.get_height()
+    name_font = getattr(self, "player_name_font", self.title_font)
+    name_height = name_font.get_height()
     gap = 4
     return {
+        "name_width": name_font.size(name_text)[0],
+        "name_height": name_height,
         "life_width": self.title_font.size(life_text)[0],
         "creatures_width": self.title_font.size(creatures_text)[0],
         "resources_width": self.title_font.size(resources_text)[0],
         "line_height": line_height,
         "block_width": max(
+            name_font.size(name_text)[0],
             self.title_font.size(life_text)[0],
             self.title_font.size(creatures_text)[0],
             self.title_font.size(resources_text)[0],
         ),
-        "block_height": line_height * 3 + gap * 2,
+        "block_height": line_height * 3 + name_height + gap * 3,
         "gap": gap,
+        "name_text": name_text,
         "life_text": life_text,
         "creatures_text": creatures_text,
         "resources_text": resources_text,
@@ -233,31 +240,38 @@ def draw_area_status_block(self, player, rect: pygame.Rect) -> pygame.Rect:
         metrics["block_height"],
     )
     line_specs = [
-        ("life_text", metrics["life_width"]),
-        ("creatures_text", metrics["creatures_width"]),
-        ("resources_text", metrics["resources_width"]),
+        ("life_text", metrics["life_width"], self.title_font, line_height),
+        ("creatures_text", metrics["creatures_width"], self.title_font, line_height),
+        ("resources_text", metrics["resources_width"], self.title_font, line_height),
+        (
+            "name_text",
+            metrics["name_width"],
+            getattr(self, "player_name_font", self.title_font),
+            metrics["name_height"],
+        ),
     ]
     if not is_human:
         line_specs = list(reversed(line_specs))
 
     line_rects: list[tuple[str, pygame.Rect]] = []
     current_y = block_rect.y
-    for text_key, text_width in line_specs:
+    for text_key, text_width, font, text_height in line_specs:
         line_rects.append(
             (
                 text_key,
+                font,
                 pygame.Rect(
                     rect.centerx - text_width // 2,
                     current_y,
                     text_width,
-                    line_height,
+                    text_height,
                 ),
             )
         )
-        current_y += line_height + gap
+        current_y += text_height + gap
 
-    for text_key, line_rect in line_rects:
-        self.screen.blit(self.title_font.render(metrics[text_key], True, TEXT_COLOR), line_rect.topleft)
+    for text_key, font, line_rect in line_rects:
+        self.screen.blit(font.render(metrics[text_key], True, TEXT_COLOR), line_rect.topleft)
     return block_rect
 
 

@@ -49,6 +49,9 @@ class HostServer:
         self._status = ServerStatus.STOPPED
         self._bound_port = 0
         self._remote_name: str | None = None
+        self._last_remote_name: str | None = None
+        self._remote_client_id: str | None = None
+        self._has_connected = False
         self._last_error: str | None = None
 
     @property
@@ -65,6 +68,16 @@ class HostServer:
     def remote_name(self) -> str | None:
         with self._state_lock:
             return self._remote_name
+
+    @property
+    def last_remote_name(self) -> str | None:
+        with self._state_lock:
+            return self._last_remote_name
+
+    @property
+    def has_connected(self) -> bool:
+        with self._state_lock:
+            return self._has_connected
 
     @property
     def last_error(self) -> str | None:
@@ -144,6 +157,11 @@ class HostServer:
                 )
                 return
             hello = ClientHello.from_json(raw_hello)
+            identity_error = self._client_identity_error(hello)
+            if identity_error is not None:
+                code, message = identity_error
+                connection.send(ServerError(code, message).to_json())
+                return
             self.session.set_player_name(self._remote_player_id, hello.player_name)
             self.session.drain_player_events(self._remote_player_id)
             welcome = ServerWelcome(
@@ -156,6 +174,9 @@ class HostServer:
             with self._state_lock:
                 self._status = ServerStatus.CONNECTED
                 self._remote_name = hello.player_name
+                self._last_remote_name = hello.player_name
+                self._remote_client_id = hello.client_id
+                self._has_connected = True
                 self._last_error = None
 
             while not self._stop_event.is_set():
@@ -191,6 +212,24 @@ class HostServer:
             connection.send(
                 ServerError("invalid_command", str(exc), fatal=False).to_json()
             )
+
+    def _client_identity_error(self, hello: ClientHello) -> tuple[str, str] | None:
+        existing_client_id = self._remote_client_id
+        if existing_client_id is None:
+            if hello.resume_session_id is not None:
+                return "unknown_session", "The requested match is no longer available."
+            return None
+        if (
+            hello.client_id == existing_client_id
+            and hello.resume_session_id == self.session_id
+        ):
+            return None
+        if self.session.state.turn_number == 0 and hello.resume_session_id is None:
+            return None
+        return (
+            "session_in_use",
+            "This match is reserved for the original guest. Reconnect from the same game instance.",
+        )
 
     def _flush_remote_events(self, connection: JsonFrameConnection) -> None:
         for event in self.session.drain_player_events(self._remote_player_id):

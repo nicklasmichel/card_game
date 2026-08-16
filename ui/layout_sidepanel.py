@@ -8,6 +8,7 @@ from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_ABILITY_COST, 
 from core.models import ButtonSpec, PHASE_BUILDER_ABILITY, PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
 from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT
 from ui.style import BUTTON_COLOR, BUTTON_DISABLED, CARD_BORDER, HIGHLIGHT, MUTED_TEXT, PANEL_COLOR, PLAYER_CARD_COLOR, SECTION_COLOR, TEXT_COLOR
+from ui.timers import format_elapsed_ms
 
 BUILDER_STAT_ACTIONS = {
     "builder_aw_up",
@@ -40,6 +41,8 @@ def get_overview_phase_label(phase: str) -> str:
 def get_action_panel_title(self) -> str:
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         return "Build creature"
+    if self.engine.phase == PHASE_MAIN_1:
+        return "Main"
     return get_overview_phase_label(self.engine.phase)
 
 
@@ -66,11 +69,18 @@ def get_panel_header_font(self) -> pygame.font.Font:
     return pygame.font.SysFont("arial", max(self.font.get_height() + 6, 28), bold=True)
 
 
+def _visible_log_messages(self) -> list[str]:
+    if getattr(self.engine, "use_public_log_for_display", False):
+        return getattr(self.engine, "public_log_messages", self.engine.log_messages)
+    return self.engine.log_messages
+
+
 def _rebuild_log_cache(self, width: int, line_height: int, line_gap: int) -> None:
-    wrapped_entries = [self.wrap_text(self.font, message, width) or [""] for message in self.engine.log_messages]
+    messages = _visible_log_messages(self)
+    wrapped_entries = [self.wrap_text(self.font, message, width) or [""] for message in messages]
     self._log_wrapped_entries = wrapped_entries
     self._log_wrapped_width = width
-    self._log_cached_message_count = len(self.engine.log_messages)
+    self._log_cached_message_count = len(messages)
     self._log_entry_heights = [
         len(entry) * line_height + max(0, len(entry) - 1) * line_gap
         for entry in wrapped_entries
@@ -78,23 +88,24 @@ def _rebuild_log_cache(self, width: int, line_height: int, line_gap: int) -> Non
 
 
 def _ensure_log_cache(self, width: int, line_height: int, line_gap: int) -> None:
+    messages = _visible_log_messages(self)
     cached_width = getattr(self, "_log_wrapped_width", None)
     cached_count = getattr(self, "_log_cached_message_count", 0)
-    if cached_width != width or cached_count > len(self.engine.log_messages):
+    if cached_width != width or cached_count > len(messages):
         _rebuild_log_cache(self, width, line_height, line_gap)
         return
-    if cached_count == len(self.engine.log_messages):
+    if cached_count == len(messages):
         return
     wrapped_entries = getattr(self, "_log_wrapped_entries", [])
     entry_heights = getattr(self, "_log_entry_heights", [])
-    for message in self.engine.log_messages[cached_count:]:
+    for message in messages[cached_count:]:
         wrapped = self.wrap_text(self.font, message, width) or [""]
         wrapped_entries.append(wrapped)
         entry_heights.append(len(wrapped) * line_height + max(0, len(wrapped) - 1) * line_gap)
     self._log_wrapped_entries = wrapped_entries
     self._log_entry_heights = entry_heights
     self._log_wrapped_width = width
-    self._log_cached_message_count = len(self.engine.log_messages)
+    self._log_cached_message_count = len(messages)
 
 
 def draw_side_panel(self) -> None:
@@ -131,10 +142,10 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
     lines = [
         f"Turn: {self.engine.turn_number}",
         f"Active: {self.engine.active_player.name} - {phase_label}",
-        f"Player 1 Life: {self.engine.human_player.life}",
-        f"Player 2 Life: {self.engine.ai_player.life}",
-        f"Player 1 Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
-        f"Player 2 Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
+        f"{self.engine.human_player.name} Life: {self.engine.human_player.life}",
+        f"{self.engine.ai_player.name} Life: {self.engine.ai_player.life}",
+        f"{self.engine.human_player.name} Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
+        f"{self.engine.ai_player.name} Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
     ]
     if self.paused:
         lines.append("Status: Paused")
@@ -148,6 +159,15 @@ def draw_side_log(self, rect: pygame.Rect) -> None:
     header_font = get_panel_header_font(self)
     header_y = rect.y + 12
     self.blit_text(header_font, "Logging", TEXT_COLOR, rect.x + 12, header_y)
+    game_timer_text = format_elapsed_ms(getattr(self, "game_elapsed_ms", 0))
+    game_timer_width = header_font.size(game_timer_text)[0]
+    self.blit_text(
+        header_font,
+        game_timer_text,
+        MUTED_TEXT,
+        rect.right - 12 - game_timer_width,
+        header_y,
+    )
     header_gap = 18
     viewport = pygame.Rect(
         rect.x + 12,
@@ -298,11 +318,26 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     compact_button_font = pygame.font.SysFont("arial", max(self.font.get_height() + 2, 22), bold=True)
     header_font = button_font
     header_y = rect.y + 12
-    self.blit_text(
+    phase_timer_text = format_elapsed_ms(getattr(self, "phase_elapsed_ms", 0))
+    phase_timer_width = header_font.size(phase_timer_text)[0]
+    phase_timer_x = rect.right - 12 - phase_timer_width
+    header_text = self.fit_text(
         header_font,
         f"{self.engine.active_player.name} - {phase_label}",
+        max(1, phase_timer_x - (rect.x + 24)),
+    )
+    self.blit_text(
+        header_font,
+        header_text,
         TEXT_COLOR,
         rect.x + 12,
+        header_y,
+    )
+    self.blit_text(
+        header_font,
+        phase_timer_text,
+        MUTED_TEXT,
+        phase_timer_x,
         header_y,
     )
     prompt_text = get_action_panel_prompt(self)

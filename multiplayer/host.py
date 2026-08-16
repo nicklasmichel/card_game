@@ -14,6 +14,11 @@ from core.models import (
     PHASE_GAME_OVER,
 )
 from multiplayer.protocol import CommandKind, GameCommand, GameEvent
+from multiplayer.public_log import (
+    append_public_messages,
+    is_public_game_message,
+    public_decision_summary,
+)
 from multiplayer.snapshot import GameStateSnapshot, authoritative_state_hash
 
 
@@ -61,6 +66,13 @@ class AuthoritativeHostSession:
             str,
             tuple[int, GameCommand, GameEvent],
         ] = OrderedDict()
+        self._public_log_messages = [
+            message
+            for message in self._state.log_messages
+            if is_public_game_message(message)
+        ]
+        self._state.public_log_messages = self._public_log_messages
+        self._state.use_public_log_for_display = True
 
     @property
     def state(self) -> GameEngine:
@@ -151,6 +163,8 @@ class AuthoritativeHostSession:
             )
 
         before_hash = authoritative_state_hash(self._state)
+        log_start = len(self._state.log_messages)
+        decision_summary = public_decision_summary(self._state, command)
         player_names = {
             player_id: player.name
             for player_id, player in self._players.items()
@@ -178,6 +192,23 @@ class AuthoritativeHostSession:
                 message="The command is not legal in the current game state.",
                 remember=True,
             )
+
+        if resets_players:
+            self._public_log_messages.clear()
+            new_engine_messages = [
+                f"New game started in builder mode. {self._state.active_player.name} begins.",
+                f"Turn {self._state.turn_number}: {self._state.active_player.name} is active.",
+            ]
+        else:
+            new_engine_messages = [
+                message
+                for message in self._state.log_messages[log_start:]
+                if is_public_game_message(message)
+            ]
+        append_public_messages(
+            self._public_log_messages,
+            decision_summary + new_engine_messages,
+        )
 
         self._revision += 1
         event = GameEvent.command_applied(
@@ -250,11 +281,20 @@ class AuthoritativeHostSession:
             and self._state.phase in {PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE}
         )
         before_hash = authoritative_state_hash(self._state) if can_advance_automatically else None
+        log_start = len(self._state.log_messages)
         if can_advance_automatically:
             self._state.auto_resolve_human_no_blockers_if_needed()
             self._state.resolve_stalled_dice_battle_if_needed()
         after_hash = authoritative_state_hash(self._state) if can_advance_automatically else None
         if before_hash is not None and before_hash != after_hash:
+            append_public_messages(
+                self._public_log_messages,
+                [
+                    message
+                    for message in self._state.log_messages[log_start:]
+                    if is_public_game_message(message)
+                ],
+            )
             self._revision += 1
             self._broadcast_snapshots(command_id=None)
         self._state.flush_log_file_writes(max_lines=24)

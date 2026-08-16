@@ -352,6 +352,8 @@ class ClientGameView(GameEngine):
         self.current_attack_index = state["current_attack_index"]
         self.blocked_attackers = set(state["blocked_attackers"])
         self.exit_requested = state["exit_requested"]
+        self.public_log_messages = list(state["public_log_messages"])
+        self.log_messages = list(self.public_log_messages)
         self.pending_visual_events.clear()
         templates: dict[str, CardTemplate] = {}
         for player in self.players:

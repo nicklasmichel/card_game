@@ -18,7 +18,11 @@ class LobbyProtocolTests(unittest.TestCase):
         engine = GameEngine(auto_start=False, match_mode=MatchMode.PVP)
         snapshot = GameStateSnapshot.from_engine(engine, viewer_player_id=1, revision=2)
         messages = [
-            ClientHello("Alice", client_id="client-1"),
+            ClientHello(
+                "Alice",
+                client_id="client-1",
+                resume_session_id="session-1",
+            ),
             ServerWelcome("session-1", 1, "Bob", snapshot),
             ServerError("server_full", "Another player is connected."),
         ]

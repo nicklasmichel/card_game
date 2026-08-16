@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from multiplayer.server import DEFAULT_GAME_PORT
-from ui.network_menu import parse_host_address
+from ui.network_menu import parse_host_address, validate_player_name
 
 
 class NetworkMenuTests(unittest.TestCase):
@@ -21,6 +21,13 @@ class NetworkMenuTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     parse_host_address(value)
+
+    def test_player_name_is_trimmed_and_bounded(self) -> None:
+        self.assertEqual(validate_player_name("  Alice  "), "Alice")
+        for value in ("", " " * 4, "x" * 33):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    validate_player_name(value)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_WIRE_MESSAGE_BYTES = 64 * 1024
 
 

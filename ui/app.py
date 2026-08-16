@@ -133,6 +133,7 @@ from ui.runtime import (
     trigger_primary_action_button,
     update_decision_timer,
 )
+from ui.timers import update_gameplay_timers
 from ui.visuals import (
     consume_visual_events,
     draw_combat_damage_popups,
@@ -237,6 +238,7 @@ class GodaoApp:
     run = run
     get_decision_marker = get_decision_marker
     update_decision_timer = update_decision_timer
+    update_gameplay_timers = update_gameplay_timers
     get_think_progress = get_think_progress
     handle_ui_action = handle_ui_action
     handle_start_player_selection_click = handle_start_player_selection_click
@@ -283,6 +285,7 @@ class GodaoApp:
         self.font = pygame.font.SysFont("arial", 20)
         self.small_font = pygame.font.SysFont("arial", 12)
         self.title_font = pygame.font.SysFont("arial", 24, bold=True)
+        self.player_name_font = pygame.font.SysFont("arial", 48, bold=True)
         self.layout_scale = 1.0
         session_was_provided = session is not None
         self.session = session or LocalPveSession(auto_start=False)
@@ -297,6 +300,11 @@ class GodaoApp:
         self.primary_action_space_down = False
         self.paused = False
         self.pause_started_at_ms: int | None = None
+        self.timer_game_id: str | None = None
+        self.timer_phase_marker: tuple[str, int, int, str] | None = None
+        self.timer_last_update_ms = pygame.time.get_ticks()
+        self.game_elapsed_ms = 0
+        self.phase_elapsed_ms = 0
         self.player_creature_rect = pygame.Rect(0, 0, 0, 0)
         self.player_resource_rect = pygame.Rect(0, 0, 0, 0)
         self.dragged_hand_card_id: int | None = None
@@ -330,6 +338,9 @@ class GodaoApp:
         self.network_peer_was_connected = False
         self.network_error_text = ""
         self.join_address_text = ""
+        self.network_player_name_text = ""
+        self.network_setup_mode: str | None = None
+        self.network_active_input = "name"
         self.join_address_input_open = False
         self.match_mode_selection_open = not session_was_provided
         self.match_mode_option_rects: List[Tuple[pygame.Rect, str]] = []

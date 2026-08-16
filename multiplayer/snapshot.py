@@ -10,7 +10,7 @@ from uuid import uuid4
 from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS
 
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 
 
 class SnapshotValidationError(ValueError):
@@ -328,6 +328,7 @@ def build_snapshot_state(
         "current_attack_index": engine.current_attack_index,
         "blocked_attackers": sorted(engine.blocked_attackers),
         "exit_requested": engine.exit_requested,
+        "public_log_messages": list(getattr(engine, "public_log_messages", [])),
     }
 
 

@@ -60,6 +60,28 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         self.assertEqual(local_snapshot.revision, 1)
         self.assertEqual(remote_snapshot.revision, 1)
 
+    def test_public_log_uses_player_names_and_is_present_in_snapshots(self) -> None:
+        self.host.set_player_name(0, "Alice")
+        self.host.set_player_name(1, "Bob")
+        self.host.drain_events()
+        self.host.drain_player_events(1)
+
+        self.host.start_new_game(starting_player_id=1)
+
+        self.assertEqual(
+            self.host.state.public_log_messages[:2],
+            [
+                "New game started in builder mode. Bob begins.",
+                "Turn 1: Bob is active.",
+            ],
+        )
+        remote_events = self.host.drain_player_events(1)
+        snapshot = GameStateSnapshot.from_dict(remote_events[-1].payload["snapshot"])
+        self.assertEqual(
+            snapshot.state["public_log_messages"],
+            self.host.state.public_log_messages,
+        )
+
     def test_authenticated_remote_player_can_act_on_their_turn(self) -> None:
         self.start_with_remote_player()
         command = GameCommand.action(1, "builder_add_resource", command_id="remote-resource")
@@ -134,6 +156,27 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         self.assertEqual(select_blocker.kind, EventKind.COMMAND_APPLIED)
         self.assertEqual(assign_blocker.kind, EventKind.COMMAND_APPLIED)
         self.assertEqual(self.host.state.block_assignments[attacker.unit_id], blocker.unit_id)
+        self.assertFalse(
+            any(
+                f"{blocker.name} blocks {attacker.name}." == message
+                for message in self.host.state.public_log_messages
+            )
+        )
+
+        confirmed = self.host.receive_command(
+            GameCommand.action(1, "confirm_blocks"),
+            authenticated_player_id=1,
+        )
+
+        self.assertEqual(confirmed.kind, EventKind.COMMAND_APPLIED)
+        self.assertTrue(
+            any(
+                message.startswith(f"{self.host.state.player_two.name} declares blocks:")
+                and blocker.name in message
+                and attacker.name in message
+                for message in self.host.state.public_log_messages
+            )
+        )
 
     def test_active_player_can_assign_provoke_target_during_block_phase(self) -> None:
         attacker = self.host.state.create_builder_creature(

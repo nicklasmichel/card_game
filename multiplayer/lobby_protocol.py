@@ -55,11 +55,18 @@ def _decode(raw: str) -> dict[str, Any]:
 class ClientHello:
     player_name: str
     client_id: str = field(default_factory=_new_id)
+    resume_session_id: str | None = None
     version: int = PROTOCOL_VERSION
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "player_name", _require_text(self.player_name, "player_name", max_length=32))
         _require_text(self.client_id, "client_id", max_length=64)
+        if self.resume_session_id is not None:
+            object.__setattr__(
+                self,
+                "resume_session_id",
+                _require_text(self.resume_session_id, "resume_session_id", max_length=64),
+            )
         if isinstance(self.version, bool) or self.version != PROTOCOL_VERSION:
             raise ProtocolValidationError(
                 f"Unsupported protocol version {self.version}; expected {PROTOCOL_VERSION}."
@@ -71,6 +78,7 @@ class ClientHello:
             "version": self.version,
             "client_id": self.client_id,
             "player_name": self.player_name,
+            "resume_session_id": self.resume_session_id,
         }
 
     def to_json(self) -> str:
@@ -81,7 +89,13 @@ class ClientHello:
         data = _require_object(data, "client_hello")
         _require_exact_fields(
             data,
-            {"message_type", "version", "client_id", "player_name"},
+            {
+                "message_type",
+                "version",
+                "client_id",
+                "player_name",
+                "resume_session_id",
+            },
             "client_hello",
         )
         if data["message_type"] != "client_hello":
@@ -89,6 +103,7 @@ class ClientHello:
         return cls(
             player_name=data["player_name"],
             client_id=data["client_id"],
+            resume_session_id=data["resume_session_id"],
             version=data["version"],
         )
 

@@ -70,8 +70,9 @@ def run(self) -> None:
         self.session.update(
             allow_ai=not self.paused and not gameplay_overlay_open,
             allow_automatic_rules=not gameplay_overlay_open,
-            allow_commands=not self.paused,
+            allow_commands=not self.paused and not gameplay_overlay_open,
         )
+        self.update_gameplay_timers()
         if self.session.should_exit:
             running = False
         self.draw()

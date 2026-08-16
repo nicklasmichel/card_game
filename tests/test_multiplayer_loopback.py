@@ -82,13 +82,23 @@ class MultiplayerLoopbackTests(unittest.TestCase):
         )
         self.assertEqual(self.host.state.player_two.total_resources(), 1)
         self.assertEqual(self.client.state.snapshot_revision, self.host.revision)
+        self.assertEqual(
+            self.client.state.log_messages,
+            self.host.state.public_log_messages,
+        )
+        self.assertTrue(
+            any(
+                message.startswith("RemotePlayer increases resources")
+                for message in self.client.state.log_messages
+            )
+        )
 
     def test_client_detects_server_disconnect(self) -> None:
         self.server.stop()
 
         self.assertTrue(
             wait_until(
-                lambda: self.client.status in {ClientStatus.DISCONNECTED, ClientStatus.ERROR},
+                lambda: self.client.status is ClientStatus.RECONNECTING,
                 timeout=3.0,
             )
         )
@@ -101,19 +111,36 @@ class MultiplayerLoopbackTests(unittest.TestCase):
             )
         )
         current_revision = self.host.revision
+        connection = self.server._connection
+        self.assertIsNotNone(connection)
+        connection.close()
+        self.assertTrue(wait_until(lambda: self.server.status is ServerStatus.LISTENING))
+        self.assertTrue(
+            wait_until(
+                lambda: (
+                    self.client.update() is None
+                    and self.server.status is ServerStatus.CONNECTED
+                    and self.client.status is ClientStatus.CONNECTED
+                    and self.client.reconnect_count == 1
+                ),
+                timeout=5.0,
+            )
+        )
+        self.assertGreaterEqual(self.client.state.snapshot_revision, current_revision)
+        self.assertEqual(self.client.state.human_player.name, "RemotePlayer")
+
+    def test_new_client_cannot_take_over_started_match(self) -> None:
+        self.host.start_new_game(starting_player_id=0)
         self.client.close()
         self.assertTrue(wait_until(lambda: self.server.status is ServerStatus.LISTENING))
 
-        self.client = NetworkClientSession.connect(
-            "127.0.0.1",
-            port=self.server.bound_port,
-            player_name="ReconnectedPlayer",
-            timeout=2.0,
-        )
-
-        self.assertTrue(wait_until(lambda: self.server.status is ServerStatus.CONNECTED))
-        self.assertGreaterEqual(self.client.state.snapshot_revision, current_revision)
-        self.assertEqual(self.client.state.human_player.name, "ReconnectedPlayer")
+        with self.assertRaisesRegex(ConnectionError, "session_in_use"):
+            NetworkClientSession.connect(
+                "127.0.0.1",
+                port=self.server.bound_port,
+                player_name="Intruder",
+                timeout=2.0,
+            )
 
     def test_several_alternating_turns_stay_in_sync(self) -> None:
         self.host.start_new_game(starting_player_id=1)

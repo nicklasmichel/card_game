@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import socket
 from enum import Enum
-from threading import Lock, Thread, current_thread
+from threading import Event, Lock, Thread, current_thread
+from uuid import uuid4
 
 from core.models import MatchMode
 from multiplayer.client_state import ClientGameView
@@ -18,9 +19,15 @@ from multiplayer.snapshot import GameStateSnapshot
 from multiplayer.transport import ConnectionClosed, JsonFrameConnection
 
 
+RECONNECT_MIN_DELAY_SECONDS = 0.35
+RECONNECT_MAX_DELAY_SECONDS = 4.0
+RECONNECT_CONNECT_TIMEOUT_SECONDS = 2.0
+
+
 class ClientStatus(str, Enum):
     CONNECTING = "connecting"
     CONNECTED = "connected"
+    RECONNECTING = "reconnecting"
     DISCONNECTED = "disconnected"
     ERROR = "error"
     CLOSED = "closed"
@@ -34,24 +41,31 @@ class NetworkClientSession:
         connection: JsonFrameConnection,
         welcome: ServerWelcome,
         *,
+        host: str,
+        port: int,
         player_name: str,
+        client_id: str,
     ) -> None:
         self._connection = connection
+        self._connection_lock = Lock()
         self._local_player_id = welcome.assigned_player_id
         self._state = ClientGameView(self._local_player_id)
         self._state.apply_snapshot(welcome.snapshot)
-        self._state.log_messages = [
-            f"Connected to {welcome.host_name} as {player_name}."
-        ]
         self.session_id = welcome.session_id
         self.host_name = welcome.host_name
+        self.host = host
+        self.port = port
         self.player_name = player_name
+        self.client_id = client_id
         self._status = ClientStatus.CONNECTED
         self._last_error: str | None = None
+        self._reconnect_attempt = 0
+        self._reconnect_count = 0
         self._incoming_lock = Lock()
-        self._incoming_messages: list[GameEvent | ServerError] = []
+        self._incoming_messages: list[GameEvent | ServerError | ServerWelcome] = []
         self._processed_events: list[GameEvent] = []
         self._closed = False
+        self._stop_event = Event()
         self._receiver_thread = Thread(
             target=self._receive_loop,
             name="godao-network-client",
@@ -68,10 +82,44 @@ class NetworkClientSession:
         player_name: str = "Guest",
         timeout: float = 10.0,
     ) -> NetworkClientSession:
+        client_id = uuid4().hex
+        connection, welcome = cls._perform_handshake(
+            host,
+            port,
+            player_name=player_name,
+            client_id=client_id,
+            resume_session_id=None,
+            timeout=timeout,
+        )
+        return cls(
+            connection,
+            welcome,
+            host=host,
+            port=port,
+            player_name=player_name,
+            client_id=client_id,
+        )
+
+    @staticmethod
+    def _perform_handshake(
+        host: str,
+        port: int,
+        *,
+        player_name: str,
+        client_id: str,
+        resume_session_id: str | None,
+        timeout: float,
+    ) -> tuple[JsonFrameConnection, ServerWelcome]:
         sock = socket.create_connection((host, port), timeout=timeout)
         connection = JsonFrameConnection(sock)
         try:
-            connection.send(ClientHello(player_name=player_name).to_json())
+            connection.send(
+                ClientHello(
+                    player_name=player_name,
+                    client_id=client_id,
+                    resume_session_id=resume_session_id,
+                ).to_json()
+            )
             raw_response = connection.receive(timeout=timeout)
             if raw_response is None:
                 raise TimeoutError("Host did not complete the handshake in time.")
@@ -80,7 +128,7 @@ class NetworkClientSession:
                 raise ConnectionError(f"{response.code}: {response.message}")
             if not isinstance(response, ServerWelcome):
                 raise ConnectionError("Host returned an unexpected handshake message.")
-            return cls(connection, response, player_name=player_name)
+            return connection, response
         except Exception:
             connection.close()
             raise
@@ -109,6 +157,14 @@ class NetworkClientSession:
     def last_error(self) -> str | None:
         return self._last_error
 
+    @property
+    def reconnect_attempt(self) -> int:
+        return self._reconnect_attempt
+
+    @property
+    def reconnect_count(self) -> int:
+        return self._reconnect_count
+
     def start_new_game(self, starting_player_id: int | None = None) -> None:
         self.submit_command(
             GameCommand.start_game(self.local_player_id, starting_player_id)
@@ -127,12 +183,14 @@ class NetworkClientSession:
         if command.player_id != self.local_player_id:
             raise ValueError("Client may only submit commands for its assigned player.")
         if self._status is not ClientStatus.CONNECTED:
-            self._state.log_messages.append("Command not sent: no connection to host.")
             return
+        with self._connection_lock:
+            connection = self._connection
         try:
-            self._connection.send(command.to_json())
+            connection.send(command.to_json())
         except ConnectionClosed as exc:
-            self._mark_disconnected(str(exc), error=True)
+            self._start_reconnecting(str(exc))
+            connection.close()
 
     def drain_events(self) -> list[GameEvent]:
         events = self._processed_events[:]
@@ -150,12 +208,17 @@ class NetworkClientSession:
             messages = self._incoming_messages[:]
             self._incoming_messages.clear()
         for message in messages:
+            if isinstance(message, ServerWelcome):
+                self._state.apply_snapshot(message.snapshot)
+                self._last_error = None
+                self._status = ClientStatus.CONNECTED
+                continue
             if isinstance(message, ServerError):
                 self._state.log_messages.append(
                     f"Network error ({message.code}): {message.message}"
                 )
                 if message.fatal:
-                    self._mark_disconnected(message.message, error=True)
+                    self._mark_terminal_error(message.message)
                 continue
             self._processed_events.append(message)
             if message.kind is EventKind.STATE_SNAPSHOT:
@@ -170,48 +233,104 @@ class NetworkClientSession:
         if self._closed:
             return
         self._closed = True
+        self._stop_event.set()
         self._status = ClientStatus.CLOSED
-        self._connection.close()
+        with self._connection_lock:
+            connection = self._connection
+        connection.close()
         thread = self._receiver_thread
         if thread.is_alive() and thread is not current_thread():
-            thread.join(timeout=2.0)
+            thread.join(timeout=3.0)
 
     def _receive_loop(self) -> None:
-        try:
-            while not self._closed:
-                raw_message = self._connection.receive(timeout=0.2)
+        while not self._closed:
+            with self._connection_lock:
+                connection = self._connection
+            try:
+                raw_message = connection.receive(timeout=0.2)
                 if raw_message is None:
                     continue
-                try:
-                    message = decode_wire_message(raw_message)
-                    if not isinstance(message, GameEvent):
-                        raise ValueError("Client expected a GameEvent from the host.")
-                    self._queue_incoming(message)
-                except Exception as wire_error:
-                    try:
-                        lobby_message = decode_lobby_message(raw_message)
-                    except Exception:
-                        self._mark_disconnected(str(wire_error), error=True)
-                        return
-                    if not isinstance(lobby_message, ServerError):
-                        self._mark_disconnected("Unexpected host message.", error=True)
-                        return
-                    self._queue_incoming(lobby_message)
-                    if lobby_message.fatal:
-                        return
-        except ConnectionClosed as exc:
-            if not self._closed:
-                self._mark_disconnected(str(exc), error=False)
-        except Exception as exc:
-            if not self._closed:
-                self._mark_disconnected(f"{type(exc).__name__}: {exc}", error=True)
+                self._handle_host_message(raw_message)
+            except ConnectionClosed as exc:
+                if self._closed or self._status is ClientStatus.ERROR:
+                    return
+                if not self._reconnect(str(exc)):
+                    return
+            except Exception as exc:
+                if self._closed or self._status is ClientStatus.ERROR:
+                    return
+                if not self._reconnect(f"{type(exc).__name__}: {exc}"):
+                    return
 
-    def _queue_incoming(self, message: GameEvent | ServerError) -> None:
+    def _handle_host_message(self, raw_message: str) -> None:
+        try:
+            message = decode_wire_message(raw_message)
+            if not isinstance(message, GameEvent):
+                raise ValueError("Client expected a GameEvent from the host.")
+            self._queue_incoming(message)
+            return
+        except Exception as wire_error:
+            try:
+                lobby_message = decode_lobby_message(raw_message)
+            except Exception:
+                raise wire_error
+        if not isinstance(lobby_message, ServerError):
+            raise ValueError("Unexpected host message.")
+        self._queue_incoming(lobby_message)
+        if lobby_message.fatal:
+            self._mark_terminal_error(lobby_message.message)
+            raise ConnectionClosed(lobby_message.message)
+
+    def _reconnect(self, reason: str) -> bool:
+        self._start_reconnecting(reason)
+        with self._connection_lock:
+            old_connection = self._connection
+        old_connection.close()
+        delay = RECONNECT_MIN_DELAY_SECONDS
+        while not self._closed:
+            self._reconnect_attempt += 1
+            if self._stop_event.wait(delay):
+                return False
+            try:
+                connection, welcome = self._perform_handshake(
+                    self.host,
+                    self.port,
+                    player_name=self.player_name,
+                    client_id=self.client_id,
+                    resume_session_id=self.session_id,
+                    timeout=RECONNECT_CONNECT_TIMEOUT_SECONDS,
+                )
+                if welcome.session_id != self.session_id:
+                    connection.close()
+                    raise ConnectionError("The host is running a different match.")
+                if welcome.assigned_player_id != self.local_player_id:
+                    connection.close()
+                    raise ConnectionError("The host assigned a different player slot.")
+            except Exception as exc:
+                self._last_error = str(exc)
+                delay = min(RECONNECT_MAX_DELAY_SECONDS, delay * 1.7)
+                continue
+            with self._connection_lock:
+                self._connection = connection
+            self._queue_incoming(welcome)
+            self._last_error = None
+            self._reconnect_attempt = 0
+            self._reconnect_count += 1
+            return True
+        return False
+
+    def _queue_incoming(self, message: GameEvent | ServerError | ServerWelcome) -> None:
         with self._incoming_lock:
             self._incoming_messages.append(message)
 
-    def _mark_disconnected(self, message: str, *, error: bool) -> None:
+    def _start_reconnecting(self, message: str) -> None:
+        if self._closed or self._status is ClientStatus.ERROR:
+            return
+        self._last_error = message
+        self._status = ClientStatus.RECONNECTING
+
+    def _mark_terminal_error(self, message: str) -> None:
         if self._closed:
             return
         self._last_error = message
-        self._status = ClientStatus.ERROR if error else ClientStatus.DISCONNECTED
+        self._status = ClientStatus.ERROR

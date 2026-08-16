@@ -54,6 +54,16 @@ class ClientGameViewTests(unittest.TestCase):
         self.assertFalse(view.apply_snapshot(old))
         self.assertEqual(view.snapshot_revision, 5)
 
+    def test_public_log_is_replaced_from_authoritative_snapshot(self) -> None:
+        engine = GameEngine(auto_start=False, match_mode=MatchMode.PVP)
+        engine.public_log_messages = ["Alice starts.", "Bob adds a resource."]
+        view = ClientGameView(local_player_id=1)
+
+        view.apply_snapshot(GameStateSnapshot.from_engine(engine, 1, revision=2))
+
+        self.assertEqual(view.log_messages, engine.public_log_messages)
+        self.assertEqual(view.public_log_messages, engine.public_log_messages)
+
 
 if __name__ == "__main__":
     unittest.main()

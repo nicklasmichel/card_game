@@ -9,6 +9,7 @@ from multiplayer.protocol import (
     EventKind,
     GameCommand,
     GameEvent,
+    PROTOCOL_VERSION,
     ProtocolValidationError,
     decode_wire_message,
 )
@@ -39,7 +40,7 @@ class GameCommandProtocolTests(unittest.TestCase):
         data = json.loads(command.to_json())
 
         self.assertEqual(data["message_type"], "command")
-        self.assertEqual(data["version"], 1)
+        self.assertEqual(data["version"], PROTOCOL_VERSION)
         self.assertEqual(data["command_id"], "known-id")
         self.assertNotIn(" ", command.to_json())
 
@@ -47,7 +48,7 @@ class GameCommandProtocolTests(unittest.TestCase):
         valid = GameCommand.action(0, "end_turn", command_id="command-1").to_dict()
 
         invalid_messages = []
-        wrong_version = dict(valid, version=2)
+        wrong_version = dict(valid, version=PROTOCOL_VERSION + 1)
         invalid_messages.append(wrong_version)
         wrong_kind = dict(valid, kind="delete_everything")
         invalid_messages.append(wrong_kind)
