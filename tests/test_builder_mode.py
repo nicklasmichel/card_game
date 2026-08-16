@@ -51,7 +51,7 @@ class BuilderModeTests(unittest.TestCase):
         return [
             message
             for message in self.engine.log_messages
-            if "wuerfelt" in message and "gewinnt und fuegt" in message
+            if "rolls" in message and "wins and deals" in message
         ]
 
     def test_engine_starts_directly_in_builder_mode(self) -> None:
@@ -235,10 +235,10 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.end_dice_battle()
         results = self.combat_result_messages()
         self.assertEqual(len(results), 1)
-        self.assertIn(f"{attacker.name} wuerfelt [6, 6] = 12, {blocker.name} wuerfelt [1] = 1.", results[0])
-        self.assertIn(f"{attacker.name} gewinnt und fuegt {blocker.name} 1 Schaden zu.", results[0])
-        self.assertIn(f"{blocker.name} wird zerstoert.", results[0])
-        self.assertFalse(any("Kampfschaden zerstoert" in message for message in self.engine.log_messages))
+        self.assertIn(f"{attacker.name} rolls [6, 6] = 12, {blocker.name} rolls [1] = 1.", results[0])
+        self.assertIn(f"{attacker.name} wins and deals 1 damage to {blocker.name}.", results[0])
+        self.assertIn(f"{blocker.name} is destroyed.", results[0])
+        self.assertFalse(any("Combat damage destroys" in message for message in self.engine.log_messages))
 
     def test_builder_single_duel_tie_goes_to_attacker_without_reroll(self) -> None:
         attacker = self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, ready=True)
@@ -254,7 +254,7 @@ class BuilderModeTests(unittest.TestCase):
         self.assertEqual(battle.winner, "attacker")
         self.assertEqual(battle.reroll_count, 0)
         self.assertEqual(len(battle.history), 1)
-        self.assertIn("gewinnt", battle.history[0].outcome_text)
+        self.assertIn("wins", battle.history[0].outcome_text)
 
     def test_builder_multiple_blocked_combats_log_each_duel_once_in_stable_order(self) -> None:
         attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
@@ -281,10 +281,10 @@ class BuilderModeTests(unittest.TestCase):
         )
         self.assertIn(attacker_one.name, results[0])
         self.assertIn(blocker_one.name, results[0])
-        self.assertIn(f"{blocker_one.name} bleibt bei 1 Leben.", results[0])
+        self.assertIn(f"{blocker_one.name} remains at 1 life.", results[0])
         self.assertIn(attacker_two.name, results[1])
         self.assertIn(blocker_two.name, results[1])
-        self.assertIn(f"{blocker_two.name} wird zerstoert.", results[1])
+        self.assertIn(f"{blocker_two.name} is destroyed.", results[1])
 
     def test_builder_mixed_blocked_and_unblocked_attack_logs_both_paths(self) -> None:
         blocked_attacker = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
@@ -328,10 +328,10 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.end_dice_battle()
 
         joined = "\n".join(self.engine.log_messages)
-        self.assertEqual(joined.count(f"{blocker_one.name} wird zerstoert."), 1)
-        self.assertEqual(joined.count(f"{blocker_two.name} wird zerstoert."), 1)
-        self.assertNotIn(f"Kampfschaden zerstoert {blocker_one.name}.", joined)
-        self.assertNotIn(f"Kampfschaden zerstoert {blocker_two.name}.", joined)
+        self.assertEqual(joined.count(f"{blocker_one.name} is destroyed."), 1)
+        self.assertEqual(joined.count(f"{blocker_two.name} is destroyed."), 1)
+        self.assertNotIn(f"Combat damage destroys {blocker_one.name}.", joined)
+        self.assertNotIn(f"Combat damage destroys {blocker_two.name}.", joined)
 
     def test_builder_multiple_blocked_combats_log_complete_result_lines_for_each_duel(self) -> None:
         attacker_one = self.make_builder_creature(0, aw=2, vw=1, sw=1, lw=2, ready=True)
@@ -352,10 +352,10 @@ class BuilderModeTests(unittest.TestCase):
         results = self.combat_result_messages()
         self.assertEqual(len(results), 2)
         for message in results:
-            self.assertIn("wuerfelt [", message)
+            self.assertIn("rolls [", message)
             self.assertIn(" = ", message)
-            self.assertIn("gewinnt und fuegt", message)
-            self.assertTrue("bleibt bei" in message or "wird zerstoert." in message)
+            self.assertIn("wins and deals", message)
+            self.assertTrue("remains at" in message or "is destroyed." in message)
 
     def test_builder_ui_offers_no_ability_actions(self) -> None:
         self.engine.phase = PHASE_MAIN_1

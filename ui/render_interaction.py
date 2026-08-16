@@ -3,13 +3,106 @@ from __future__ import annotations
 import pygame
 
 from core.models import PHASE_BUILDER_ABILITY
-from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
+from ui.style import ATTACK_HIGHLIGHT, RESOURCE_COLOR, ZONE_HAND
+
+
+RESOURCE_BACKGROUND_SEGMENTS = 10
+RESOURCE_GLOW_DURATION_MS = 700
+
+
+def get_resource_background_segment_rects(
+    width: int,
+    height: int,
+    *,
+    segment_count: int = RESOURCE_BACKGROUND_SEGMENTS,
+) -> list[pygame.Rect]:
+    if width <= 0 or height <= 0 or segment_count <= 0:
+        return []
+    horizontal_margin = min(12, max(4, width // 80))
+    vertical_margin = min(10, max(4, height // 40))
+    inner_width = max(0, width - horizontal_margin * 2)
+    inner_height = max(0, height - vertical_margin * 2)
+    gap = min(8, max(3, width // 260))
+    rects: list[pygame.Rect] = []
+    for index in range(segment_count):
+        column_left = horizontal_margin + round(inner_width * index / segment_count)
+        column_right = horizontal_margin + round(inner_width * (index + 1) / segment_count)
+        rects.append(
+            pygame.Rect(
+                column_left + gap // 2,
+                vertical_margin,
+                max(1, column_right - column_left - gap),
+                inner_height,
+            )
+        )
+    return rects
+
+
+def _draw_resource_progress_background(self, zone_surface: pygame.Surface, zone_key: str) -> None:
+    if not zone_key.endswith("creatures"):
+        return
+    player = self.engine.player_two if zone_key.startswith("player_2_") else self.engine.player_one
+    resource_count = min(RESOURCE_BACKGROUND_SEGMENTS, max(0, player.total_resources()))
+    player_id = player.player_id
+    counts = self.resource_background_counts
+    pulses = self.resource_background_pulses
+    previous_count = counts.get(player_id)
+    now = pygame.time.get_ticks()
+    if previous_count is None:
+        counts[player_id] = resource_count
+    elif resource_count > previous_count:
+        pulses[player_id] = (resource_count - 1, now)
+        counts[player_id] = resource_count
+    elif resource_count < previous_count:
+        counts[player_id] = resource_count
+        pulses.pop(player_id, None)
+
+    pulse_segment = -1
+    pulse_strength = 0.0
+    pulse = pulses.get(player_id)
+    if pulse is not None:
+        pulse_segment, pulse_started_at = pulse
+        pulse_progress = max(0.0, (now - pulse_started_at) / RESOURCE_GLOW_DURATION_MS)
+        if pulse_progress >= 1.0:
+            pulses.pop(player_id, None)
+            pulse_segment = -1
+        else:
+            pulse_strength = (1.0 - pulse_progress) ** 2
+
+    overlay = pygame.Surface(zone_surface.get_size(), pygame.SRCALPHA)
+    lit_color = tuple(min(255, channel + 54) for channel in RESOURCE_COLOR)
+    for index, segment_rect in enumerate(
+        get_resource_background_segment_rects(zone_surface.get_width(), zone_surface.get_height())
+    ):
+        is_lit = index < resource_count
+        pulse_bonus = int(38 * pulse_strength) if index == pulse_segment else 0
+        fill = (
+            (*lit_color, 22 + pulse_bonus)
+            if is_lit
+            else (230, 236, 244, 3)
+        )
+        border = (
+            (*lit_color, 35 + pulse_bonus)
+            if is_lit
+            else (230, 236, 244, 11)
+        )
+        pygame.draw.rect(overlay, fill, segment_rect, border_radius=5)
+        pygame.draw.rect(overlay, border, segment_rect, 1, border_radius=5)
+        if pulse_bonus and segment_rect.width > 10 and segment_rect.height > 10:
+            pygame.draw.rect(
+                overlay,
+                (*lit_color, pulse_bonus // 2),
+                segment_rect.inflate(-8, -8),
+                border_radius=4,
+            )
+    zone_surface.blit(overlay, (0, 0))
 
 
 def draw_playfield_section_box(self, rect: pygame.Rect, zone_key: str) -> None:
     fill_color = self.get_zone_fill_color(zone_key)
     zone_surface = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
     pygame.draw.rect(zone_surface, fill_color, pygame.Rect(0, 0, rect.width, rect.height), border_radius=5)
+    _draw_resource_progress_background(self, zone_surface, zone_key)
     mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
     pygame.draw.rect(mask, (255, 255, 255, 255), pygame.Rect(0, 0, rect.width, rect.height), border_radius=5)
     zone_surface.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)

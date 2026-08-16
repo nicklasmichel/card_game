@@ -44,6 +44,7 @@ from .render_interaction import (
     can_drop_on_creature_area,
     clear_drag_state,
     draw_playfield_section_box,
+    get_resource_background_segment_rects,
     get_target_at_position,
     get_zone_fill_color,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "draw_hand_card",
     "draw_hidden_hand_card",
     "draw_playfield_section_box",
+    "get_resource_background_segment_rects",
     "draw_resource_backdrop",
     "draw_resource_card",
     "draw_summoner_card",

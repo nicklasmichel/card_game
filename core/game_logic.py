@@ -443,7 +443,7 @@ class GameEngine:
             start_player=self.human_player.name,
             player_names={0: self.human_player.name, 1: self.ai_player.name},
         )
-        self.log(f"Testkampf gestartet: {human_creature.name} gegen {ai_creature.name}.")
+        self.log(f"Test combat started: {human_creature.name} versus {ai_creature.name}.")
         self.start_dice_battle(human_creature.unit_id, ai_creature.unit_id)
 
     def reset_combat_state(self) -> None:

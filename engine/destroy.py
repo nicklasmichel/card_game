@@ -51,7 +51,7 @@ def destroy_creature_immediately(
     destroyed_card = CardInstance(self.make_instance_id(), self.templates[creature.template_id])
     owner.discard_pile.append(destroyed_card)
     if log_destruction:
-        self.log(f"{source_name} zerstoert {creature.name}. {creature.name} geht auf den Ablagestapel.")
+        self.log(f"{source_name} destroys {creature.name}. {creature.name} goes to the discard pile.")
     draw_on_death = getattr(creature, "draw_on_death", 0)
     if draw_on_death > 0:
         for _ in range(draw_on_death):
@@ -59,11 +59,11 @@ def destroy_creature_immediately(
             if drawn is None and self.phase == PHASE_GAME_OVER:
                 break
         if self.phase != PHASE_GAME_OVER:
-            self.log(f"{creature.name} laesst {owner.name} beim Sterben {draw_on_death} Karte(n) ziehen.")
+            self.log(f"{creature.name} lets {owner.name} draw {draw_on_death} card(s) when it dies.")
     if return_to_hand_after_death:
         if destroyed_card in owner.discard_pile:
             owner.discard_pile.remove(destroyed_card)
         owner.hand.append(destroyed_card)
-        self.log(f"Orkangeist nimmt {creature.name} auf die Hand zurueck.")
+        self.log(f"Orc Spirit returns {creature.name} to {owner.name}'s hand.")
     if self.statistics is not None:
         self.statistics.player_stats[owner.player_id].creatures_destroyed += 1

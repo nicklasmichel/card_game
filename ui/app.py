@@ -305,6 +305,8 @@ class GodaoApp:
         self.timer_last_update_ms = pygame.time.get_ticks()
         self.game_elapsed_ms = 0
         self.phase_elapsed_ms = 0
+        self.resource_background_counts: dict[int, int] = {}
+        self.resource_background_pulses: dict[int, tuple[int, int]] = {}
         self.player_creature_rect = pygame.Rect(0, 0, 0, 0)
         self.player_resource_rect = pygame.Rect(0, 0, 0, 0)
         self.dragged_hand_card_id: int | None = None

@@ -6,7 +6,16 @@ from typing import Iterable
 
 import core.config as config
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
-from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_MAIN_1
+from core.models import (
+    Ability,
+    PHASE_BUILDER_ABILITY,
+    PHASE_BUILDER_CREATURE,
+    PHASE_DECLARE_ATTACKERS,
+    PHASE_DECLARE_BLOCKERS,
+    PHASE_DICE_BATTLE,
+    PHASE_GAME_OVER,
+    PHASE_MAIN_1,
+)
 
 
 def builder_debug_level() -> int:
@@ -299,9 +308,12 @@ def _actor_label(player) -> str:
 def _phase_label(phase: str | None) -> str:
     mapping = {
         PHASE_MAIN_1: "main",
+        PHASE_BUILDER_CREATURE: "creature_building",
         PHASE_BUILDER_ABILITY: "ability",
         PHASE_DECLARE_ATTACKERS: "attack",
         PHASE_DECLARE_BLOCKERS: "block",
+        PHASE_DICE_BATTLE: "dice_combat",
+        PHASE_GAME_OVER: "game_over",
     }
     return mapping.get(phase, str(phase).replace(" ", "_").lower() if phase is not None else "-")
 

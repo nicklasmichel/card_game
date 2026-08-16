@@ -156,7 +156,7 @@ def confirm_attackers(self) -> None:
             drawn = self.draw_card_for_player(self.active_player, attacker.name)
             if drawn is None and self.phase == PHASE_GAME_OVER:
                 return
-        self.log(f"{attacker.name} laesst {self.active_player.name} beim Angriff {attacker.draw_on_attack} Karte(n) ziehen.")
+        self.log(f"{attacker.name} lets {self.active_player.name} draw {attacker.draw_on_attack} card(s) when attacking.")
     self.block_assignments = {attacker.unit_id: None for attacker in attackers}
     self.enraged_forced_attackers = set()
     self.selected_attack_target_id = None

@@ -44,7 +44,7 @@ def apply_life_steal_healing(self, creature: BattlefieldCreature, actual_damage:
     creature.current_hp = min(creature.lw, creature.current_hp + actual_damage)
     healed = creature.current_hp - hp_before
     if healed > 0:
-        self.log(f"{creature.name} heilt sich durch Lebensraub um {healed} Leben.")
+        self.log(f"{creature.name} heals {healed} life with Lifelink.")
     return healed
 
 
@@ -54,7 +54,7 @@ def start_dice_battle(self, attacker_id: int, blocker_id: int) -> None:
         return
     self.pending_dice_battle = battle
     self.pending_dice_battles = [battle]
-    self.log(f"Wuerfelkampf startet: {battle.attacker_snapshot.name} gegen {battle.blocker_snapshot.name}.")
+    self.log(f"Dice combat begins: {battle.attacker_snapshot.name} versus {battle.blocker_snapshot.name}.")
     self.phase = PHASE_DICE_BATTLE
 
 
@@ -126,12 +126,12 @@ def _finalize_battle_rolls(self, battle: PendingDiceBattle, attacker: Battlefiel
     if battle.winner == "attacker" and attacker.has_ability(Ability.TRAMPLE):
         battle.trample_damage = max(0, damage - loser_hp_before_damage)
     outcome = (
-        f"{winner.name} gewinnt ({battle.attack_sum}:{battle.defense_sum}) und verursacht {damage} Schaden."
+        f"{winner.name} wins ({battle.attack_sum}:{battle.defense_sum}) and deals {damage} damage."
         if battle.winner == "attacker"
-        else f"{winner.name} gewinnt ({battle.defense_sum}:{battle.attack_sum}) und verursacht {damage} Schaden."
+        else f"{winner.name} wins ({battle.defense_sum}:{battle.attack_sum}) and deals {damage} damage."
     )
     if battle.trample_damage > 0:
-        outcome += f" Trampelschaden: {battle.trample_damage}."
+        outcome += f" Trample damage: {battle.trample_damage}."
     battle.history.append(
         DiceRoundRecord(
             round_number=battle.reroll_count + 1,
@@ -166,24 +166,24 @@ def _build_battle_resolution_log(self, battle: PendingDiceBattle, damage: int) -
         loser_name = blocker_name
         loser_hp = battle.blocker_hp_after
         message = (
-            f"{attacker_name} wuerfelt {attacker_rolls} = {battle.attack_sum}, "
-            f"{blocker_name} wuerfelt {blocker_rolls} = {battle.defense_sum}. "
-            f"{attacker_name} gewinnt und fuegt {blocker_name} {damage} Schaden zu."
+            f"{attacker_name} rolls {attacker_rolls} = {battle.attack_sum}, "
+            f"{blocker_name} rolls {blocker_rolls} = {battle.defense_sum}. "
+            f"{attacker_name} wins and deals {damage} damage to {blocker_name}."
         )
     else:
         loser_name = attacker_name
         loser_hp = battle.attacker_hp_after
         message = (
-            f"{attacker_name} wuerfelt {attacker_rolls} = {battle.attack_sum}, "
-            f"{blocker_name} wuerfelt {blocker_rolls} = {battle.defense_sum}. "
-            f"{blocker_name} gewinnt und fuegt {attacker_name} {damage} Schaden zu."
+            f"{attacker_name} rolls {attacker_rolls} = {battle.attack_sum}, "
+            f"{blocker_name} rolls {blocker_rolls} = {battle.defense_sum}. "
+            f"{blocker_name} wins and deals {damage} damage to {attacker_name}."
         )
     if battle.trample_damage > 0:
-        message += f" Trampelschaden an {self.defending_player.name}: {battle.trample_damage}."
+        message += f" Trample damage to {self.defending_player.name}: {battle.trample_damage}."
     if loser_hp > 0:
-        message += f" {loser_name} bleibt bei {loser_hp} Leben."
+        message += f" {loser_name} remains at {loser_hp} life."
     else:
-        message += f" {loser_name} wird zerstoert."
+        message += f" {loser_name} is destroyed."
     return message
 
 
@@ -300,7 +300,7 @@ def cleanup_destroyed_units(self, *, log_destruction: bool = True) -> None:
                 self.destroy_creature_immediately(
                     player,
                     creature,
-                    "Kampfschaden",
+                    "Combat damage",
                     died_in_combat=True,
                     log_destruction=log_destruction,
                 )
