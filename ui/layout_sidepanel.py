@@ -5,6 +5,7 @@ import pygame
 from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES, BUILDER_HASTE_COST
 from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
 from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT, get_builder_creature_abilities_label
+from ui.player_labels import format_player_names_for_ui, get_player_display_name, get_ui_match_mode
 from ui.style import BUTTON_COLOR, BUTTON_DISABLED, CARD_BORDER, HIGHLIGHT, MUTED_TEXT, PANEL_COLOR, PLAYER_CARD_COLOR, SECTION_COLOR, TEXT_COLOR
 from ui.timers import format_elapsed_ms
 
@@ -47,11 +48,11 @@ def get_action_panel_title(self) -> str:
 def get_action_panel_prompt(self) -> str:
     local_decision_check = getattr(self, "local_player_has_primary_decision", None)
     if callable(local_decision_check) and not local_decision_check():
-        return f"Waiting for {self.engine.active_player.name}."
+        return f"Waiting for {get_player_display_name(self, self.engine.active_player)}."
     if self.engine.is_ai_thinking():
-        return self.engine.current_prompt()
+        return format_player_names_for_ui(self, self.engine.current_prompt())
     if self.engine.pending_ai_action is not None:
-        return self.engine.current_prompt()
+        return format_player_names_for_ui(self, self.engine.current_prompt())
     if self.engine.phase == PHASE_MAIN_1:
         if not self.engine.active_player.main_action_used_this_turn:
             return ""
@@ -60,7 +61,7 @@ def get_action_panel_prompt(self) -> str:
         return "Attack or end the turn."
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         return ""
-    return self.engine.current_prompt()
+    return format_player_names_for_ui(self, self.engine.current_prompt())
 
 
 def get_panel_header_font(self) -> pygame.font.Font:
@@ -73,8 +74,10 @@ def get_panel_header_font(self) -> pygame.font.Font:
 
 def _visible_log_messages(self) -> list[str]:
     if getattr(self.engine, "use_public_log_for_display", False):
-        return getattr(self.engine, "public_log_messages", self.engine.log_messages)
-    return self.engine.log_messages
+        messages = getattr(self.engine, "public_log_messages", self.engine.log_messages)
+    else:
+        messages = self.engine.log_messages
+    return [format_player_names_for_ui(self, message) for message in messages]
 
 
 def _rebuild_log_cache(self, width: int, line_height: int, line_gap: int) -> None:
@@ -83,6 +86,7 @@ def _rebuild_log_cache(self, width: int, line_height: int, line_gap: int) -> Non
     self._log_wrapped_entries = wrapped_entries
     self._log_wrapped_width = width
     self._log_cached_message_count = len(messages)
+    self._log_cached_match_mode = get_ui_match_mode(self)
     self._log_entry_heights = [
         len(entry) * line_height + max(0, len(entry) - 1) * line_gap
         for entry in wrapped_entries
@@ -93,7 +97,8 @@ def _ensure_log_cache(self, width: int, line_height: int, line_gap: int) -> None
     messages = _visible_log_messages(self)
     cached_width = getattr(self, "_log_wrapped_width", None)
     cached_count = getattr(self, "_log_cached_message_count", 0)
-    if cached_width != width or cached_count > len(messages):
+    cached_match_mode = getattr(self, "_log_cached_match_mode", None)
+    if cached_width != width or cached_count > len(messages) or cached_match_mode != get_ui_match_mode(self):
         _rebuild_log_cache(self, width, line_height, line_gap)
         return
     if cached_count == len(messages):
@@ -108,6 +113,7 @@ def _ensure_log_cache(self, width: int, line_height: int, line_gap: int) -> None
     self._log_entry_heights = entry_heights
     self._log_wrapped_width = width
     self._log_cached_message_count = len(messages)
+    self._log_cached_match_mode = get_ui_match_mode(self)
 
 
 def draw_side_panel(self) -> None:
@@ -148,13 +154,16 @@ def draw_buttons(self) -> None:
 
 def draw_side_overview(self, rect: pygame.Rect) -> None:
     phase_label = get_overview_phase_label(self.engine.phase)
+    active_name = get_player_display_name(self, self.engine.active_player)
+    human_name = get_player_display_name(self, self.engine.human_player)
+    opponent_name = get_player_display_name(self, self.engine.ai_player)
     lines = [
         f"Turn: {self.engine.turn_number}",
-        f"Active: {self.engine.active_player.name} - {phase_label}",
-        f"{self.engine.human_player.name} Life: {self.engine.human_player.life}",
-        f"{self.engine.ai_player.name} Life: {self.engine.ai_player.life}",
-        f"{self.engine.human_player.name} Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
-        f"{self.engine.ai_player.name} Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
+        f"Active: {active_name} - {phase_label}",
+        f"{human_name} Life: {self.engine.human_player.life}",
+        f"{opponent_name} Life: {self.engine.ai_player.life}",
+        f"{human_name} Resources: {self.engine.human_player.available_resources()}/{self.engine.human_player.total_resources()}",
+        f"{opponent_name} Resources: {self.engine.ai_player.available_resources()}/{self.engine.ai_player.total_resources()}",
     ]
     if self.paused:
         lines.append("Status: Paused")
@@ -345,7 +354,7 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     phase_timer_x = rect.right - s(12) - phase_timer_width
     header_text = self.fit_text(
         header_font,
-        f"{self.engine.active_player.name} - {phase_label}",
+        f"{get_player_display_name(self, self.engine.active_player)} - {phase_label}",
         max(1, phase_timer_x - (rect.x + s(24))),
     )
     self.blit_text(

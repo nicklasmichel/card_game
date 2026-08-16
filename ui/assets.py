@@ -292,12 +292,11 @@ def draw_card_preview_overlay(self) -> None:
     content_left = 10 + (playfield_width - total_scaled_width) // 2
     rect = scaled.get_rect(midleft=(content_left, self.window_height // 2))
     self.screen.blit(scaled, rect.topleft)
-    pygame.draw.rect(self.screen, CARD_BORDER, rect, 3, border_radius=10)
     if ability_details:
-        title_font = pygame.font.SysFont("arial", max(18, int(self.font.get_height() * scale) + 2), bold=True)
         body_font = pygame.font.SysFont("arial", max(14, int(self.small_font.get_height() * scale) + 4))
         heading_font = pygame.font.SysFont("arial", max(15, int(self.small_font.get_height() * scale) + 5), bold=True)
         gap = max(12, int(14 * scale))
+        ability_gap = max(24, int(30 * scale))
         panel_rect = pygame.Rect(
             rect.right + max(12, int(content_gap * scale) - 8),
             rect.y,
@@ -306,11 +305,9 @@ def draw_card_preview_overlay(self) -> None:
         )
         pygame.draw.rect(self.screen, (52, 58, 68), panel_rect, border_radius=10)
         pygame.draw.rect(self.screen, CARD_BORDER, panel_rect, 2, border_radius=10)
-        title_surface = title_font.render("Details", True, (240, 240, 240))
-        self.screen.blit(title_surface, (panel_rect.x + gap, panel_rect.y + gap))
-        current_y = panel_rect.y + gap + title_surface.get_height() + gap
+        current_y = panel_rect.y + gap
         max_text_width = panel_rect.width - gap * 2
-        for ability_name, description in ability_details:
+        for ability_index, (ability_name, description) in enumerate(ability_details):
             name_surface = heading_font.render(ability_name, True, (244, 239, 228))
             self.screen.blit(name_surface, (panel_rect.x + gap, current_y))
             current_y += name_surface.get_height() + max(6, int(6 * scale))
@@ -318,7 +315,8 @@ def draw_card_preview_overlay(self) -> None:
                 line_surface = body_font.render(line, True, (240, 240, 240))
                 self.screen.blit(line_surface, (panel_rect.x + gap, current_y))
                 current_y += line_surface.get_height() + max(2, int(2 * scale))
-            current_y += gap
+            if ability_index < len(ability_details) - 1:
+                current_y += ability_gap
 
 
 def build_recycle_reveal_surfaces(self, template_ids: list[str]) -> list[pygame.Surface]:

@@ -7,56 +7,153 @@ import pygame
 from core.builder_rules import BUILDER_CREATURE_CAP
 from core.config import STARTING_LIFE
 from core.models import PHASE_BUILDER_CREATURE
-from ui.style import HIGHLIGHT, TEXT_COLOR
+from ui.player_labels import get_player_display_name
+from ui.render_interaction import get_resource_background_segment_rects
+from ui.style import HIGHLIGHT, LIFE_BAR_HEIGHT_RATIO, TEXT_COLOR
+
+
+def get_life_bar_rect(creatures_rect: pygame.Rect, *, at_top: bool = False) -> pygame.Rect:
+    bar_height = max(1, round(creatures_rect.height * LIFE_BAR_HEIGHT_RATIO))
+    segment_rects = get_resource_background_segment_rects(creatures_rect.width, creatures_rect.height)
+    left_inset = segment_rects[0].left if segment_rects else 0
+    right_inset = creatures_rect.width - segment_rects[-1].right if segment_rects else 0
+    return pygame.Rect(
+        creatures_rect.x + left_inset,
+        creatures_rect.y if at_top else creatures_rect.bottom - bar_height,
+        max(1, creatures_rect.width - left_inset - right_inset),
+        bar_height,
+    )
+
+
+def _life_bar_fill_color(life_ratio: float) -> tuple[int, int, int]:
+    clamped = max(0.0, min(1.0, life_ratio))
+    if clamped < 0.5:
+        progress = clamped / 0.5
+        start = (154, 82, 90)
+        end = (157, 137, 88)
+    else:
+        progress = (clamped - 0.5) / 0.5
+        start = (157, 137, 88)
+        end = (82, 139, 108)
+    return tuple(round(start[index] + (end[index] - start[index]) * progress) for index in range(3))
+
+
+def get_life_bar_labels(player, *, player_name: str | None = None) -> tuple[str, str, str]:
+    return (
+        player.name if player_name is None else player_name,
+        f"Health {player.life} / {STARTING_LIFE}",
+        f"Creatures {len(player.battlefield)}/{BUILDER_CREATURE_CAP}",
+    )
+
+
+def draw_life_bar(self, player, creatures_rect: pygame.Rect, *, at_top: bool = False) -> pygame.Rect:
+    bar_rect = get_life_bar_rect(creatures_rect, at_top=at_top)
+    surface = pygame.Surface(bar_rect.size, pygame.SRCALPHA)
+
+    vertical_padding = max(2, self.scale_ui(4))
+    track_rect = pygame.Rect(
+        0,
+        vertical_padding,
+        surface.get_width(),
+        max(1, surface.get_height() - vertical_padding * 2),
+    )
+    pygame.draw.rect(
+        surface,
+        (132, 142, 156, 38),
+        track_rect,
+        border_radius=max(1, self.scale_ui(3)),
+    )
+    max_life = max(1, STARTING_LIFE)
+    life_ratio = max(0.0, min(1.0, player.life / max_life))
+    fill_width = round(track_rect.width * life_ratio)
+    if fill_width > 0:
+        fill_rect = pygame.Rect(track_rect.x, track_rect.y, fill_width, track_rect.height)
+        pygame.draw.rect(
+            surface,
+            (*_life_bar_fill_color(life_ratio), 172),
+            fill_rect,
+            border_radius=max(1, self.scale_ui(3)),
+        )
+
+    player_text, health_text, creatures_text = get_life_bar_labels(
+        player,
+        player_name=get_player_display_name(self, player),
+    )
+    text_padding = self.scale_ui(10)
+    label_specs = (
+        (player_text, "left"),
+        (health_text, "center"),
+        (creatures_text, "right"),
+    )
+    for label, alignment in label_specs:
+        text_surface = self.title_font.render(label, True, TEXT_COLOR)
+        if alignment == "left":
+            text_rect = text_surface.get_rect(midleft=(text_padding, surface.get_height() // 2))
+        elif alignment == "right":
+            text_rect = text_surface.get_rect(midright=(surface.get_width() - text_padding, surface.get_height() // 2))
+        else:
+            text_rect = text_surface.get_rect(center=surface.get_rect().center)
+        shadow_surface = self.title_font.render(label, True, (10, 12, 16))
+        surface.blit(shadow_surface, (text_rect.x + self.scale_ui(1), text_rect.y + self.scale_ui(1)))
+        surface.blit(text_surface, text_rect)
+    self.screen.blit(surface, bar_rect.topleft)
+    return bar_rect
 
 
 def draw_enemy_area(self) -> None:
     margin = self.scale_ui(10)
-    status_gap = self.scale_ui(20)
     sections = self.get_playfield_sections()
     creatures_rect = sections["player_2_creatures"]
+    life_bar_rect = get_life_bar_rect(creatures_rect, at_top=True)
+    content_rect = creatures_rect.copy()
+    content_rect.y += life_bar_rect.height
+    content_rect.height -= life_bar_rect.height
     self.draw_playfield_section_box(creatures_rect, "player_2_creatures")
-    status_metrics = get_area_status_metrics(self, self.engine.ai_player)
-    status_rect = self.draw_area_status_block(self.engine.ai_player, creatures_rect)
-    self.summoner_rects[self.engine.ai_player.player_id] = status_rect
-    top_reserved_height = status_metrics["block_height"] + status_gap
+    creature_top = content_rect.y + margin
+    creature_bottom = content_rect.bottom - margin
     self.draw_creatures(
         self.engine.ai_player.battlefield,
         False,
         "player_2_creatures",
         creatures_rect.x + margin,
-        creatures_rect.y + top_reserved_height,
+        creature_top,
         creatures_rect.width - margin * 2,
-        max(0, creatures_rect.height - top_reserved_height - margin),
+        max(0, creature_bottom - creature_top),
+    )
+    self.summoner_rects[self.engine.ai_player.player_id] = self.draw_life_bar(
+        self.engine.ai_player,
+        creatures_rect,
+        at_top=True,
     )
 
 
 def draw_player_area(self) -> None:
     margin = self.scale_ui(10)
-    status_gap = self.scale_ui(20)
     sections = self.get_playfield_sections()
     creatures_rect = sections["player_1_creatures"]
-    self.player_creature_rect = creatures_rect.copy()
+    life_bar_rect = get_life_bar_rect(creatures_rect)
+    content_rect = creatures_rect.copy()
+    content_rect.height -= life_bar_rect.height
+    self.player_creature_rect = content_rect.copy()
     self.player_resource_rect = pygame.Rect(0, 0, 0, 0)
     self.draw_playfield_section_box(creatures_rect, "player_1_creatures")
-    status_metrics = get_area_status_metrics(self, self.engine.human_player)
-    status_rect = self.draw_area_status_block(self.engine.human_player, creatures_rect)
-    self.summoner_rects[self.engine.human_player.player_id] = status_rect
     display_creatures = list(self.engine.human_player.battlefield)
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         preview_creature = self.engine.get_builder_preview_creature(self.engine.human_player)
         if preview_creature is not None:
             display_creatures.append(preview_creature)
-    bottom_reserved_height = status_metrics["block_height"] + status_gap
+    creature_top = content_rect.y + margin
+    creature_bottom = content_rect.bottom - margin
     self.draw_creatures(
         display_creatures,
         True,
         "player_1_creatures",
         creatures_rect.x + margin,
-        creatures_rect.y + margin,
+        creature_top,
         creatures_rect.width - margin * 2,
-        max(0, creatures_rect.height - bottom_reserved_height - margin),
+        max(0, creature_bottom - creature_top),
     )
+    self.summoner_rects[self.engine.human_player.player_id] = self.draw_life_bar(self.engine.human_player, creatures_rect)
 
 
 def draw_combat_links(self) -> None:
@@ -90,7 +187,7 @@ def draw_combat_links(self) -> None:
     attacker_ids = self.engine.selected_attackers or list(self.engine.block_assignments.keys())
     for attacker_id in attacker_ids:
         blocker_id = self.engine.block_assignments.get(attacker_id)
-        attacker_rect = enemy_positions.get(attacker_id) or player_positions.get(attacker_id)
+        attacker_rect = self.creature_rects.get(attacker_id) or enemy_positions.get(attacker_id) or player_positions.get(attacker_id)
         if attacker_rect is None:
             continue
 
@@ -115,7 +212,7 @@ def draw_combat_links(self) -> None:
                 width=self.scale_ui(3),
             )
             continue
-        blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
+        blocker_rect = self.creature_rects.get(blocker_id) or player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
         if blocker_rect is None:
             continue
         blocker_selected = blocker_id == self.engine.selected_blocker_id
@@ -193,8 +290,7 @@ def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
 
 
 def get_area_status_metrics(self, player) -> dict[str, int]:
-    name_text = player.name
-    life_text = f"Life {player.life}/{STARTING_LIFE}"
+    name_text = get_player_display_name(self, player)
     creatures_text = f"Creatures {len(player.battlefield)}/{BUILDER_CREATURE_CAP}"
     line_height = self.title_font.get_height()
     name_font = getattr(self, "player_name_font", self.title_font)
@@ -203,18 +299,15 @@ def get_area_status_metrics(self, player) -> dict[str, int]:
     return {
         "name_width": name_font.size(name_text)[0],
         "name_height": name_height,
-        "life_width": self.title_font.size(life_text)[0],
         "creatures_width": self.title_font.size(creatures_text)[0],
         "line_height": line_height,
         "block_width": max(
             name_font.size(name_text)[0],
-            self.title_font.size(life_text)[0],
             self.title_font.size(creatures_text)[0],
         ),
-        "block_height": line_height * 2 + name_height + gap * 2,
+        "block_height": line_height + name_height + gap,
         "gap": gap,
         "name_text": name_text,
-        "life_text": life_text,
         "creatures_text": creatures_text,
     }
 
@@ -232,7 +325,6 @@ def draw_area_status_block(self, player, rect: pygame.Rect) -> pygame.Rect:
         metrics["block_height"],
     )
     line_specs = [
-        ("life_text", metrics["life_width"], self.title_font, line_height),
         ("creatures_text", metrics["creatures_width"], self.title_font, line_height),
         (
             "name_text",

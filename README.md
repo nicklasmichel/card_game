@@ -51,6 +51,9 @@ Run deterministic AI-vs-AI games with legality checks, state invariants, and a
 python scripts/run_soak.py --games 100
 ```
 
+Use `--starting-life 15` to test a life-total variant without changing the
+normal game configuration.
+
 The summary reports average, P95, P99, and worst AI decision times. Each game
 runs in an isolated process by default, so a stuck calculation is terminated
 and reported instead of hanging the complete run. Add `--json soak-report.json`

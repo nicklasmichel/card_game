@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from core.models import Ability
-from ui.render_helpers import get_card_art_key
+from ui.render_helpers import ABILITY_DISPLAY_NAMES, get_card_art_key
 
 
 class UICardArtTests(unittest.TestCase):
@@ -46,6 +46,9 @@ class UICardArtTests(unittest.TestCase):
         creature = self.source(Ability.HASTE)
 
         self.assertEqual(get_card_art_key(self.renderer, creature), "haste")
+
+    def test_haste_display_name_is_capitalized(self) -> None:
+        self.assertEqual(ABILITY_DISPLAY_NAMES[Ability.HASTE], "Haste")
 
 
 if __name__ == "__main__":

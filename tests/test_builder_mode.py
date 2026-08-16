@@ -10,6 +10,7 @@ from core.builder_rules import (
     BUILDER_PRIMARY_ABILITIES,
     validate_builder_creature_abilities,
 )
+from core.config import STARTING_LIFE
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
 from ui.layout_sidepanel import get_overview_phase_label
@@ -67,7 +68,7 @@ class BuilderModeTests(unittest.TestCase):
     def test_builder_start_state_has_no_ability_system_data(self) -> None:
         self.assertFalse(BUILDER_ABILITIES_ENABLED)
         for player in self.engine.players:
-            self.assertEqual(player.life, 10)
+            self.assertEqual(player.life, STARTING_LIFE)
             self.assertEqual(player.total_resources(), 0)
             self.assertEqual(player.available_resources(), 0)
             self.assertEqual(len(player.hand), 0)

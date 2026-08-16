@@ -16,7 +16,7 @@ from .candidates import (
     is_legal_builder_candidate,
     select_builder_creature_search_frontier,
 )
-from .combat_eval import can_legally_block
+from .combat_eval import can_legally_block, summarize_builder_combat_matchup
 from .debug import (
     builder_debug_build_top_n,
     builder_debug_enabled,
@@ -319,6 +319,7 @@ def build_builder_runtime_fingerprint(player, engine) -> tuple:
         tuple(sorted(getattr(engine, "builder_created_this_turn_ids", set()))),
         tuple(_runtime_unit_signature(creature) for creature in player.battlefield),
         tuple(_runtime_unit_signature(creature) for creature in enemy.battlefield),
+        int(getattr(engine, "builder_stalled_turns", 0)),
     )
 
 
@@ -1181,6 +1182,7 @@ def _attack_cache_key(projection) -> tuple:
         projection.enemy_id,
         projection.own_life,
         projection.enemy_life,
+        int(getattr(projection, "builder_stalled_turns", 0)),
         projection.available_attacker_ids,
         tuple(_projection_unit_signature(unit) for unit in projection.own_units),
         tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
@@ -1259,12 +1261,20 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         reverse=True,
     )
     by_immediate_blocker = sorted(
-        [projected for projected in projected_candidates if projected.candidate.has_haste],
+        [
+            projected
+            for projected in projected_candidates
+            if projected.candidate.has_haste and projected.candidate.vw > 0
+        ],
         key=lambda projected: (
+            max(
+                projected.static_score.block_win_probability,
+                projected.static_score.blocker_survival_probability,
+            ),
             projected.static_score.immediate_prevented_damage,
-            projected.static_score.block_win_probability,
-            projected.static_score.attacker_kill_probability + projected.static_score.blocker_survival_probability,
+            projected.static_score.attacker_kill_probability,
             projected.static_score.life_breakpoint,
+            projected.static_score.matchup_defense,
             projected.candidate.vw,
             projected.candidate.lw,
             -projected.candidate.cost,
@@ -1367,12 +1377,21 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
         reverse=True,
     )
     by_highest_haste_defense = sorted(
-        [projected for projected in projected_candidates if projected.candidate.has_haste],
+        [
+            projected
+            for projected in projected_candidates
+            if projected.candidate.has_haste and projected.candidate.vw > 0
+        ],
         key=lambda projected: (
+            max(
+                projected.static_score.block_win_probability,
+                projected.static_score.blocker_survival_probability,
+            ),
             projected.static_score.immediate_prevented_damage,
-            projected.static_score.block_win_probability,
-            projected.static_score.blocker_survival_probability,
-            projected.candidate.sw,
+            projected.static_score.repeated_block_value,
+            projected.static_score.matchup_defense,
+            projected.candidate.vw,
+            projected.candidate.lw,
             projected.candidate.key,
         ),
         reverse=True,
@@ -1393,7 +1412,17 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     )
 
     # Insert tactically mandatory shapes first.  The insertion order is also the
-    # evaluation order when a turn reaches its time budget.
+    # evaluation order when a turn reaches its time budget.  Under immediate
+    # pressure, persistent Haste blockers must be evaluated before glass-cannon
+    # Haste bodies; otherwise a deadline can leave the planner with only
+    # offensive candidates even though defensive candidates were generated.
+    must_answer_now = (
+        snapshot.enemy_potential_attacker_count > 0
+        and snapshot.own_life <= max(4, snapshot.enemy_total_sw)
+    )
+    if must_answer_now:
+        take(by_immediate_blocker, 4, "mandatory_emergency_haste_blocker")
+        take(by_highest_haste_defense, 2, "mandatory_emergency_haste_defense")
     take(by_haste_damage, 2, "mandatory_haste_damage")
     take(by_flying_damage, 2 if snapshot.enemy_flying_count > 0 else 1, "mandatory_flying_damage")
     take(by_terminal, 3, "mandatory_terminal")
@@ -1427,13 +1456,14 @@ def _score_end_of_turn_readiness(projection, predicted_attack: BuilderAttackDeci
             ready_for_defense = unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE)
         else:
             ready_for_defense = not unit.tapped
-        legally_relevant_blocker = _can_affect_projected_counterattack(unit, projected_counter_attackers)
+        block_quality = _projected_block_quality(unit, projected_counter_attackers)
+        legally_relevant_blocker = block_quality > 0.0
         if ready_for_defense and legally_relevant_blocker:
-            total += estimate_creature_board_value(unit) * 0.05 * enemy_pressure
+            total += estimate_creature_board_value(unit) * 0.05 * enemy_pressure * block_quality
         if ready_for_defense and (unit.has_ability(Ability.VIGILANT) or unit.has_ability(Ability.VIGILANCE)):
             total += 0.22
         if unit.unit_id == projection.hypothetical_unit_id and not unit.tapped and legally_relevant_blocker:
-            total += 0.18 + unit.vw * 0.05 + unit.current_hp * 0.03
+            total += (0.18 + unit.vw * 0.05 + unit.current_hp * 0.03) * block_quality
         if unit.unit_id == projection.hypothetical_unit_id and unit.tapped:
             total -= TAPPED_NEW_BODY_PENALTY
     return total
@@ -1529,33 +1559,44 @@ def _score_flying_offense_value(snapshot, projection, predicted_attack, projecte
 
 def _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate, horizon: BuilderHorizonReport) -> float:
     value = 0.0
+    coverage_quality = 1.0
+    flying_candidate = projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING)
+    if flying_candidate:
+        candidate = projected_candidate.candidate
+        static = projected_candidate.static_score
+        coverage_quality = (
+            max(static.block_win_probability, static.blocker_survival_probability)
+            if candidate.vw > 0
+            else 0.0
+        )
     if horizon.coverage_prevents_repeated_lethal:
-        value += REPEATED_LETHAL_PREVENTION_BONUS
-        if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
-            candidate = projected_candidate.candidate
-            static = projected_candidate.static_score
+        value += REPEATED_LETHAL_PREVENTION_BONUS * coverage_quality
+        if flying_candidate and coverage_quality > 0.0:
             # Once flying coverage exists, rank the body by whether it can keep
             # providing that coverage.  Damage is only a small tie-breaker; it
             # must not turn a fragile one-shot chump into the preferred answer.
-            value += static.matchup_defense * 2.0
-            value += static.blocker_survival_probability * 12.0
-            value += static.repeated_block_value * 2.0
-            value += candidate.vw
-            value += max(0, candidate.lw - 1) * 1.5
-            value += candidate.sw * 0.5
+            body_value = (
+                static.matchup_defense * 2.0
+                + static.blocker_survival_probability * 12.0
+                + static.repeated_block_value * 2.0
+                + candidate.vw
+                + max(0, candidate.lw - 1) * 1.5
+                + candidate.sw * 0.5
+            )
+            value += body_value * coverage_quality
     if horizon.coverage_ready_turn == 1:
         unavoidable_second_damage = max(0.0, horizon.cumulative_unavoidable_damage - horizon.damage_before_coverage_ready)
     else:
         unavoidable_second_damage = horizon.second_attack_damage
     prevented_second_damage = max(0.0, horizon.second_attack_damage - unavoidable_second_damage)
-    value += prevented_second_damage * 1.6
+    value += prevented_second_damage * 1.6 * coverage_quality
     if horizon.coverage_ready_turn is None and horizon.second_attack_damage > 0.0:
         value -= horizon.second_attack_damage * 0.4
-    if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
+    if flying_candidate:
         if horizon.second_attack_damage <= 0.0 and not horizon.coverage_prevents_repeated_lethal:
             value *= 0.35
-        elif horizon.coverage_ready_turn == 1:
-            value += 0.45
+        elif horizon.coverage_ready_turn == 1 and coverage_quality > 0.0:
+            value += 0.45 * coverage_quality
     return value
 
 
@@ -2173,6 +2214,22 @@ def _can_affect_projected_counterattack(unit, projected_counter_attackers) -> bo
     return any(can_legally_block(attacker, unit, require_ready=True) for attacker in projected_counter_attackers)
 
 
+def _projected_block_quality(unit, projected_counter_attackers) -> float:
+    if not _can_affect_projected_counterattack(unit, projected_counter_attackers):
+        return 0.0
+    if unit.vw <= 0:
+        return 0.0
+    if not projected_counter_attackers:
+        return 1.0
+    qualities = []
+    for attacker in projected_counter_attackers:
+        if not can_legally_block(attacker, unit, require_ready=True):
+            continue
+        matchup = summarize_builder_combat_matchup(attacker, unit)
+        qualities.append(max(matchup.block_win_probability, matchup.blocker_survival_probability))
+    return max(qualities, default=0.0)
+
+
 def _stats_role_bonus(candidate, snapshot) -> float:
     score = 0.0
     if candidate.aw >= 1 and candidate.sw >= 2:
@@ -2298,6 +2355,7 @@ def _projection_runtime_fingerprint(projection, *, phase: str, ability_used: boo
         created_ids,
         tuple(_projection_unit_signature(unit) for unit in projection.own_units),
         tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
+        int(getattr(projection, "builder_stalled_turns", 0)),
     )
 
 

@@ -31,7 +31,7 @@ class AiConfirmationTests(EngineTestCase):
             [("Next", True, "confirm_ai_action")],
         )
         self.assertEqual(self.engine.current_prompt(), "Player 2 (AI) adds a resource.")
-        self.assertEqual(get_action_panel_prompt(SimpleNamespace(engine=self.engine)), "Player 2 (AI) adds a resource.")
+        self.assertEqual(get_action_panel_prompt(SimpleNamespace(engine=self.engine)), "AI adds a resource.")
 
         self.engine.handle_action("confirm_ai_action")
 
@@ -211,5 +211,5 @@ class AiConfirmationTests(EngineTestCase):
         }
         self.assertEqual(
             get_action_panel_prompt(SimpleNamespace(engine=self.engine)),
-            "Player 2 (AI) builds creature: Atk 0 / Def 3 / Dmg 1 / Life 1 / Haste.",
+            "AI builds creature: Atk 0 / Def 3 / Dmg 1 / Life 1 / Haste.",
         )

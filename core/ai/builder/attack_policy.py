@@ -67,6 +67,12 @@ LOW_IMPACT_ATTACK_PENALTY = 1.35
 CAP_SLOT_RELEASE_WEIGHT = 0.7
 CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT = 0.9
 CAP_UNBLOCKED_PRESSURE_BONUS = 0.22
+STALL_GRACE_TURNS = 6
+STALL_RAMP_TURNS = 10
+STALL_MIN_BOARD_SIZE = 4
+STALL_NO_ATTACK_MAX_PENALTY = 3.6
+STALL_ATTACK_MAX_BONUS = 5.0
+STALL_COUNTER_EXPOSURE_PENALTY = 0.55
 FULL_ATTACK_ENUMERATION_THRESHOLD = 8
 ENRAGED_TARGET_LIMIT = 2
 COUNTERATTACK_SEARCH_BUDGET = BuilderSearchBudget(
@@ -335,6 +341,13 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
             score = min(adversarial_scores, key=_adversarial_block_response_sort_key)
             rescored.append((candidate, score))
         scored_candidates = rescored
+    scored_candidates = _apply_builder_stall_pressure(
+        scored_candidates,
+        player=player,
+        enemy=enemy,
+        engine=combat_context,
+        cap_context=cap_context,
+    )
     scored_candidates.sort(key=_attack_candidate_sort_key, reverse=True)
     best_candidate, best_score = scored_candidates[0]
     metadata = BuilderSearchMetadata(
@@ -967,6 +980,105 @@ def _select_top_enraged_targets(attacker, all_attackers: list, legal_targets: li
     return [blocker for _, blocker in scored]
 
 
+def _apply_builder_stall_pressure(
+    scored_candidates: list[tuple[BuilderAttackCandidate, BuilderAttackScore]],
+    *,
+    player,
+    enemy,
+    engine,
+    cap_context,
+) -> list[tuple[BuilderAttackCandidate, BuilderAttackScore]]:
+    stalled_turns = max(0, int(getattr(engine, "builder_stalled_turns", 0)))
+    congested_size = min(len(player.battlefield), len(enemy.battlefield))
+    if stalled_turns <= STALL_GRACE_TURNS or congested_size < STALL_MIN_BOARD_SIZE:
+        return scored_candidates
+
+    board_factor = 1.0 if congested_size >= BUILDER_CREATURE_CAP else 0.65
+    pressure = min(
+        1.0,
+        (stalled_turns - STALL_GRACE_TURNS) / max(1, STALL_RAMP_TURNS),
+    ) * board_factor
+    no_attack_score = next(
+        (score for candidate, score in scored_candidates if not candidate.attacker_ids),
+        None,
+    )
+    if no_attack_score is None:
+        return scored_candidates
+    baseline_counter_damage = no_attack_score.projected_counter_damage
+
+    attack_adjustments: dict[BuilderAttackCandidate, float] = {}
+    for candidate, score in scored_candidates:
+        if not candidate.attacker_ids:
+            continue
+        trade_progress = min(score.enemy_kill_value, score.own_death_risk)
+        progress_value = (
+            score.player_damage * 0.55
+            + score.enemy_creature_damage * 0.2
+            + score.enemy_kill_value * 0.6
+            + trade_progress * 0.35
+        )
+        if (
+            cap_context is not None
+            and cap_context.at_cap
+            and cap_context.weakest_unit_id is not None
+            and cap_context.weakest_unit_id in dict(score.chosen_block_assignment)
+        ):
+            progress_value += min(cap_context.cap_pressure, score.own_death_risk) * 0.3
+        extra_counter_damage = max(
+            0.0,
+            score.projected_counter_damage - baseline_counter_damage,
+        )
+        safe_progress = (
+            progress_value > 0.2
+            and score.counter_lethal_risk < 0.5
+            and score.projected_counter_damage < max(1.0, float(player.life))
+        )
+        if not safe_progress:
+            continue
+        adjustment = pressure * (
+            min(STALL_ATTACK_MAX_BONUS, progress_value)
+            - extra_counter_damage * STALL_COUNTER_EXPOSURE_PENALTY
+        )
+        if adjustment > 0.0:
+            attack_adjustments[candidate] = adjustment
+
+    if not attack_adjustments:
+        return scored_candidates
+
+    adjusted: list[tuple[BuilderAttackCandidate, BuilderAttackScore]] = []
+    for candidate, score in scored_candidates:
+        if not candidate.attacker_ids:
+            adjustment = -pressure * STALL_NO_ATTACK_MAX_PENALTY
+        else:
+            adjustment = attack_adjustments.get(candidate, 0.0)
+        if adjustment == 0.0:
+            adjusted.append((candidate, score))
+            continue
+        debug_contributions = tuple(
+            contribution
+            for contribution in score.debug_contributions
+            if contribution[0] != "stall_pressure"
+        ) + (
+            (
+                "stall_pressure",
+                round(pressure, 4),
+                round(adjustment / pressure, 4),
+                round(adjustment, 4),
+            ),
+        )
+        adjusted.append(
+            (
+                candidate,
+                replace(
+                    score,
+                    total=round(score.total + adjustment, 4),
+                    debug_contributions=debug_contributions,
+                ),
+            )
+        )
+    return adjusted
+
+
 def _score_no_attack(player, enemy, engine, cap_context) -> float:
     ready_creatures = list(engine.available_attackers(player))
     preservation = sum(estimate_creature_board_value(creature) for creature in ready_creatures) * NO_ATTACK_PRESERVATION_WEIGHT
@@ -1028,9 +1140,15 @@ def _estimate_block_value_cached(blocker_signature: tuple, enemy_signatures: tup
         )
         for signature in enemy_signatures
     ]
+    # A zero-Defense body may still make a legal one-shot chump block, but it
+    # cannot win a defensive dice contest.  Exact counterattack projection still
+    # notices a genuinely life-saving chump; this heuristic must not make the AI
+    # hold such bodies back as if they were persistent blockers.
+    if blocker.vw <= 0:
+        return 0.0
     if not any(can_legally_block(attacker, blocker, require_ready=False) for attacker in enemy_units):
         return 0.0
-    role_penalty = 0.35 if blocker.vw <= 0 else 1.0
+    role_penalty = 1.0
     role_penalty *= 0.55 if blocker.aw > blocker.vw + 1 else 1.0
     total = 0.0
     legal_attackers = [attacker for attacker in enemy_units if can_legally_block(attacker, blocker, require_ready=False)]

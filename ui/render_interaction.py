@@ -3,7 +3,7 @@ from __future__ import annotations
 import pygame
 
 from core.models import PHASE_BUILDER_ABILITY
-from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
+from ui.style import ATTACK_HIGHLIGHT, LIFE_BAR_HEIGHT_RATIO, ZONE_HAND
 
 
 RESOURCE_BACKGROUND_SEGMENTS = 10
@@ -11,6 +11,8 @@ RESOURCE_SEGMENT_TINTS = {
     0: (62, 158, 255),
     1: (255, 76, 104),
 }
+RESOURCE_LIT_FILL_ALPHA_RANGE = (48, 168)
+RESOURCE_LIT_BORDER_ALPHA_RANGE = (92, 224)
 
 
 def get_resource_background_segment_rects(
@@ -18,13 +20,21 @@ def get_resource_background_segment_rects(
     height: int,
     *,
     segment_count: int = RESOURCE_BACKGROUND_SEGMENTS,
+    top_reserved_height: int = 0,
+    bottom_reserved_height: int = 0,
 ) -> list[pygame.Rect]:
     if width <= 0 or height <= 0 or segment_count <= 0:
         return []
     horizontal_margin = min(12, max(4, width // 80))
-    vertical_margin = min(10, max(4, height // 40))
+    top_reserved_height = min(height, max(0, int(top_reserved_height)))
+    bottom_reserved_height = min(
+        max(0, height - top_reserved_height),
+        max(0, int(bottom_reserved_height)),
+    )
+    available_height = max(0, height - top_reserved_height - bottom_reserved_height)
+    vertical_margin = min(10, max(4, available_height // 40))
     inner_width = max(0, width - horizontal_margin * 2)
-    inner_height = max(0, height - vertical_margin * 2)
+    inner_height = max(0, available_height - vertical_margin * 2)
     gap = min(8, max(3, width // 260))
     rects: list[pygame.Rect] = []
     for index in range(segment_count):
@@ -33,12 +43,31 @@ def get_resource_background_segment_rects(
         rects.append(
             pygame.Rect(
                 column_left + gap // 2,
-                vertical_margin,
+                top_reserved_height + vertical_margin,
                 max(1, column_right - column_left - gap),
                 inner_height,
             )
         )
     return rects
+
+
+def get_lit_resource_segment_alphas(
+    resource_number: int,
+    *,
+    segment_count: int = RESOURCE_BACKGROUND_SEGMENTS,
+) -> tuple[int, int]:
+    if segment_count <= 1:
+        progress = 1.0
+    else:
+        clamped_number = min(segment_count, max(1, int(resource_number)))
+        progress = (clamped_number - 1) / (segment_count - 1)
+
+    fill_min, fill_max = RESOURCE_LIT_FILL_ALPHA_RANGE
+    border_min, border_max = RESOURCE_LIT_BORDER_ALPHA_RANGE
+    return (
+        round(fill_min + (fill_max - fill_min) * progress),
+        round(border_min + (border_max - border_min) * progress),
+    )
 
 
 def _draw_resource_progress_background(self, zone_surface: pygame.Surface, zone_key: str) -> None:
@@ -47,15 +76,23 @@ def _draw_resource_progress_background(self, zone_surface: pygame.Surface, zone_
     player = self.engine.player_two if zone_key.startswith("player_2_") else self.engine.player_one
     resource_count = min(RESOURCE_BACKGROUND_SEGMENTS, max(0, player.total_resources()))
     segment_color = RESOURCE_SEGMENT_TINTS.get(player.player_id, RESOURCE_SEGMENT_TINTS[0])
+    life_bar_height = max(1, round(zone_surface.get_height() * LIFE_BAR_HEIGHT_RATIO))
+    player_two_zone = zone_key.startswith("player_2_")
 
     overlay = pygame.Surface(zone_surface.get_size(), pygame.SRCALPHA)
     for index, segment_rect in enumerate(
-        get_resource_background_segment_rects(zone_surface.get_width(), zone_surface.get_height())
+        get_resource_background_segment_rects(
+            zone_surface.get_width(),
+            zone_surface.get_height(),
+            top_reserved_height=life_bar_height if player_two_zone else 0,
+            bottom_reserved_height=0 if player_two_zone else life_bar_height,
+        )
     ):
         is_lit = index < resource_count
         if is_lit:
-            pygame.draw.rect(overlay, (*segment_color, 48), segment_rect, border_radius=5)
-            pygame.draw.rect(overlay, (*segment_color, 92), segment_rect, 1, border_radius=5)
+            lit_fill_alpha, lit_border_alpha = get_lit_resource_segment_alphas(index + 1)
+            pygame.draw.rect(overlay, (*segment_color, lit_fill_alpha), segment_rect, border_radius=5)
+            pygame.draw.rect(overlay, (*segment_color, lit_border_alpha), segment_rect, 1, border_radius=5)
         else:
             pygame.draw.rect(overlay, (*segment_color, 20), segment_rect, border_radius=5)
             pygame.draw.rect(overlay, (*segment_color, 48), segment_rect, 1, border_radius=5)

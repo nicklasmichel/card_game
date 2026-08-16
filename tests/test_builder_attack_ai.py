@@ -16,6 +16,7 @@ from core.ai.builder import (
     score_builder_attack_candidate,
 )
 from core.ai.builder.turn_policy import choose_builder_turn_plan
+from core.ai.builder.attack_policy import _estimate_block_value
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_DECLARE_ATTACKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
 
@@ -114,6 +115,28 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertEqual(candidate.attacker_ids, (attacker.unit_id,))
         self.assertGreater(score.total, 0)
 
+    def test_zero_defense_body_has_no_heuristic_block_value(self) -> None:
+        body = self.make_builder_creature(
+            1,
+            aw=2,
+            vw=0,
+            sw=4,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING,),
+        )
+        self.make_builder_creature(
+            0,
+            aw=2,
+            vw=0,
+            sw=3,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING,),
+        )
+
+        self.assertEqual(_estimate_block_value(body, self.engine.human_player, self.engine), 0.0)
+
     def test_bad_trade_prefers_no_attack(self) -> None:
         self.make_builder_creature(1, aw=4, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.TRAMPLE))
         self.make_builder_creature(0, aw=1, vw=4, sw=4, lw=6, ready=True, abilities=(Ability.FLYING,))
@@ -121,6 +144,115 @@ class BuilderAttackAITests(unittest.TestCase):
         candidate, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
 
         self.assertEqual(candidate.attacker_ids, ())
+
+    def test_congested_stalled_board_prefers_safe_progress_over_repeated_pass(self) -> None:
+        self.engine.ai_player.life = 4
+        self.engine.human_player.life = 7
+        for aw, vw, sw, lw, abilities in (
+            (0, 1, 1, 3, (Ability.FLYING,)),
+            (0, 3, 0, 1, (Ability.FLYING, Ability.HASTE)),
+            (0, 3, 0, 1, (Ability.FLYING, Ability.HASTE)),
+            (0, 1, 0, 3, (Ability.HASTE, Ability.VIGILANCE)),
+            (3, 2, 2, 3, (Ability.HASTE, Ability.VIGILANCE)),
+        ):
+            self.make_builder_creature(1, aw=aw, vw=vw, sw=sw, lw=lw, ready=True, abilities=abilities)
+        for aw, vw, sw, lw, current_hp, abilities, ready in (
+            (1, 1, 2, 2, 1, (Ability.FLYING,), True),
+            (2, 0, 2, 2, 2, (Ability.HASTE, Ability.VIGILANCE), True),
+            (1, 1, 3, 2, 2, (Ability.FLYING,), False),
+            (0, 0, 9, 1, 1, (Ability.FLYING, Ability.HASTE), True),
+            (0, 1, 9, 1, 1, (Ability.FLYING,), True),
+        ):
+            self.make_builder_creature(
+                0,
+                aw=aw,
+                vw=vw,
+                sw=sw,
+                lw=lw,
+                current_hp=current_hp,
+                ready=ready,
+                abilities=abilities,
+            )
+        self.engine.turn_number = 8
+        self.engine.builder_last_combat_progress_turn = 8
+
+        normal, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.engine.turn_number = 24
+        self.engine.builder_last_combat_progress_turn = 0
+        stalled, _, scored = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertTrue(
+            stalled.attacker_ids,
+            [(candidate.attacker_ids, current.total, current.player_damage, current.enemy_kill_value, current.projected_counter_damage) for candidate, current in scored[:6]],
+        )
+        self.assertEqual(stalled.attacker_ids, normal.attacker_ids)
+        self.assertTrue(
+            any(
+                name == "stall_pressure"
+                for _candidate, current in scored
+                for name, *_ in current.debug_contributions
+            )
+        )
+
+    def test_stall_pressure_breaks_low_life_full_board_lock(self) -> None:
+        self.engine.ai_player.life = 7
+        self.engine.human_player.life = 4
+        for aw, vw, sw, lw, current_hp, abilities in (
+            (1, 1, 2, 2, 1, (Ability.FLYING,)),
+            (2, 0, 2, 2, 2, (Ability.HASTE, Ability.VIGILANCE)),
+            (1, 1, 3, 2, 2, (Ability.FLYING,)),
+            (0, 0, 9, 1, 1, (Ability.FLYING, Ability.HASTE)),
+            (0, 1, 9, 1, 1, (Ability.FLYING,)),
+        ):
+            self.make_builder_creature(
+                1,
+                aw=aw,
+                vw=vw,
+                sw=sw,
+                lw=lw,
+                current_hp=current_hp,
+                ready=True,
+                abilities=abilities,
+            )
+        for aw, vw, sw, lw, current_hp, abilities in (
+            (0, 1, 1, 3, 3, (Ability.FLYING,)),
+            (0, 3, 0, 1, 1, (Ability.FLYING, Ability.HASTE)),
+            (0, 3, 0, 1, 1, (Ability.FLYING, Ability.HASTE)),
+            (0, 1, 0, 3, 3, (Ability.HASTE, Ability.VIGILANCE)),
+            (3, 2, 2, 3, 3, (Ability.HASTE, Ability.VIGILANCE)),
+        ):
+            self.make_builder_creature(
+                0,
+                aw=aw,
+                vw=vw,
+                sw=sw,
+                lw=lw,
+                current_hp=current_hp,
+                ready=True,
+                abilities=abilities,
+            )
+        self.engine.turn_number = 24
+        self.engine.builder_last_combat_progress_turn = 24
+
+        normal, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.engine.turn_number = 40
+        self.engine.builder_last_combat_progress_turn = 20
+        stalled, _, scored = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertEqual(normal.attacker_ids, ())
+        self.assertTrue(
+            stalled.attacker_ids,
+            [(candidate.attacker_ids, current.total, current.player_damage, current.enemy_kill_value, current.projected_counter_damage) for candidate, current in scored[:6]],
+        )
+        self.assertTrue(
+            any(
+                name == "stall_pressure"
+                for _candidate, current in scored
+                for name, *_ in current.debug_contributions
+            )
+        )
 
     def test_adversarial_followup_checks_intermediate_block_response(self) -> None:
         attacker = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=3, ready=True)

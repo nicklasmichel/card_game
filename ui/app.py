@@ -71,6 +71,7 @@ from ui.layout import (
     blit_text,
     draw_arrowhead,
     draw_area_status_block,
+    draw_life_bar,
     draw_buttons,
     draw_combat_links,
     draw_creatures,
@@ -88,6 +89,7 @@ from ui.layout import (
     draw_side_panel,
     format_target_ref,
     get_creature_screen_positions,
+    get_life_bar_rect,
     get_playfield_sections,
     get_side_panel_layout,
     handle_log_scroll,
@@ -184,6 +186,8 @@ class GodaoApp:
     draw_polyline = draw_polyline
     draw_arrowhead = draw_arrowhead
     draw_area_status_block = draw_area_status_block
+    draw_life_bar = draw_life_bar
+    get_life_bar_rect = staticmethod(get_life_bar_rect)
     draw_link_marker = draw_link_marker
     draw_resources = draw_resources
     draw_creatures = draw_creatures
@@ -336,11 +340,9 @@ class GodaoApp:
         self.match_mode_option_rects: List[Tuple[pygame.Rect, str]] = []
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
-        area_rect = sections["player_1_creatures"] if player.player_id == self.engine.player_one.player_id else sections["player_2_creatures"]
-        width = max(self.card_width, self.scale_ui(180))
-        height = self.title_font.get_height() * 3 + self.scale_ui(24)
-        offset = self.scale_ui(8)
-        return pygame.Rect(area_rect.x + offset, area_rect.y + offset, width, height)
+        is_player_one = player.player_id == self.engine.player_one.player_id
+        area_rect = sections["player_1_creatures"] if is_player_one else sections["player_2_creatures"]
+        return self.get_life_bar_rect(area_rect, at_top=not is_player_one)
 
     def is_creature_visually_tapped(self, creature) -> bool:
         return (

@@ -227,6 +227,7 @@ def initialize_builder_game(
         ),
     ]
     self.turn_number = 0
+    self.builder_last_combat_progress_turn = 0
     self.phase = PHASE_MAIN_1
     self.pending_builder_creature = None
     self.pending_builder_ability = None

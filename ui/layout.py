@@ -1,6 +1,7 @@
 from ui.layout_board import (
     draw_arrowhead,
     draw_area_status_block,
+    draw_life_bar,
     draw_combat_links,
     draw_creatures,
     draw_enemy_area,
@@ -10,6 +11,7 @@ from ui.layout_board import (
     draw_polyline,
     draw_resources,
     get_creature_screen_positions,
+    get_life_bar_rect,
     get_playfield_sections,
 )
 from ui.layout_sidepanel import (
@@ -31,6 +33,7 @@ __all__ = [
     "blit_text",
     "draw_arrowhead",
     "draw_area_status_block",
+    "draw_life_bar",
     "draw_buttons",
     "draw_combat_links",
     "draw_creatures",
@@ -48,6 +51,7 @@ __all__ = [
     "draw_side_piles",
     "format_target_ref",
     "get_creature_screen_positions",
+    "get_life_bar_rect",
     "get_overview_phase_label",
     "get_playfield_sections",
     "get_side_panel_layout",

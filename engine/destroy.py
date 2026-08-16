@@ -47,6 +47,7 @@ def destroy_creature_immediately(
     if creature in owner.battlefield:
         owner.battlefield.remove(creature)
     self.creatures_died_this_turn += 1
+    self.record_builder_combat_progress()
     setattr(creature, "owner_id", owner.player_id)
     destroyed_card = CardInstance(self.make_instance_id(), self.templates[creature.template_id])
     owner.discard_pile.append(destroyed_card)

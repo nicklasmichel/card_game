@@ -27,7 +27,7 @@ ABILITY_DISPLAY_NAMES = {
     Ability.ENRAGED: "Wuetend",
     Ability.PROVOKE: "Provoke",
     Ability.TRAMPLE: "trample",
-    Ability.HASTE: "haste",
+    Ability.HASTE: "Haste",
     Ability.FLYING: "flying",
     Ability.VIGILANT: "Vigilance",
     Ability.VIGILANCE: "Vigilance",

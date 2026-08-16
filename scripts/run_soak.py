@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from diagnostics.soak import SoakConfig, SoakGameResult, run_soak  # noqa: E402 - direct script bootstrap
+from core.config import STARTING_LIFE  # noqa: E402 - direct script bootstrap
 
 
 def _positive_int(value: str) -> int:
@@ -40,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--games", type=_positive_int, default=100, help="number of games to run (default: 100)")
     parser.add_argument("--seed", type=int, default=0, help="first deterministic seed (default: 0)")
+    parser.add_argument(
+        "--starting-life",
+        type=_positive_int,
+        default=STARTING_LIFE,
+        help=f"starting life for both AI players (default: {STARTING_LIFE})",
+    )
     parser.add_argument(
         "--decision-timeout",
         type=_positive_float,
@@ -123,6 +130,7 @@ def _print_summary(report: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = SoakConfig(
+        starting_life=args.starting_life,
         decision_timeout_seconds=args.decision_timeout,
         game_timeout_seconds=args.game_timeout,
         max_turns=args.max_turns,
@@ -133,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     isolation_label = "isolated" if not args.no_isolation else "in-process"
     print(
         f"Running {args.games} game(s), seeds {args.seed}..{args.seed + args.games - 1}, "
-        f"decision timeout {args.decision_timeout:.1f}s ({isolation_label})",
+        f"starting life {args.starting_life}, decision timeout {args.decision_timeout:.1f}s "
+        f"({isolation_label})",
         flush=True,
     )
     summary = run_soak(

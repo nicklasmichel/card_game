@@ -11,6 +11,7 @@ from typing import Callable, Iterable
 from core.builder_rules import builder_creature_stat_cost
 from core.ai.builder.combat_eval import build_candidate_combatant_view, can_legally_block
 from core.ai_logic import SimpleAI
+from core.config import STARTING_LIFE
 from core.game_logic import GameEngine
 from core.models import (
     ControllerKind,
@@ -30,6 +31,7 @@ ProgressCallback = Callable[[dict], None]
 
 @dataclass(frozen=True)
 class SoakConfig:
+    starting_life: int = STARTING_LIFE
     decision_timeout_seconds: float = 30.0
     game_timeout_seconds: float = 300.0
     max_turns: int = 200
@@ -37,6 +39,8 @@ class SoakConfig:
     slow_snapshot_threshold_ms: float = 1_000.0
 
     def __post_init__(self) -> None:
+        if self.starting_life <= 0:
+            raise ValueError("starting_life must be positive")
         if self.decision_timeout_seconds <= 0:
             raise ValueError("decision_timeout_seconds must be positive")
         if self.game_timeout_seconds <= 0:
@@ -411,6 +415,7 @@ def _phase_label(phase: str) -> str:
 def _state_snapshot(engine) -> dict:
     return {
         "turn": int(getattr(engine, "turn_number", 0)),
+        "stalled_turns": int(getattr(engine, "builder_stalled_turns", 0)),
         "phase": _phase_label(getattr(engine, "phase", "unknown")),
         "active_player_id": int(getattr(engine, "active_player_index", 0)),
         "players": [
@@ -538,7 +543,7 @@ def _builder_build_sample(engine, action: dict) -> BuilderBuildSample | None:
     )
 
 
-def _create_soak_engine(seed: int) -> GameEngine:
+def _create_soak_engine(seed: int, *, starting_life: int = STARTING_LIFE) -> GameEngine:
     engine = GameEngine(auto_start=False)
     engine.seed = seed
     engine.rng = Random(seed)
@@ -552,6 +557,8 @@ def _create_soak_engine(seed: int) -> GameEngine:
         auto_begin=True,
         log_start=False,
     )
+    for player in engine.players:
+        player.life = starting_life
     engine.statistics = None
     engine.log_messages.clear()
     engine.pending_log_file_lines.clear()
@@ -636,7 +643,7 @@ def run_single_game(
     """Run one deterministic AI-vs-AI game in the current process."""
     config = config or SoakConfig()
     started_at = perf_counter()
-    engine = _create_soak_engine(seed)
+    engine = _create_soak_engine(seed, starting_life=config.starting_life)
     samples: list[DecisionTiming] = []
     builder_builds: list[BuilderBuildSample] = []
     steps = 0

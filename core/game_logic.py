@@ -209,6 +209,7 @@ class GameEngine:
         self.exit_requested = False
         self.pending_visual_events: List[dict] = []
         self.creatures_died_this_turn = 0
+        self.builder_last_combat_progress_turn = 0
         self.debug_log_to_messages = False
 
         if auto_start:
@@ -289,6 +290,13 @@ class GameEngine:
         return self.get_creature_current_lw(creature) <= 0
 
     @property
+    def builder_stalled_turns(self) -> int:
+        return max(0, int(self.turn_number) - int(self.builder_last_combat_progress_turn))
+
+    def record_builder_combat_progress(self) -> None:
+        self.builder_last_combat_progress_turn = int(self.turn_number)
+
+    @property
     def defending_player(self) -> PlayerState:
         return self.players[1 - self.active_player_index]
 
@@ -326,6 +334,8 @@ class GameEngine:
         source_element: Element,
         attacker_id: int | None = None,
     ) -> None:
+        if amount > 0:
+            self.record_builder_combat_progress()
         self.pending_visual_events.append(
             {
                 "type": "player_damage",

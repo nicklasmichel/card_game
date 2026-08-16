@@ -8,6 +8,8 @@ from diagnostics.soak import BuilderBuildSample, DecisionTiming, SoakConfig, Soa
 class SoakRunnerTests(unittest.TestCase):
     def test_config_rejects_non_positive_limits(self) -> None:
         with self.assertRaises(ValueError):
+            SoakConfig(starting_life=0)
+        with self.assertRaises(ValueError):
             SoakConfig(decision_timeout_seconds=0)
         with self.assertRaises(ValueError):
             SoakConfig(game_timeout_seconds=0)
@@ -39,6 +41,23 @@ class SoakRunnerTests(unittest.TestCase):
         self.assertIsNotNone(result.decision_timings[0].search_metrics)
         self.assertIsNotNone(result.final_snapshot)
         self.assertNotEqual(result.last_phase, "unknown")
+
+    def test_direct_run_uses_configured_starting_life(self) -> None:
+        result = run_single_game(
+            7,
+            SoakConfig(
+                starting_life=15,
+                decision_timeout_seconds=30,
+                game_timeout_seconds=60,
+                max_turns=20,
+                max_steps=1,
+            ),
+        )
+
+        self.assertEqual(
+            [player["life"] for player in result.final_snapshot["players"]],
+            [15, 15],
+        )
 
     def test_summary_calculates_decision_percentiles_and_failures(self) -> None:
         samples = tuple(

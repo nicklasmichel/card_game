@@ -52,6 +52,7 @@ class BuilderTurnProjection:
     hypothetical_unit_id: int | None
     candidate_signature: tuple
     state_signature: tuple
+    builder_stalled_turns: int = 0
     hand_signature: tuple = ()
     used_card_instance_id: int | None = None
 
@@ -136,6 +137,7 @@ def build_current_turn_projection(player: PlayerState, engine) -> BuilderTurnPro
             hand_signature,
             None,
         ),
+        builder_stalled_turns=int(getattr(engine, "builder_stalled_turns", 0)),
         hand_signature=hand_signature,
     )
 
@@ -364,6 +366,7 @@ def project_attack_to_next_turn(
         if unit.unit_id not in removed_attacker_ids
     )
     next_active_life = max(0.0, float(base_projection.enemy_life) - float(player_damage))
+    made_progress = bool(removed_attacker_ids or removed_blocker_ids or player_damage > 0.0)
     return BuilderTurnProjection(
         player_id=base_projection.enemy_id,
         enemy_id=base_projection.player_id,
@@ -394,6 +397,11 @@ def project_attack_to_next_turn(
             tuple(unit.unit_id for unit in next_active_units if unit.is_ready()),
             (),
             None,
+        ),
+        builder_stalled_turns=(
+            0
+            if made_progress
+            else max(0, int(base_projection.builder_stalled_turns) + 1)
         ),
     )
 
@@ -471,6 +479,7 @@ def _rebuild_projection(
         hypothetical_unit_id=resolved_hypothetical,
         candidate_signature=base_projection.candidate_signature if candidate_signature is None else candidate_signature,
         state_signature=state_signature,
+        builder_stalled_turns=base_projection.builder_stalled_turns,
         hand_signature=resolved_hand,
         used_card_instance_id=resolved_used_card,
     )
