@@ -55,7 +55,6 @@ def update_gameplay_timers(self, *, now_ms: int | None = None) -> None:
     timer_paused = (
         getattr(self, "paused", False)
         or getattr(self, "match_mode_selection_open", False)
-        or getattr(self, "start_player_selection_open", False)
         or network_blocked
         or engine.phase == PHASE_GAME_OVER
     )

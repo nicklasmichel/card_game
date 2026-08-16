@@ -21,7 +21,6 @@ class GameplayTimerTests(unittest.TestCase):
             engine=engine,
             paused=False,
             match_mode_selection_open=False,
-            start_player_selection_open=False,
             network_blocks_gameplay=lambda: False,
             timer_game_id=None,
             timer_phase_marker=None,

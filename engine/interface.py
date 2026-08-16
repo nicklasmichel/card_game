@@ -508,6 +508,15 @@ def execute_prepared_ai_action(self) -> None:
                     ),
                     None,
                 )
+                if synthetic_id is None and len(turn_decision.post_main_signature) > 10:
+                    synthetic_id = next(
+                        (
+                            unit_id
+                            for unit_id in turn_decision.post_main_signature[10]
+                            if unit_id < 0
+                        ),
+                        None,
+                    )
                 target_id = turn_decision.ability_action.target_id
                 if synthetic_id is None and target_id is not None and target_id < 0:
                     synthetic_id = target_id

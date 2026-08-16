@@ -15,11 +15,14 @@ from .snapshot import build_builder_snapshot
 from .turn_projection import BuilderTurnProjection, project_attack_to_next_turn, project_creature_action, project_pass_action
 from .turn_types import BuilderTurnActionCandidate
 
-HORIZON_BUILD_LIMIT = 4
-HORIZON_CANDIDATE_SCORING_LIMIT = 24
+HORIZON_BUILD_LIMIT = 3
+HORIZON_CANDIDATE_SCORING_LIMIT = 16
 _HORIZON_MAIN_ACTION_CACHE: dict[tuple, tuple[tuple[int, str, object], ...]] = {}
 NEXT_TURN_LETHAL_BONUS = 900.0
-REPEATED_LETHAL_PREVENTION_BONUS = 520.0
+# Coverage is strategically mandatory, but it must stay on the same scale as
+# the rest of the turn score.  The old value (520) flattened every meaningful
+# distinction between possible flying blockers.
+REPEATED_LETHAL_PREVENTION_BONUS = 48.0
 
 
 @dataclass(frozen=True)

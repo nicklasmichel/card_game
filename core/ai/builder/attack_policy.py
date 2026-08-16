@@ -181,8 +181,10 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     block_exact = True
     response_beams: dict[BuilderAttackCandidate, tuple[BuilderAttackScore, ...]] = {}
     counter_cache: dict[tuple, BuilderCounterResult] | None = {} if include_counterattack else None
+    attack_evaluation_truncated = False
     for candidate in candidates:
         if scored_candidates and builder_search_should_stop():
+            attack_evaluation_truncated = True
             break
         count_builder_search_work("attack_candidates_scored")
         score, block_metadata = _score_builder_attack_candidate_details(
@@ -195,6 +197,7 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
             include_counterattack=False if include_counterattack else include_counterattack,
         )
         if block_metadata.get("deadline_truncated") and candidate.attacker_ids:
+            attack_evaluation_truncated = True
             break
         scored_candidates.append((candidate, score))
         response_beams[candidate] = tuple(block_metadata.get("response_beam", (score,)))
@@ -206,9 +209,9 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     if scored_candidates and scored_candidates[0][1].guaranteed_player_damage >= enemy.life > 0:
         best_candidate, best_score = scored_candidates[0]
         metadata = BuilderSearchMetadata(
-            exact_search=bool(attack_exact and block_exact),
+            exact_search=bool(attack_exact and block_exact and not attack_evaluation_truncated),
             generated_attack_candidates=len(candidates),
-            evaluated_attack_candidates=len(candidates),
+            evaluated_attack_candidates=len(scored_candidates),
             generated_block_assignments=generated_block_assignments,
             evaluated_block_assignments=evaluated_block_assignments,
             pruned_candidates=attack_pruned + block_pruned,
@@ -335,9 +338,9 @@ def _evaluate_best_builder_attack_details(player, combat_context, *, search_budg
     scored_candidates.sort(key=_attack_candidate_sort_key, reverse=True)
     best_candidate, best_score = scored_candidates[0]
     metadata = BuilderSearchMetadata(
-        exact_search=bool(attack_exact and block_exact),
+        exact_search=bool(attack_exact and block_exact and not attack_evaluation_truncated),
         generated_attack_candidates=len(candidates),
-        evaluated_attack_candidates=len(candidates),
+        evaluated_attack_candidates=len(scored_candidates),
         generated_block_assignments=generated_block_assignments,
         evaluated_block_assignments=evaluated_block_assignments,
         pruned_candidates=attack_pruned + block_pruned,

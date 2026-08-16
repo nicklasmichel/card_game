@@ -91,14 +91,12 @@ def draw_summoner_life_circle(self, life: int, x: int, y: int, think_progress: f
 
 
 def draw_summoner_footer(self, surface: pygame.Surface, summoner_key: str, life: int) -> None:
-    scale = getattr(self, "layout_scale", 1.0)
+    scale = getattr(self, "font_scale", getattr(self, "layout_scale", 1.0))
 
     def s(value: int) -> int:
         return max(1, int(round(value * scale)))
 
-    body_size = max(self.small_font.get_height(), 12)
-    title_size = max(self.small_font.get_height() + 3, 15)
-    number_size = max(body_size + 8, title_size + 5, 22)
+    number_size = max(13, round(22 * scale))
     life_font = pygame.font.SysFont("arial", number_size * 2, bold=True)
     rules_font = pygame.font.SysFont("arial", max(s(9), self.small_font.get_height() - s(1)))
     rules_text = ""

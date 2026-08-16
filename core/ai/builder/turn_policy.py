@@ -124,14 +124,7 @@ def plan_builder_turn(player, engine, *, cancel_event=None) -> BuilderTurnDecisi
     runtime_signature = build_builder_runtime_fingerprint(player, engine)
     cached = getattr(engine.ai, "_last_builder_turn_decision", None)
     if cached is not None and _decision_matches_runtime(cached, engine.phase, runtime_signature):
-        cached_attack = cached.predicted_attack_decision
-        cached_budget = (
-            None
-            if cached_attack is None
-            else cached_attack.search_metadata.search_budget_name
-        )
-        if engine.phase != PHASE_DECLARE_ATTACKERS or cached_budget == FINAL_DECISION_SEARCH_BUDGET.mode_name:
-            return cached
+        return cached
 
     time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
     deadline = monotonic() + time_limit
@@ -366,7 +359,9 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
             engine=engine,
             player=player,
             deadline=deadline,
+            evaluate_horizon=engine.phase != PHASE_DECLARE_ATTACKERS,
         )
+        decision = _finalize_selected_attack_plan(base_projection, decision)
         _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [decision], False)
         return decision
     static_candidates, fallback_used, build_debug = _build_projected_candidates(
@@ -438,7 +433,8 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
         if decisions and builder_search_should_stop(deadline):
             break
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
-    decision = decisions[0]
+    decision = _finalize_selected_attack_plan(base_projection, decisions[0])
+    decisions[0] = decision
     _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, decision)
     _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, decisions, fallback_used)
     return decision
@@ -456,11 +452,17 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             snapshot=snapshot,
         )
     base_projection = build_current_turn_projection(player, engine)
-    frontier_context = _build_frontier_context(
-        snapshot,
-        base_projection,
-        deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
-    )
+    if engine.phase == PHASE_DECLARE_ATTACKERS:
+        # Creature-frontier values cannot change the already committed main
+        # action.  Computing them here used to consume the attack phase's local
+        # budget before the accurate combat search even started.
+        frontier_context = (0.0, "-", 0.0, "-", 0.0, "-")
+    else:
+        frontier_context = _build_frontier_context(
+            snapshot,
+            base_projection,
+            deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
+        )
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     attack_budget = (
@@ -499,8 +501,9 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             engine=engine,
             player=player,
             deadline=deadline,
+            evaluate_horizon=engine.phase != PHASE_DECLARE_ATTACKERS,
         )
-        return decision
+        return _finalize_selected_attack_plan(base_projection, decision)
     decisions = _evaluate_ability_plans_for_projection(
         player=player,
         engine=engine,
@@ -516,9 +519,10 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
         frontier_context=frontier_context,
         allow_ability=allow_ability,
         deadline=deadline,
+        evaluate_horizon=engine.phase != PHASE_DECLARE_ATTACKERS,
     )
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
-    return decisions[0]
+    return _finalize_selected_attack_plan(base_projection, decisions[0])
 
 
 def _generate_main_action_projections(player, engine, base_projection, shortlisted):
@@ -574,6 +578,7 @@ def _evaluate_ability_plans_for_projection(
     frontier_context: tuple[float, str, float, str, float, str],
     deadline: float,
     allow_ability: bool = True,
+    evaluate_horizon: bool = True,
 ) -> list[BuilderTurnDecision]:
     if not BUILDER_ABILITIES_ENABLED:
         predicted_attack = _evaluate_attack_cached(main_projection, attack_cache)
@@ -596,6 +601,7 @@ def _evaluate_ability_plans_for_projection(
                 engine=engine,
                 player=player,
                 deadline=deadline,
+                evaluate_horizon=evaluate_horizon,
             )
         ]
     ability_candidates = _generate_ability_action_candidates(player, engine, main_projection, allow_ability=allow_ability)
@@ -625,6 +631,7 @@ def _evaluate_ability_plans_for_projection(
             engine=engine,
             player=player,
             deadline=deadline,
+            evaluate_horizon=evaluate_horizon,
         )
         decisions.append(decision)
         if decisions and builder_search_should_stop(deadline):
@@ -790,6 +797,7 @@ def _build_action_decision(
     engine,
     player,
     deadline: float,
+    evaluate_horizon: bool = True,
 ) -> BuilderTurnDecision:
     cap_context = compute_builder_cap_context(
         projection.players[projection.player_id],
@@ -810,7 +818,7 @@ def _build_action_decision(
         )
 
     terminal = _score_terminal_projection(projection, predicted_attack)
-    if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
+    if not evaluate_horizon or predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
         horizon = BuilderHorizonReport()
     else:
         horizon = _evaluate_horizon_cached(
@@ -1100,6 +1108,51 @@ def _evaluate_attack_cached(
     )
     cache[cache_key] = decision
     return decision
+
+
+def _finalize_selected_attack_plan(base_projection, decision: BuilderTurnDecision) -> BuilderTurnDecision:
+    """Run the accurate attack search once for the action we will execute.
+
+    Main-action comparison deliberately uses the cheaper lookahead budget.  In
+    the past the attack phase then discarded that preview and silently chose a
+    different attack.  Finalizing only the selected line keeps main search
+    bounded while giving execution one authoritative attack decision to reuse.
+    """
+    predicted = decision.predicted_attack_decision
+    if (
+        predicted is not None
+        and predicted.search_metadata.search_budget_name == FINAL_DECISION_SEARCH_BUDGET.mode_name
+    ):
+        return decision
+
+    action_kind = decision.action_candidate.action_kind
+    if action_kind == "resource":
+        main_projection = project_resource_action(base_projection)
+    elif action_kind == "creature":
+        main_projection = project_creature_action(base_projection, decision.action_candidate)
+    elif action_kind == "pass":
+        main_projection = project_pass_action(base_projection)
+    else:
+        main_projection = base_projection
+
+    final_projection = (
+        project_ability_action(main_projection, decision.ability_action)
+        if BUILDER_ABILITIES_ENABLED
+        else main_projection
+    )
+    final_attack = evaluate_best_builder_attack(
+        final_projection.players[final_projection.player_id],
+        final_projection,
+        search_budget=FINAL_DECISION_SEARCH_BUDGET,
+        debug_output=False,
+    )
+    if (
+        predicted is not None
+        and final_attack.candidate == predicted.candidate
+        and final_attack.defensive_response == predicted.defensive_response
+    ):
+        return decision
+    return replace(decision, predicted_attack_decision=final_attack)
 
 
 def _evaluate_horizon_cached(
@@ -1479,9 +1532,17 @@ def _score_flying_coverage_value(snapshot, projection, predicted_attack, project
     if horizon.coverage_prevents_repeated_lethal:
         value += REPEATED_LETHAL_PREVENTION_BONUS
         if projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING):
-            # Once the required flying block is covered, prefer a body that also
-            # shortens the race instead of spending the whole budget on defense.
-            value += projected_candidate.candidate.sw * 7.0
+            candidate = projected_candidate.candidate
+            static = projected_candidate.static_score
+            # Once flying coverage exists, rank the body by whether it can keep
+            # providing that coverage.  Damage is only a small tie-breaker; it
+            # must not turn a fragile one-shot chump into the preferred answer.
+            value += static.matchup_defense * 2.0
+            value += static.blocker_survival_probability * 12.0
+            value += static.repeated_block_value * 2.0
+            value += candidate.vw
+            value += max(0, candidate.lw - 1) * 1.5
+            value += candidate.sw * 0.5
     if horizon.coverage_ready_turn == 1:
         unavoidable_second_damage = max(0.0, horizon.cumulative_unavoidable_damage - horizon.damage_before_coverage_ready)
     else:

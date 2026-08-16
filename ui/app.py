@@ -63,7 +63,6 @@ from ui.assets import (
     handle_preview_stop,
     load_card_art_images,
     load_resource_back_images,
-    load_resource_segment_images,
     load_summoner_images,
     load_ui_symbol_images,
     render_scaled_card_surface,
@@ -72,8 +71,6 @@ from ui.layout import (
     blit_text,
     draw_arrowhead,
     draw_area_status_block,
-    draw_builder_resource_counter_text,
-    draw_builder_resource_stack_card,
     draw_buttons,
     draw_combat_links,
     draw_creatures,
@@ -99,7 +96,6 @@ from ui.overlays import (
     draw_dice_battle_overlay,
     draw_game_over_overlay,
     draw_pause_overlay,
-    draw_start_player_overlay,
 )
 from ui.network_menu import (
     draw_match_mode_overlay,
@@ -117,7 +113,6 @@ from ui.runtime import (
     draw,
     get_decision_marker,
     get_think_progress,
-    handle_start_player_selection_click,
     handle_mouse_click,
     handle_mouse_down,
     handle_mouse_motion,
@@ -127,6 +122,7 @@ from ui.runtime import (
     trigger_primary_action_button,
     update_decision_timer,
 )
+from ui.scaling import build_layout_metrics, scale_font_value, scale_ui_value
 from ui.timers import update_gameplay_timers
 from ui.visuals import (
     consume_visual_events,
@@ -139,6 +135,8 @@ from ui.visuals import (
 
 
 class GodaoApp:
+    scale_ui = scale_ui_value
+    scale_font = scale_font_value
     draw_playfield_section_box = draw_playfield_section_box
     build_hand_card_surface = build_hand_card_surface
     draw_hand_card = draw_hand_card
@@ -186,8 +184,6 @@ class GodaoApp:
     draw_polyline = draw_polyline
     draw_arrowhead = draw_arrowhead
     draw_area_status_block = draw_area_status_block
-    draw_builder_resource_counter_text = draw_builder_resource_counter_text
-    draw_builder_resource_stack_card = draw_builder_resource_stack_card
     draw_link_marker = draw_link_marker
     draw_resources = draw_resources
     draw_creatures = draw_creatures
@@ -204,13 +200,11 @@ class GodaoApp:
     draw_dice_battle_overlay = draw_dice_battle_overlay
     draw_game_over_overlay = draw_game_over_overlay
     draw_pause_overlay = draw_pause_overlay
-    draw_start_player_overlay = draw_start_player_overlay
     draw_match_mode_overlay = draw_match_mode_overlay
     draw_network_status_overlay = draw_network_status_overlay
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
-    load_resource_segment_images = load_resource_segment_images
     load_summoner_images = load_summoner_images
     load_ui_symbol_images = load_ui_symbol_images
     load_card_art_images = load_card_art_images
@@ -236,7 +230,6 @@ class GodaoApp:
     update_gameplay_timers = update_gameplay_timers
     get_think_progress = get_think_progress
     handle_ui_action = handle_ui_action
-    handle_start_player_selection_click = handle_start_player_selection_click
     trigger_primary_action_button = trigger_primary_action_button
     handle_mouse_down = handle_mouse_down
     handle_mouse_up = handle_mouse_up
@@ -270,24 +263,24 @@ class GodaoApp:
                 (self.window_width, self.window_height),
                 display_flags,
             )
-        self.card_width = 172 if self.window_width >= 1800 else 151
-        self.card_height = int(self.card_width * 1.26)
-        self.card_gap = 18 if self.window_width >= 1800 else 13
-        self.side_panel_width = 470 if self.window_width >= 1800 else 430
-        self.main_area_width = self.window_width - self.side_panel_width - 30
+        layout = build_layout_metrics(self.window_width, self.window_height)
+        self.layout_scale = layout.scale
+        self.font_scale = layout.font_scale
+        self.card_width = layout.card_width
+        self.card_height = layout.card_height
+        self.card_gap = layout.card_gap
+        self.side_panel_width = layout.side_panel_width
+        self.main_area_width = self.window_width - self.side_panel_width - self.scale_ui(30)
         pygame.display.set_caption(APP_WINDOW_TITLE)
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("arial", 20)
-        self.small_font = pygame.font.SysFont("arial", 12)
-        self.title_font = pygame.font.SysFont("arial", 24, bold=True)
-        self.player_name_font = pygame.font.SysFont("arial", 48, bold=True)
-        self.layout_scale = 1.0
+        self.font = pygame.font.SysFont("arial", layout.font_size)
+        self.small_font = pygame.font.SysFont("arial", layout.small_font_size)
+        self.title_font = pygame.font.SysFont("arial", layout.title_font_size, bold=True)
+        self.player_name_font = pygame.font.SysFont("arial", layout.player_name_font_size, bold=True)
         session_was_provided = session is not None
         self.session = session or LocalPveSession(auto_start=False)
         self.engine = self.session.state
         self.resource_back_images = self.load_resource_back_images()
-        self.resource_segment_images = self.load_resource_segment_images()
-        self.resource_background_scaled_images: dict[tuple[int, int, int], pygame.Surface] = {}
         self.summoner_images = self.load_summoner_images()
         self.ui_symbol_images = self.load_ui_symbol_images()
         self.card_art_images = self.load_card_art_images()
@@ -341,35 +334,13 @@ class GodaoApp:
         self.join_address_input_open = False
         self.match_mode_selection_open = not session_was_provided
         self.match_mode_option_rects: List[Tuple[pygame.Rect, str]] = []
-        self.start_player_selection_open = (
-            session_was_provided and self.session.local_player_id == 0
-        )
-        self.start_player_option_rects: List[Tuple[pygame.Rect, str]] = []
-
-    def open_start_player_selection(self) -> None:
-        self.start_player_selection_open = True
-        self.start_player_option_rects = []
-        self.clear_drag_state()
-
-    def start_new_game_with_selected_player(self, selection: str) -> None:
-        starting_player_id = {
-            "player_1": 0,
-            "player_2": 1,
-            "random": None,
-        }.get(selection)
-        if selection not in {"player_1", "player_2", "random"}:
-            return
-        self.start_player_selection_open = False
-        self.start_player_option_rects = []
-        self.clear_drag_state()
-        self.session.start_new_game(starting_player_id=starting_player_id)
-
     def get_summoner_rect_for_player(self, player) -> pygame.Rect:
         sections = self.get_playfield_sections()
         area_rect = sections["player_1_creatures"] if player.player_id == self.engine.player_one.player_id else sections["player_2_creatures"]
-        width = max(self.card_width, 180)
-        height = self.title_font.get_height() * 3 + 24
-        return pygame.Rect(area_rect.x + 8, area_rect.y + 8, width, height)
+        width = max(self.card_width, self.scale_ui(180))
+        height = self.title_font.get_height() * 3 + self.scale_ui(24)
+        offset = self.scale_ui(8)
+        return pygame.Rect(area_rect.x + offset, area_rect.y + offset, width, height)
 
     def is_creature_visually_tapped(self, creature) -> bool:
         return (

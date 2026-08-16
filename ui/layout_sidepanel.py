@@ -64,7 +64,11 @@ def get_action_panel_prompt(self) -> str:
 
 
 def get_panel_header_font(self) -> pygame.font.Font:
-    return pygame.font.SysFont("arial", max(self.font.get_height() + 6, 28), bold=True)
+    return pygame.font.SysFont(
+        "arial",
+        max(self.font.get_height() + self.scale_font(6), self.scale_font(28)),
+        bold=True,
+    )
 
 
 def _visible_log_messages(self) -> list[str]:
@@ -116,16 +120,23 @@ def draw_side_panel(self) -> None:
 
 
 def get_side_panel_layout(self) -> tuple[pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect, pygame.Rect]:
-    panel = pygame.Rect(self.window_width - self.side_panel_width - 10, 10, self.side_panel_width, self.window_height - 20)
-    inner_x = panel.x + 14
-    inner_width = panel.width - 28
-    section_gap = 10
-    inner_height = panel.height - 28
+    outer_margin = self.scale_ui(10)
+    inner_margin = self.scale_ui(14)
+    panel = pygame.Rect(
+        self.window_width - self.side_panel_width - outer_margin,
+        outer_margin,
+        self.side_panel_width,
+        self.window_height - outer_margin * 2,
+    )
+    inner_x = panel.x + inner_margin
+    inner_width = panel.width - inner_margin * 2
+    section_gap = self.scale_ui(10)
+    inner_height = panel.height - inner_margin * 2
     usable_height = inner_height - section_gap
     log_height = usable_height // 2
     action_height = usable_height - log_height
-    enemy_piles_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, 0)
-    log_rect = pygame.Rect(inner_x, panel.y + 14, inner_width, log_height)
+    enemy_piles_rect = pygame.Rect(inner_x, panel.y + inner_margin, inner_width, 0)
+    log_rect = pygame.Rect(inner_x, panel.y + inner_margin, inner_width, log_height)
     action_rect = pygame.Rect(inner_x, log_rect.bottom + section_gap, inner_width, action_height)
     player_piles_rect = pygame.Rect(inner_x, action_rect.bottom, inner_width, 0)
     return panel, enemy_piles_rect, log_rect, action_rect, player_piles_rect
@@ -155,28 +166,29 @@ def draw_side_overview(self, rect: pygame.Rect) -> None:
 
 def draw_side_log(self, rect: pygame.Rect) -> None:
     header_font = get_panel_header_font(self)
-    header_y = rect.y + 12
-    self.blit_text(header_font, "Logging", TEXT_COLOR, rect.x + 12, header_y)
+    margin = self.scale_ui(12)
+    header_y = rect.y + margin
+    self.blit_text(header_font, "Logging", TEXT_COLOR, rect.x + margin, header_y)
     game_timer_text = format_elapsed_ms(getattr(self, "game_elapsed_ms", 0))
     game_timer_width = header_font.size(game_timer_text)[0]
     self.blit_text(
         header_font,
         game_timer_text,
         MUTED_TEXT,
-        rect.right - 12 - game_timer_width,
+        rect.right - margin - game_timer_width,
         header_y,
     )
-    header_gap = 18
+    header_gap = self.scale_ui(18)
     viewport = pygame.Rect(
-        rect.x + 12,
+        rect.x + margin,
         header_y + header_font.get_height() + header_gap,
-        rect.width - 36,
-        rect.height - (header_font.get_height() + header_gap + 12),
+        rect.width - self.scale_ui(36),
+        rect.height - (header_font.get_height() + header_gap + margin),
     )
     self.log_viewport_rect = viewport
-    line_height = 22
-    line_gap = 2
-    entry_gap = 6
+    line_height = max(self.font.get_height() + self.scale_ui(2), self.scale_ui(22))
+    line_gap = self.scale_ui(2)
+    entry_gap = self.scale_ui(6)
     _ensure_log_cache(self, viewport.width, line_height, line_gap)
     wrapped_entries = getattr(self, "_log_wrapped_entries", [])
     entry_heights = getattr(self, "_log_entry_heights", [])
@@ -209,15 +221,16 @@ def draw_side_log(self, rect: pygame.Rect) -> None:
         if entry_index < len(wrapped_entries) - 1:
             y += entry_gap
     self.screen.set_clip(clip_before)
-    track_rect = pygame.Rect(rect.right - 18, viewport.y, 6, viewport.height)
-    pygame.draw.rect(self.screen, SECTION_COLOR, track_rect, border_radius=3)
+    track_rect = pygame.Rect(rect.right - self.scale_ui(18), viewport.y, self.scale_ui(6), viewport.height)
+    border_radius = self.scale_ui(3)
+    pygame.draw.rect(self.screen, SECTION_COLOR, track_rect, border_radius=border_radius)
     if content_height > viewport.height and max_offset > 0:
-        thumb_height = max(28, int(viewport.height * (viewport.height / content_height)))
+        thumb_height = max(self.scale_ui(28), int(viewport.height * (viewport.height / content_height)))
         thumb_y = viewport.y + int((viewport.height - thumb_height) * (self.log_scroll_offset / max_offset))
         thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_height)
-        pygame.draw.rect(self.screen, HIGHLIGHT, thumb_rect, border_radius=3)
+        pygame.draw.rect(self.screen, HIGHLIGHT, thumb_rect, border_radius=border_radius)
     else:
-        pygame.draw.rect(self.screen, MUTED_TEXT, track_rect, border_radius=3)
+        pygame.draw.rect(self.screen, MUTED_TEXT, track_rect, border_radius=border_radius)
 
 
 def format_target_ref(self, target) -> str:
@@ -278,28 +291,35 @@ def draw_action_detail_sections(self, rect: pygame.Rect, start_y: int, max_botto
     for title, lines in sections:
         content = [title]
         for line in lines:
-            wrapped = self.wrap_text(self.small_font, line, rect.width - 24)
+            wrapped = self.wrap_text(self.small_font, line, rect.width - self.scale_ui(24))
             content.extend(wrapped or [""])
-        height = 16 + len(content) * 16 + 8
-        box_rect = pygame.Rect(rect.x + 12, y, rect.width - 24, height)
+        line_height = max(self.small_font.get_height() + self.scale_ui(3), self.scale_ui(16))
+        height = self.scale_ui(24) + len(content) * line_height
+        box_rect = pygame.Rect(
+            rect.x + self.scale_ui(12),
+            y,
+            rect.width - self.scale_ui(24),
+            height,
+        )
         if max_bottom is not None and box_rect.bottom > max_bottom:
             break
         pygame.draw.rect(self.screen, SECTION_COLOR, box_rect, border_radius=6)
         pygame.draw.rect(self.screen, CARD_BORDER, box_rect, 1, border_radius=6)
-        line_y = box_rect.y + 8
-        self.blit_text(self.small_font, title, HIGHLIGHT, box_rect.x + 8, line_y)
-        line_y += 18
+        line_y = box_rect.y + self.scale_ui(8)
+        self.blit_text(self.small_font, title, HIGHLIGHT, box_rect.x + self.scale_ui(8), line_y)
+        line_y += max(self.small_font.get_height() + self.scale_ui(5), self.scale_ui(18))
         first = True
         for line in content[1:]:
             color = TEXT_COLOR if first else MUTED_TEXT
-            self.blit_text(self.small_font, line, color, box_rect.x + 8, line_y)
-            line_y += 16
+            self.blit_text(self.small_font, line, color, box_rect.x + self.scale_ui(8), line_y)
+            line_y += line_height
             first = False
-        y = box_rect.bottom + 8
+        y = box_rect.bottom + self.scale_ui(8)
     return y
 
 
 def draw_side_actions(self, rect: pygame.Rect) -> None:
+    s = self.scale_ui
     local_decision_check = getattr(self, "local_player_has_primary_decision", None)
     local_player_can_act = (
         local_decision_check()
@@ -313,22 +333,26 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     )
     phase_label = get_action_panel_title(self)
     button_font = get_panel_header_font(self)
-    compact_button_font = pygame.font.SysFont("arial", max(self.font.get_height() + 2, 22), bold=True)
+    compact_button_font = pygame.font.SysFont(
+        "arial",
+        max(self.font.get_height() + self.scale_font(2), self.scale_font(22)),
+        bold=True,
+    )
     header_font = button_font
-    header_y = rect.y + 12
+    header_y = rect.y + s(12)
     phase_timer_text = format_elapsed_ms(getattr(self, "phase_elapsed_ms", 0))
     phase_timer_width = header_font.size(phase_timer_text)[0]
-    phase_timer_x = rect.right - 12 - phase_timer_width
+    phase_timer_x = rect.right - s(12) - phase_timer_width
     header_text = self.fit_text(
         header_font,
         f"{self.engine.active_player.name} - {phase_label}",
-        max(1, phase_timer_x - (rect.x + 24)),
+        max(1, phase_timer_x - (rect.x + s(24))),
     )
     self.blit_text(
         header_font,
         header_text,
         TEXT_COLOR,
-        rect.x + 12,
+        rect.x + s(12),
         header_y,
     )
     self.blit_text(
@@ -341,14 +365,14 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     prompt_text = get_action_panel_prompt(self)
     prompt_bottom = header_y + header_font.get_height()
     if prompt_text:
-        prompt_rect = pygame.Rect(rect.x + 12, prompt_bottom + 12, rect.width - 24, 64)
-        self.blit_wrapped_text(self.font, prompt_text, MUTED_TEXT, prompt_rect, 22)
+        prompt_rect = pygame.Rect(rect.x + s(12), prompt_bottom + s(12), rect.width - s(24), s(64))
+        self.blit_wrapped_text(self.font, prompt_text, MUTED_TEXT, prompt_rect, s(22))
         prompt_bottom = prompt_rect.bottom
-    button_margin = 12
+    button_margin = s(12)
     width = rect.width - button_margin * 2
-    height = 36
-    gap = 10
-    builder_resource_line_height = 22
+    height = s(36)
+    gap = s(10)
+    builder_resource_line_height = s(22)
     start_x = rect.x + button_margin
     large_primary_button = len(action_specs) == 1 and (
         action_specs[0].label == "Next"
@@ -362,34 +386,34 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
     )
     combat_block_action_row = False
     if builder_main_action_row or combat_block_action_row or large_primary_button:
-        height = 72
+        height = s(72)
     if self.engine.phase == PHASE_BUILDER_CREATURE:
         stat_specs = [spec for spec in action_specs if spec.action in BUILDER_STAT_ACTIONS]
         ability_specs = [spec for spec in action_specs if spec.action.startswith("builder_select_ability_")]
         footer_specs = [spec for spec in action_specs if spec not in stat_specs and spec not in ability_specs]
         stat_rows = (len(stat_specs) + 3) // 4
-        stat_button_size = max(44, (width - gap * 3) // 4)
-        button_total_height = builder_resource_line_height + gap
+        stat_button_height = s(44)
+        group_heights: list[int] = []
+        if self.engine.pending_builder_creature is not None:
+            group_heights.append(builder_resource_line_height)
         if ability_specs:
-            button_total_height += len(ability_specs) * 44 + max(0, len(ability_specs) - 1) * gap
+            group_heights.append(len(ability_specs) * s(44) + max(0, len(ability_specs) - 1) * gap)
         if stat_specs:
-            if button_total_height:
-                button_total_height += gap
-            button_total_height += stat_rows * stat_button_size + max(0, stat_rows - 1) * gap
+            group_heights.append(stat_rows * stat_button_height + max(0, stat_rows - 1) * gap)
         if footer_specs:
-            if button_total_height:
-                button_total_height += gap
-            button_total_height += len(footer_specs) * 44 + max(0, len(footer_specs) - 1) * gap
+            group_heights.append(len(footer_specs) * s(44) + max(0, len(footer_specs) - 1) * gap)
+        button_total_height = sum(group_heights) + max(0, len(group_heights) - 1) * gap
     elif builder_main_action_row or combat_block_action_row:
         button_total_height = len(action_specs) * height + gap
     else:
         button_total_height = len(action_specs) * height + max(0, len(action_specs) - 1) * gap
-    button_start_y = rect.bottom - 12 - button_total_height
-    draw_action_detail_sections(self, rect, prompt_bottom + 8, button_start_y - 8)
+    button_start_y = rect.bottom - s(12) - button_total_height
+    draw_action_detail_sections(self, rect, prompt_bottom + s(8), button_start_y - s(8))
     start_y = button_start_y
     if self.engine.phase == PHASE_BUILDER_CREATURE:
-        stat_gap = 8
-        stat_button_size = max(44, (width - stat_gap * 3) // 4)
+        stat_gap = s(8)
+        stat_button_width = max(s(44), (width - stat_gap * 3) // 4)
+        stat_button_height = s(44)
         current_y = start_y
         stat_specs = [spec for spec in action_specs if spec.action in BUILDER_STAT_ACTIONS]
         ability_specs = [spec for spec in action_specs if spec.action.startswith("builder_select_ability_")]
@@ -405,8 +429,8 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
                 current_y,
             )
             current_y += builder_resource_line_height + gap
-        for spec in ability_specs:
-            button_rect = pygame.Rect(start_x, current_y, width, 44)
+        for ability_index, spec in enumerate(ability_specs):
+            button_rect = pygame.Rect(start_x, current_y, width, s(44))
             selected_ability_actions = set()
             if self.engine.pending_builder_creature is not None:
                 pending = self.engine.pending_builder_creature
@@ -416,33 +440,37 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
                     selected_ability_actions.add("builder_select_ability_haste")
             is_selected_ability = spec.action in selected_ability_actions
             button_color = HIGHLIGHT if is_selected_ability and spec.enabled else BUTTON_COLOR if spec.enabled else BUTTON_DISABLED
-            pygame.draw.rect(self.screen, button_color, button_rect, border_radius=6)
-            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            pygame.draw.rect(self.screen, button_color, button_rect, border_radius=s(6))
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, s(2), border_radius=s(6))
             self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
             self.buttons.append((button_rect, spec))
-            current_y += 44 + gap
-        if ability_specs and stat_specs:
+            current_y += s(44)
+            if ability_index < len(ability_specs) - 1:
+                current_y += gap
+        if ability_specs and (stat_specs or footer_specs):
             current_y += gap
         stat_rows = (len(stat_specs) + 3) // 4
         for row_index in range(stat_rows):
             row_specs = stat_specs[row_index * 4 : row_index * 4 + 4]
             for column_index, spec in enumerate(row_specs):
                 button_rect = pygame.Rect(
-                    start_x + column_index * (stat_button_size + stat_gap),
+                    start_x + column_index * (stat_button_width + stat_gap),
                     current_y,
-                    stat_button_size,
-                    stat_button_size,
+                    stat_button_width,
+                    stat_button_height,
                 )
                 color = BUTTON_COLOR if spec.enabled else _soft_disabled_button_color(BUTTON_COLOR)
-                pygame.draw.rect(self.screen, color, button_rect, border_radius=6)
-                pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+                pygame.draw.rect(self.screen, color, button_rect, border_radius=s(6))
+                pygame.draw.rect(self.screen, CARD_BORDER, button_rect, s(2), border_radius=s(6))
                 self.blit_centered_text(compact_button_font, spec.label, TEXT_COLOR, button_rect)
                 self.buttons.append((button_rect, spec))
-            current_y += stat_button_size + gap
+            current_y += stat_button_height
+            if row_index < stat_rows - 1:
+                current_y += gap
         if stat_specs and footer_specs:
             current_y += gap
-        for spec in footer_specs:
-            button_rect = pygame.Rect(start_x, current_y, width, 44)
+        for footer_index, spec in enumerate(footer_specs):
+            button_rect = pygame.Rect(start_x, current_y, width, s(44))
             is_create_button = spec.action == "builder_confirm_creature"
             if is_create_button and spec.enabled:
                 button_color = PLAYER_CARD_COLOR
@@ -450,24 +478,26 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
                 button_color = BUTTON_COLOR
             else:
                 button_color = BUTTON_DISABLED
-            pygame.draw.rect(self.screen, button_color, button_rect, border_radius=6)
-            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            pygame.draw.rect(self.screen, button_color, button_rect, border_radius=s(6))
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, s(2), border_radius=s(6))
             self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
             self.buttons.append((button_rect, spec))
-            current_y += 44 + gap
+            current_y += s(44)
+            if footer_index < len(footer_specs) - 1:
+                current_y += gap
         return
     if builder_main_action_row or combat_block_action_row:
         for index, spec in enumerate(action_specs):
             button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)
-            pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
-            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+            pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=s(6))
+            pygame.draw.rect(self.screen, CARD_BORDER, button_rect, s(2), border_radius=s(6))
             self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
             self.buttons.append((button_rect, spec))
         return
     for index, spec in enumerate(action_specs):
         button_rect = pygame.Rect(start_x, start_y + index * (height + gap), width, height)
-        pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=6)
-        pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)
+        pygame.draw.rect(self.screen, BUTTON_COLOR if spec.enabled else BUTTON_DISABLED, button_rect, border_radius=s(6))
+        pygame.draw.rect(self.screen, CARD_BORDER, button_rect, s(2), border_radius=s(6))
         self.blit_centered_text(button_font, spec.label, TEXT_COLOR, button_rect)
         self.buttons.append((button_rect, spec))
 

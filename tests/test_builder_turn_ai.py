@@ -4,6 +4,8 @@ import math
 import unittest
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.ai.builder import (
+    BuilderHorizonReport,
+    BuilderProjectedCandidate,
     build_builder_runtime_fingerprint,
     build_current_turn_projection,
     evaluate_main_action_horizon,
@@ -21,6 +23,7 @@ from core.ai.builder.search_budget import FINAL_DECISION_SEARCH_BUDGET
 from core.ai.builder.turn_policy import (
     _build_projected_candidates,
     _generate_main_action_projections,
+    _score_flying_coverage_value,
     _shortlist_projected_candidates,
     evaluate_builder_next_main_value,
 )
@@ -369,6 +372,43 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertEqual(decision.score.cumulative_unavoidable_damage, 5.0)
         self.assertEqual(decision.score.coverage_ready_turn, 1)
         self.assertTrue(decision.score.must_hold_as_blocker)
+
+    def test_repeated_flying_coverage_prefers_persistent_blocker_over_damage_shell(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 4)
+        self.make_builder_creature(
+            0,
+            aw=1,
+            vw=1,
+            sw=2,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING, Ability.HASTE),
+        )
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        candidates = generate_builder_creature_candidates(snapshot, 4)
+        damage_shell = next(current for current in candidates if current.key == (0, 1, 3, 1, "FLYING"))
+        persistent_blocker = next(current for current in candidates if current.key == (0, 3, 1, 1, "FLYING"))
+
+        def project(current):
+            static_score = score_builder_creature_candidate(
+                current,
+                snapshot,
+                available_resources=4,
+                enemy_creatures=list(self.engine.human_player.battlefield),
+                own_creatures=[],
+            )
+            return BuilderProjectedCandidate(current, static_score, future_value=static_score.total)
+
+        horizon = BuilderHorizonReport(
+            second_attack_damage=2.0,
+            coverage_ready_turn=1,
+            coverage_prevents_repeated_lethal=True,
+            must_hold_as_blocker=True,
+        )
+        damage_value = _score_flying_coverage_value(None, None, None, project(damage_shell), horizon)
+        blocker_value = _score_flying_coverage_value(None, None, None, project(persistent_blocker), horizon)
+
+        self.assertGreater(blocker_value, damage_value + 10.0)
 
     def test_planning_with_haste_candidates_does_not_mutate_runtime_state(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
@@ -853,6 +893,53 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertEqual(first.ability_action.action_kind, "skip")
         self.assertTrue(all(math.isfinite(value) for value in first.score.__dict__.values() if isinstance(value, float)))
 
+    def test_main_plan_is_reused_unchanged_in_attack_phase(self) -> None:
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
+        for sw in (2, 1, 1, 1, 1):
+            self.make_builder_creature(1, aw=1, vw=1, sw=sw, lw=2, ready=True)
+
+        main_decision = plan_builder_turn(self.engine.ai_player, self.engine)
+        self.assertEqual(main_decision.action_candidate.action_kind, "pass")
+
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        attack_decision = plan_builder_turn(self.engine.ai_player, self.engine)
+
+        self.assertIs(attack_decision, main_decision)
+        self.assertEqual(
+            attack_decision.predicted_attack_decision.candidate,
+            main_decision.predicted_attack_decision.candidate,
+        )
+
+    def test_non_attacking_created_unit_plan_is_materialized_for_phase_reuse(self) -> None:
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        self.set_builder_resources(self.engine.ai_player, 8)
+        self.engine.ai_player.life = 10
+        self.engine.human_player.life = 20
+        self.make_builder_creature(0, aw=4, vw=1, sw=5, lw=1, ready=True, abilities=(Ability.FLYING,))
+        for _ in range(2):
+            self.make_builder_creature(1, aw=0, vw=1, sw=1, lw=2, ready=True)
+        for _ in range(2):
+            self.make_builder_creature(0, aw=0, vw=3, sw=0, lw=3, ready=True)
+
+        self.assertTrue(self.engine.prepare_ai_turn_action())
+        pending = self.engine.pending_ai_action
+        self.assertEqual(pending["kind"], "builder_create_creature")
+        planned = pending["turn_decision"]
+        self.assertTrue(any(unit_id < 0 for unit_id in planned.post_main_signature[10]))
+        self.assertFalse(any(unit_id < 0 for unit_id in planned.predicted_attack_decision.candidate.attacker_ids))
+
+        self.engine.execute_prepared_ai_action()
+        materialized = self.engine.ai._last_builder_turn_decision
+
+        self.assertEqual(
+            materialized.post_main_signature,
+            build_builder_runtime_fingerprint(self.engine.ai_player, self.engine),
+        )
+        self.assertTrue(all(unit_id >= 0 for unit_id in materialized.post_main_signature[10]))
+
     def test_builder_attack_phase_uses_planned_attack(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_DECLARE_ATTACKERS
@@ -868,6 +955,7 @@ class BuilderTurnAITests(unittest.TestCase):
             decision.predicted_attack_decision.search_metadata.search_budget_name,
             FINAL_DECISION_SEARCH_BUDGET.mode_name,
         )
+        self.assertNotIn("horizon_lines_started", self.engine.ai._last_builder_search_metrics)
 
 
 if __name__ == "__main__":

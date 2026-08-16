@@ -9,6 +9,7 @@ from ui.render_interaction import (
     draw_playfield_section_box,
     get_resource_background_segment_rects,
 )
+from ui.layout_board import get_area_status_metrics
 
 
 class ResourceBackgroundTests(unittest.TestCase):
@@ -42,35 +43,42 @@ class ResourceBackgroundTests(unittest.TestCase):
         self.assertEqual(len(set(unlit_colors)), 1)
         self.assertNotEqual(lit_colors[0], unlit_colors[0])
 
-    def test_active_segments_use_their_matching_resource_images(self) -> None:
-        player_one = SimpleNamespace(player_id=0, total_resources=lambda: 2)
+    def test_locked_segments_use_distinct_player_tints(self) -> None:
+        player_one = SimpleNamespace(player_id=0, total_resources=lambda: 0)
         player_two = SimpleNamespace(player_id=1, total_resources=lambda: 0)
-        first_image = pygame.Surface((20, 40), pygame.SRCALPHA)
-        first_image.fill((240, 20, 20, 255))
-        second_image = pygame.Surface((20, 40), pygame.SRCALPHA)
-        second_image.fill((20, 240, 20, 255))
-        screen = pygame.Surface((1000, 400), pygame.SRCALPHA)
-        app = SimpleNamespace(
-            screen=screen,
-            engine=SimpleNamespace(player_one=player_one, player_two=player_two),
-            resource_background_counts={},
-            resource_background_pulses={},
-            resource_segment_images=(first_image, second_image),
-            resource_background_scaled_images={},
-            get_zone_fill_color=lambda _zone: (100, 120, 140, 54),
-            dragged_hand_card_id=None,
+
+        def render_zone(zone_key: str) -> pygame.Color:
+            screen = pygame.Surface((1000, 400), pygame.SRCALPHA)
+            app = SimpleNamespace(
+                screen=screen,
+                engine=SimpleNamespace(player_one=player_one, player_two=player_two),
+                get_zone_fill_color=lambda _zone: (100, 120, 140, 54),
+                dragged_hand_card_id=None,
+            )
+            draw_playfield_section_box(app, pygame.Rect(0, 0, 1000, 400), zone_key)
+            return screen.get_at(get_resource_background_segment_rects(1000, 400)[0].center)
+
+        player_one_color = render_zone("player_1_creatures")
+        player_two_color = render_zone("player_2_creatures")
+
+        self.assertGreater(player_one_color.b, player_two_color.b)
+        self.assertGreater(player_two_color.r, player_one_color.r)
+
+    def test_status_block_no_longer_contains_resource_counter(self) -> None:
+        pygame.font.init()
+        font = pygame.font.Font(None, 24)
+        app = SimpleNamespace(title_font=font, player_name_font=font, scale_ui=lambda value: value)
+        player = SimpleNamespace(
+            name="Player 1",
+            life=20,
+            battlefield=[],
+            total_resources=lambda: 1,
         )
 
-        draw_playfield_section_box(app, pygame.Rect(0, 0, 1000, 400), "player_1_creatures")
+        metrics = get_area_status_metrics(app, player)
 
-        segments = get_resource_background_segment_rects(1000, 400)
-        first_color = tuple(screen.get_at(segments[0].center))
-        second_color = tuple(screen.get_at(segments[1].center))
-        unlit_color = tuple(screen.get_at(segments[2].center))
-        self.assertEqual(first_color, (240, 20, 20, 255))
-        self.assertEqual(second_color, (20, 240, 20, 255))
-        self.assertNotEqual(first_color, second_color)
-        self.assertNotEqual(second_color, unlit_color)
+        self.assertNotIn("resources_text", metrics)
+        self.assertNotIn("1/10", " ".join(str(value) for value in metrics.values()))
 
 
 if __name__ == "__main__":

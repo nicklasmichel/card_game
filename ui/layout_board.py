@@ -4,32 +4,36 @@ from typing import Dict
 
 import pygame
 
-from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
+from core.builder_rules import BUILDER_CREATURE_CAP
 from core.config import STARTING_LIFE
 from core.models import PHASE_BUILDER_CREATURE
 from ui.style import HIGHLIGHT, TEXT_COLOR
 
 
 def draw_enemy_area(self) -> None:
+    margin = self.scale_ui(10)
+    status_gap = self.scale_ui(20)
     sections = self.get_playfield_sections()
     creatures_rect = sections["player_2_creatures"]
     self.draw_playfield_section_box(creatures_rect, "player_2_creatures")
     status_metrics = get_area_status_metrics(self, self.engine.ai_player)
     status_rect = self.draw_area_status_block(self.engine.ai_player, creatures_rect)
     self.summoner_rects[self.engine.ai_player.player_id] = status_rect
-    top_reserved_height = status_metrics["block_height"] + 20
+    top_reserved_height = status_metrics["block_height"] + status_gap
     self.draw_creatures(
         self.engine.ai_player.battlefield,
         False,
         "player_2_creatures",
-        creatures_rect.x + 10,
+        creatures_rect.x + margin,
         creatures_rect.y + top_reserved_height,
-        creatures_rect.width - 20,
-        max(0, creatures_rect.height - top_reserved_height - 10),
+        creatures_rect.width - margin * 2,
+        max(0, creatures_rect.height - top_reserved_height - margin),
     )
 
 
 def draw_player_area(self) -> None:
+    margin = self.scale_ui(10)
+    status_gap = self.scale_ui(20)
     sections = self.get_playfield_sections()
     creatures_rect = sections["player_1_creatures"]
     self.player_creature_rect = creatures_rect.copy()
@@ -43,15 +47,15 @@ def draw_player_area(self) -> None:
         preview_creature = self.engine.get_builder_preview_creature(self.engine.human_player)
         if preview_creature is not None:
             display_creatures.append(preview_creature)
-    bottom_reserved_height = status_metrics["block_height"] + 20
+    bottom_reserved_height = status_metrics["block_height"] + status_gap
     self.draw_creatures(
         display_creatures,
         True,
         "player_1_creatures",
-        creatures_rect.x + 10,
-        creatures_rect.y + 10,
-        creatures_rect.width - 20,
-        max(0, creatures_rect.height - bottom_reserved_height - 10),
+        creatures_rect.x + margin,
+        creatures_rect.y + margin,
+        creatures_rect.width - margin * 2,
+        max(0, creatures_rect.height - bottom_reserved_height - margin),
     )
 
 
@@ -62,21 +66,22 @@ def draw_combat_links(self) -> None:
     sections = self.get_playfield_sections()
     enemy_rect = sections["player_2_creatures"]
     player_rect = sections["player_1_creatures"]
+    margin = self.scale_ui(10)
     enemy_positions = self.get_creature_screen_positions(
         self.engine.ai_player.battlefield,
         False,
-        enemy_rect.x + 10,
-        enemy_rect.y + 10,
-        enemy_rect.width - 20,
-        enemy_rect.height - 20,
+        enemy_rect.x + margin,
+        enemy_rect.y + margin,
+        enemy_rect.width - margin * 2,
+        enemy_rect.height - margin * 2,
     )
     player_positions = self.get_creature_screen_positions(
         self.engine.human_player.battlefield,
         True,
-        player_rect.x + 10,
-        player_rect.y + 10,
-        player_rect.width - 20,
-        player_rect.height - 20,
+        player_rect.x + margin,
+        player_rect.y + margin,
+        player_rect.width - margin * 2,
+        player_rect.height - margin * 2,
     )
     defender_summoner_rect = self.summoner_rects.get(self.engine.defending_player.player_id)
     if defender_summoner_rect is None:
@@ -107,7 +112,7 @@ def draw_combat_links(self) -> None:
                     if attacker_rect.centery < defender_summoner_rect.centery
                     else (attacker_rect.top + defender_summoner_rect.bottom) // 2
                 ),
-                width=3,
+                width=self.scale_ui(3),
             )
             continue
         blocker_rect = player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
@@ -120,7 +125,7 @@ def draw_combat_links(self) -> None:
             end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > attacker_rect.centery else blocker_rect.bottom),
             color=blocker_color,
             via_y=(attacker_rect.bottom + blocker_rect.top) // 2 if attacker_rect.centery < blocker_rect.centery else (attacker_rect.top + blocker_rect.bottom) // 2,
-            width=3 if blocker_selected else 2,
+            width=self.scale_ui(3 if blocker_selected else 2),
         )
 
 
@@ -134,10 +139,10 @@ def get_creature_screen_positions(
     lane_height: int,
 ) -> Dict[int, pygame.Rect]:
     positions: Dict[int, pygame.Rect] = {}
-    base_column_gap = self.card_gap + 70
+    base_column_gap = self.card_gap + self.scale_ui(70)
     column_step = self.card_height + base_column_gap
     columns = max(1, lane_width // column_step)
-    row_spacing = 22
+    row_spacing = self.scale_ui(22)
     total_rows = max(1, (len(creatures) + columns - 1) // columns)
     total_height = total_rows * self.card_height + max(0, total_rows - 1) * row_spacing
     row_top = start_y + max(0, (lane_height - total_height) // 2)
@@ -146,7 +151,9 @@ def get_creature_screen_positions(
         widths = [self.card_height if self.is_creature_visually_tapped(creature) else self.card_width for creature in row_creatures]
         heights = [self.card_width if self.is_creature_visually_tapped(creature) else self.card_height for creature in row_creatures]
         row_height = self.card_height
-        column_gap = self.card_gap + (90 if all(self.is_creature_visually_tapped(creature) for creature in row_creatures) else 24)
+        column_gap = self.card_gap + self.scale_ui(
+            90 if all(self.is_creature_visually_tapped(creature) for creature in row_creatures) else 24
+        )
         row_width = sum(widths) + max(0, len(row_creatures) - 1) * column_gap
         row_start_x = start_x + max(0, (lane_width - row_width) // 2)
         x = row_start_x
@@ -159,8 +166,14 @@ def get_creature_screen_positions(
 
 
 def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
-    side_panel_x = self.window_width - self.side_panel_width - 10
-    playfield_rect = pygame.Rect(10, 10, side_panel_x - 20, self.window_height - 20)
+    outer_margin = self.scale_ui(10)
+    side_panel_x = self.window_width - self.side_panel_width - outer_margin
+    playfield_rect = pygame.Rect(
+        outer_margin,
+        outer_margin,
+        side_panel_x - outer_margin * 2,
+        self.window_height - outer_margin * 2,
+    )
     _panel, _enemy_piles_rect, log_rect, action_rect, _player_piles_rect = self.get_side_panel_layout()
     section_gap = action_rect.y - log_rect.bottom
     usable_height = playfield_rect.height - section_gap
@@ -179,51 +192,30 @@ def get_playfield_sections(self) -> Dict[str, pygame.Rect]:
     }
 
 
-def draw_builder_resource_stack_card(self, player, x: int, y: int) -> pygame.Rect:
-    surface = self.build_resource_back_surface(self.engine.builder_resource_template().element, False)
-    badge_rect = pygame.Rect(self.card_width // 2 - 28, self.card_height // 2 - 22, 56, 44)
-    self.draw_card_badge(surface, badge_rect, f"{player.total_resources()}/{BUILDER_MAX_RESOURCES}", self.small_font, self.get_think_progress(player))
-    rect = pygame.Rect(x, y, self.card_width, self.card_height)
-    self.screen.blit(surface, rect.topleft)
-    return rect
-
-
-def draw_builder_resource_counter_text(self, player, x: int, y: int) -> pygame.Rect:
-    resource_text = f"{player.total_resources()}/{BUILDER_MAX_RESOURCES}"
-    resource_surface = self.title_font.render(resource_text, True, TEXT_COLOR)
-    rect = pygame.Rect(x, y, resource_surface.get_width(), resource_surface.get_height())
-    self.screen.blit(resource_surface, rect.topleft)
-    return rect
-
-
 def get_area_status_metrics(self, player) -> dict[str, int]:
     name_text = player.name
     life_text = f"Life {player.life}/{STARTING_LIFE}"
     creatures_text = f"Creatures {len(player.battlefield)}/{BUILDER_CREATURE_CAP}"
-    resources_text = f"Resources {player.total_resources()}/{BUILDER_MAX_RESOURCES}"
     line_height = self.title_font.get_height()
     name_font = getattr(self, "player_name_font", self.title_font)
     name_height = name_font.get_height()
-    gap = 4
+    gap = self.scale_ui(4)
     return {
         "name_width": name_font.size(name_text)[0],
         "name_height": name_height,
         "life_width": self.title_font.size(life_text)[0],
         "creatures_width": self.title_font.size(creatures_text)[0],
-        "resources_width": self.title_font.size(resources_text)[0],
         "line_height": line_height,
         "block_width": max(
             name_font.size(name_text)[0],
             self.title_font.size(life_text)[0],
             self.title_font.size(creatures_text)[0],
-            self.title_font.size(resources_text)[0],
         ),
-        "block_height": line_height * 3 + name_height + gap * 3,
+        "block_height": line_height * 2 + name_height + gap * 2,
         "gap": gap,
         "name_text": name_text,
         "life_text": life_text,
         "creatures_text": creatures_text,
-        "resources_text": resources_text,
     }
 
 
@@ -231,7 +223,7 @@ def draw_area_status_block(self, player, rect: pygame.Rect) -> pygame.Rect:
     metrics = get_area_status_metrics(self, player)
     line_height = metrics["line_height"]
     gap = metrics["gap"]
-    edge_margin = 10
+    edge_margin = self.scale_ui(10)
     is_human = player.player_id == self.session.local_player_id
     block_rect = pygame.Rect(
         rect.centerx - metrics["block_width"] // 2,
@@ -242,7 +234,6 @@ def draw_area_status_block(self, player, rect: pygame.Rect) -> pygame.Rect:
     line_specs = [
         ("life_text", metrics["life_width"], self.title_font, line_height),
         ("creatures_text", metrics["creatures_width"], self.title_font, line_height),
-        ("resources_text", metrics["resources_width"], self.title_font, line_height),
         (
             "name_text",
             metrics["name_width"],
@@ -303,14 +294,14 @@ def draw_arrowhead(self, from_point: tuple[int, int], to_point: tuple[int, int],
 
 
 def draw_link_marker(self, center: tuple[int, int], color, width: int) -> None:
-    radius = 4 + width
+    radius = self.scale_ui(4) + width
     pygame.draw.circle(self.screen, color, center, radius, 2)
-    pygame.draw.circle(self.screen, color, center, max(2, radius - 4))
+    pygame.draw.circle(self.screen, color, center, max(self.scale_ui(2), radius - self.scale_ui(4)))
 
 
 def draw_resources(self, resources, start_x: int, start_y: int, available_width: int, player=None, target_key: str | None = None) -> None:
     summoner_rect = None
-    center_padding = max(28, self.card_gap * 2)
+    center_padding = max(self.scale_ui(28), self.card_gap * 2)
     if not resources:
         return
     left_resources = resources[: (len(resources) + 1) // 2]
@@ -325,7 +316,7 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
     def _positions(widths, zone_start: int, zone_available: int, from_right: bool) -> list[int]:
         if not widths:
             return []
-        base_gap = self.card_gap + 8
+        base_gap = self.card_gap + self.scale_ui(8)
         total_width = sum(widths) + max(0, len(widths) - 1) * base_gap
         if total_width <= zone_available:
             x = zone_start + max(0, (zone_available - total_width) // 2)
@@ -334,7 +325,7 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
                 positions.append(x)
                 x += width + base_gap
             return positions
-        step = max(40, (zone_available - widths[-1]) // max(1, len(widths) - 1))
+        step = max(self.scale_ui(40), (zone_available - widths[-1]) // max(1, len(widths) - 1))
         if from_right:
             positions = []
             x = zone_start + zone_available - widths[0]
@@ -356,10 +347,10 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
 
 
 def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: int, start_y: int, lane_width: int, lane_height: int) -> None:
-    base_column_gap = self.card_gap + 70
+    base_column_gap = self.card_gap + self.scale_ui(70)
     column_step = self.card_height + base_column_gap
     columns = max(1, lane_width // column_step)
-    row_spacing = 22
+    row_spacing = self.scale_ui(22)
     total_rows = max(1, (len(creatures) + columns - 1) // columns)
     total_height = total_rows * self.card_height + max(0, total_rows - 1) * row_spacing
     row_top = start_y + max(0, (lane_height - total_height) // 2)
@@ -370,7 +361,9 @@ def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: in
         widths = [self.card_height if self.is_creature_visually_tapped(creature) else self.card_width for creature in row_creatures]
         heights = [self.card_width if self.is_creature_visually_tapped(creature) else self.card_height for creature in row_creatures]
         row_height = self.card_height
-        column_gap = self.card_gap + (90 if all(self.is_creature_visually_tapped(creature) for creature in row_creatures) else 24)
+        column_gap = self.card_gap + self.scale_ui(
+            90 if all(self.is_creature_visually_tapped(creature) for creature in row_creatures) else 24
+        )
         row_width = sum(widths) + max(0, len(row_creatures) - 1) * column_gap
         row_start_x = start_x + max(0, (lane_width - row_width) // 2)
         x = row_start_x
@@ -415,7 +408,7 @@ def draw_hand(self, player, start_x: int, start_y: int, available_width: int, in
     card_step = self.card_width + self.card_gap
     total_width = len(hand) * self.card_width + (len(hand) - 1) * self.card_gap
     if total_width > available_width:
-        card_step = max(26, (available_width - self.card_width) // max(1, len(hand) - 1))
+        card_step = max(self.scale_ui(26), (available_width - self.card_width) // max(1, len(hand) - 1))
     total_render_width = self.card_width + max(0, len(hand) - 1) * card_step
     card_start_x = start_x + max(0, (available_width - total_render_width) // 2)
 

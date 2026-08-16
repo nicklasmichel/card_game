@@ -35,23 +35,6 @@ def load_resource_back_images(self) -> dict[str, pygame.Surface]:
     return image_map
 
 
-def load_resource_segment_images(self) -> tuple[pygame.Surface | None, ...]:
-    resources_dir = Path(__file__).resolve().parent.parent / "ressources" / "resources"
-    images: list[pygame.Surface | None] = []
-    for resource_number in range(1, 11):
-        candidates = [resources_dir / f"res{resource_number}.png"]
-        if resource_number == 10:
-            # Keep compatibility with the supplied filename.
-            candidates.append(resources_dir / "res110.png")
-        image_path = next((candidate for candidate in candidates if candidate.exists()), None)
-        images.append(
-            pygame.image.load(str(image_path)).convert_alpha()
-            if image_path is not None
-            else None
-        )
-    return tuple(images)
-
-
 def load_summoner_images(self) -> dict[str, pygame.Surface]:
     resources_dir = Path(__file__).resolve().parent.parent / "ressources"
     image_map: dict[str, pygame.Surface] = {}
@@ -124,10 +107,14 @@ def render_scaled_card_surface(self, scale: float, render_fn: Callable[[], pygam
     old_card_height = self.card_height
     old_small_font = self.small_font
     old_layout_scale = self.layout_scale
+    old_font_scale = self.font_scale
     self.card_width = max(1, int(old_card_width * scale))
     self.card_height = max(1, int(old_card_height * scale))
-    self.small_font = pygame.font.SysFont("arial", max(12, int(12 * scale)))
-    self.layout_scale = scale
+    preview_layout_scale = old_layout_scale * scale
+    preview_font_scale = old_font_scale * scale
+    self.small_font = pygame.font.SysFont("arial", max(9, round(12 * preview_font_scale)))
+    self.layout_scale = preview_layout_scale
+    self.font_scale = preview_font_scale
     try:
         return render_fn()
     finally:
@@ -135,6 +122,7 @@ def render_scaled_card_surface(self, scale: float, render_fn: Callable[[], pygam
         self.card_height = old_card_height
         self.small_font = old_small_font
         self.layout_scale = old_layout_scale
+        self.font_scale = old_font_scale
 
 
 def build_preview_hand_card_surface(self, card, note: str = "") -> pygame.Surface:

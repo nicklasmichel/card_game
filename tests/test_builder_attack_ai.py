@@ -10,6 +10,7 @@ from core.ai.builder import (
     choose_builder_attack_candidate,
     choose_builder_attackers,
     evaluate_attack_assignment,
+    evaluate_best_builder_attack,
     generate_builder_attack_candidates,
     generate_builder_block_assignments,
     score_builder_attack_candidate,
@@ -510,6 +511,38 @@ class BuilderAttackAITests(unittest.TestCase):
         start = time.perf_counter()
         choose_builder_attack_candidate(self.engine.ai_player, self.engine)
         self.assertLess(time.perf_counter() - start, 2.0)
+
+    def test_wide_block_search_uses_bounded_response_set(self) -> None:
+        attackers = [
+            self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+            for _ in range(5)
+        ]
+        for _ in range(5):
+            self.make_builder_creature(0, aw=2, vw=2, sw=2, lw=3, ready=True)
+        metadata = {}
+
+        assignments = generate_builder_block_assignments(
+            BuilderAttackCandidate(attacker_ids=tuple(attacker.unit_id for attacker in attackers)),
+            self.engine.ai_player,
+            self.engine.human_player,
+            self.engine,
+            metadata=metadata,
+        )
+
+        self.assertFalse(metadata["exact_search"])
+        self.assertLessEqual(len(assignments), 24)
+        self.assertGreater(metadata["block_assignment_upper_bound"], len(assignments))
+
+    def test_truncated_attack_search_reports_evaluated_candidate_count(self) -> None:
+        for _ in range(5):
+            self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True)
+
+        with patch("core.ai.builder.attack_policy.builder_search_should_stop", return_value=True):
+            decision = evaluate_best_builder_attack(self.engine.ai_player, self.engine)
+
+        self.assertFalse(decision.search_metadata.exact_search)
+        self.assertEqual(decision.search_metadata.evaluated_attack_candidates, 1)
+        self.assertGreater(decision.search_metadata.generated_attack_candidates, 1)
 
     def test_builder_attack_smoke_games(self) -> None:
         attack_turns = 0

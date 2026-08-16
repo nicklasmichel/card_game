@@ -3,10 +3,14 @@ from __future__ import annotations
 import pygame
 
 from core.models import PHASE_BUILDER_ABILITY
-from ui.style import ATTACK_HIGHLIGHT, RESOURCE_COLOR, ZONE_HAND
+from ui.style import ATTACK_HIGHLIGHT, ZONE_HAND
 
 
 RESOURCE_BACKGROUND_SEGMENTS = 10
+RESOURCE_SEGMENT_TINTS = {
+    0: (62, 158, 255),
+    1: (255, 76, 104),
+}
 
 
 def get_resource_background_segment_rects(
@@ -37,76 +41,24 @@ def get_resource_background_segment_rects(
     return rects
 
 
-def _get_scaled_resource_segment_image(
-    self,
-    index: int,
-    width: int,
-    height: int,
-) -> pygame.Surface | None:
-    images = getattr(self, "resource_segment_images", ())
-    if index >= len(images) or images[index] is None or width <= 0 or height <= 0:
-        return None
-    cache = getattr(self, "resource_background_scaled_images", None)
-    if cache is None:
-        cache = {}
-        self.resource_background_scaled_images = cache
-    cache_key = (index, width, height)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    source = images[index]
-    source_width, source_height = source.get_size()
-    scale = max(width / max(1, source_width), height / max(1, source_height))
-    scaled_size = (
-        max(width, round(source_width * scale)),
-        max(height, round(source_height * scale)),
-    )
-    scaled = pygame.transform.smoothscale(source, scaled_size)
-    result = pygame.Surface((width, height), pygame.SRCALPHA)
-    source_rect = pygame.Rect(
-        max(0, (scaled.get_width() - width) // 2),
-        max(0, (scaled.get_height() - height) // 2),
-        width,
-        height,
-    )
-    result.blit(scaled, (0, 0), source_rect)
-    cache[cache_key] = result
-    return result
-
-
 def _draw_resource_progress_background(self, zone_surface: pygame.Surface, zone_key: str) -> None:
     if not zone_key.endswith("creatures"):
         return
     player = self.engine.player_two if zone_key.startswith("player_2_") else self.engine.player_one
     resource_count = min(RESOURCE_BACKGROUND_SEGMENTS, max(0, player.total_resources()))
+    segment_color = RESOURCE_SEGMENT_TINTS.get(player.player_id, RESOURCE_SEGMENT_TINTS[0])
 
     overlay = pygame.Surface(zone_surface.get_size(), pygame.SRCALPHA)
-    lit_color = tuple(min(255, channel + 54) for channel in RESOURCE_COLOR)
     for index, segment_rect in enumerate(
         get_resource_background_segment_rects(zone_surface.get_width(), zone_surface.get_height())
     ):
         is_lit = index < resource_count
         if is_lit:
-            image = _get_scaled_resource_segment_image(
-                self,
-                index,
-                segment_rect.width,
-                segment_rect.height,
-            )
-            if image is not None:
-                overlay.blit(image, segment_rect.topleft)
-            else:
-                pygame.draw.rect(overlay, (*lit_color, 22), segment_rect, border_radius=5)
-                pygame.draw.rect(overlay, (*lit_color, 35), segment_rect, 1, border_radius=5)
+            pygame.draw.rect(overlay, (*segment_color, 48), segment_rect, border_radius=5)
+            pygame.draw.rect(overlay, (*segment_color, 92), segment_rect, 1, border_radius=5)
         else:
-            pygame.draw.rect(
-                overlay,
-                (230, 236, 244, 3),
-                segment_rect,
-                border_radius=5,
-            )
-            pygame.draw.rect(overlay, (230, 236, 244, 11), segment_rect, 1, border_radius=5)
+            pygame.draw.rect(overlay, (*segment_color, 20), segment_rect, border_radius=5)
+            pygame.draw.rect(overlay, (*segment_color, 48), segment_rect, 1, border_radius=5)
     zone_surface.blit(overlay, (0, 0))
 
 

@@ -56,7 +56,7 @@ def select_match_mode(self, selection: str) -> None:
         self.network_role = "pve"
         self.match_mode_selection_open = False
         self.join_address_input_open = False
-        self.start_player_selection_open = True
+        replacement.start_new_game()
         return
     if selection in {"host", "join"}:
         self.network_setup_mode = selection
@@ -89,7 +89,6 @@ def select_match_mode(self, selection: str) -> None:
         self.match_mode_selection_open = False
         self.join_address_input_open = False
         self.network_setup_mode = None
-        self.start_player_selection_open = False
         self.network_peer_was_connected = False
         return
     if selection == "join_connect":
@@ -110,7 +109,6 @@ def select_match_mode(self, selection: str) -> None:
         self.match_mode_selection_open = False
         self.join_address_input_open = False
         self.network_setup_mode = None
-        self.start_player_selection_open = False
 
 
 def replace_session(self, replacement) -> None:
@@ -130,11 +128,9 @@ def update_network_state(self) -> None:
         if connected and not self.network_peer_was_connected:
             self.network_peer_was_connected = True
             if self.engine.turn_number == 0:
-                self.open_start_player_selection()
+                self.session.start_new_game()
         elif not connected and self.network_peer_was_connected:
             self.network_peer_was_connected = False
-            if self.engine.turn_number == 0:
-                self.start_player_selection_open = False
 
 
 def network_blocks_gameplay(self) -> bool:
@@ -201,12 +197,13 @@ def handle_match_mode_keydown(self, event: pygame.event.Event) -> None:
 def draw_match_mode_overlay(self) -> None:
     if not self.match_mode_selection_open:
         return
+    s = self.scale_ui
     overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
     overlay.fill(OVERLAY_COLOR)
     self.screen.blit(overlay, (0, 0))
-    panel_width = min(960, self.window_width - 80)
-    panel_height = 430 if not self.join_address_input_open else (
-        590 if self.network_setup_mode == "join" else 500
+    panel_width = min(s(960), self.window_width - s(80))
+    panel_height = s(430) if not self.join_address_input_open else (
+        s(590) if self.network_setup_mode == "join" else s(500)
     )
     panel = pygame.Rect(
         (self.window_width - panel_width) // 2,
@@ -214,21 +211,21 @@ def draw_match_mode_overlay(self) -> None:
         panel_width,
         panel_height,
     )
-    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=10)
-    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=10)
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    button_font = pygame.font.SysFont("arial", 28, bold=True)
+    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=s(10))
+    pygame.draw.rect(self.screen, HIGHLIGHT, panel, s(2), border_radius=s(10))
+    title_font = pygame.font.SysFont("arial", self.scale_font(38), bold=True)
+    button_font = pygame.font.SysFont("arial", self.scale_font(28), bold=True)
     overlay_title = "Choose game mode"
     if self.network_setup_mode == "host":
         overlay_title = "Host PvP"
     elif self.network_setup_mode == "join":
         overlay_title = "Join PvP"
-    self.blit_centered_text(title_font, overlay_title, TEXT_COLOR, pygame.Rect(panel.x, panel.y + 24, panel.width, 44))
+    self.blit_centered_text(title_font, overlay_title, TEXT_COLOR, pygame.Rect(panel.x, panel.y + s(24), panel.width, s(44)))
     self.blit_centered_text(
         self.font,
         "PvE runs locally. For PvP one player hosts and the other joins.",
         MUTED_TEXT,
-        pygame.Rect(panel.x + 30, panel.y + 76, panel.width - 60, 30),
+        pygame.Rect(panel.x + s(30), panel.y + s(76), panel.width - s(60), s(30)),
     )
     self.match_mode_option_rects = []
     if not self.join_address_input_open:
@@ -237,30 +234,30 @@ def draw_match_mode_overlay(self) -> None:
             ("Host PvP", "host"),
             ("Join PvP", "join"),
         ]
-        gap = 22
-        width = (panel.width - 60 - gap * 2) // 3
+        gap = s(22)
+        width = (panel.width - s(60) - gap * 2) // 3
         for index, (label, action) in enumerate(choices):
-            rect = pygame.Rect(panel.x + 30 + index * (width + gap), panel.y + 140, width, 190)
-            pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=8)
-            pygame.draw.rect(self.screen, HIGHLIGHT, rect, 2, border_radius=8)
+            rect = pygame.Rect(panel.x + s(30) + index * (width + gap), panel.y + s(140), width, s(190))
+            pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=s(8))
+            pygame.draw.rect(self.screen, HIGHLIGHT, rect, s(2), border_radius=s(8))
             self.blit_centered_text(button_font, label, TEXT_COLOR, rect)
             self.match_mode_option_rects.append((rect, action))
     else:
-        name_label_rect = pygame.Rect(panel.x + 30, panel.y + 112, panel.width - 60, 30)
+        name_label_rect = pygame.Rect(panel.x + s(30), panel.y + s(112), panel.width - s(60), s(30))
         self.blit_centered_text(
             button_font,
             "Your player name",
             TEXT_COLOR,
             name_label_rect,
         )
-        name_rect = pygame.Rect(panel.x + 110, panel.y + 150, panel.width - 220, 58)
-        pygame.draw.rect(self.screen, (34, 38, 46), name_rect, border_radius=7)
+        name_rect = pygame.Rect(panel.x + s(110), panel.y + s(150), panel.width - s(220), s(58))
+        pygame.draw.rect(self.screen, (34, 38, 46), name_rect, border_radius=s(7))
         pygame.draw.rect(
             self.screen,
             HIGHLIGHT if self.network_active_input == "name" else CARD_BORDER,
             name_rect,
-            2,
-            border_radius=7,
+            s(2),
+            border_radius=s(7),
         )
         name_display = self.network_player_name_text or "Your name"
         self.blit_centered_text(
@@ -271,7 +268,7 @@ def draw_match_mode_overlay(self) -> None:
         )
         self.match_mode_option_rects.append((name_rect, "focus_name"))
 
-        button_y = panel.y + 280
+        button_y = panel.y + s(280)
         primary_label = "Start hosting"
         primary_action = "host_start"
         if self.network_setup_mode == "join":
@@ -279,16 +276,16 @@ def draw_match_mode_overlay(self) -> None:
                 button_font,
                 "Host IP address",
                 TEXT_COLOR,
-                pygame.Rect(panel.x + 30, panel.y + 226, panel.width - 60, 30),
+                pygame.Rect(panel.x + s(30), panel.y + s(226), panel.width - s(60), s(30)),
             )
-            address_rect = pygame.Rect(panel.x + 110, panel.y + 264, panel.width - 220, 58)
-            pygame.draw.rect(self.screen, (34, 38, 46), address_rect, border_radius=7)
+            address_rect = pygame.Rect(panel.x + s(110), panel.y + s(264), panel.width - s(220), s(58))
+            pygame.draw.rect(self.screen, (34, 38, 46), address_rect, border_radius=s(7))
             pygame.draw.rect(
                 self.screen,
                 HIGHLIGHT if self.network_active_input == "address" else CARD_BORDER,
                 address_rect,
-                2,
-                border_radius=7,
+                s(2),
+                border_radius=s(7),
             )
             address_display = self.join_address_text or f"25.x.x.x:{DEFAULT_GAME_PORT}"
             self.blit_centered_text(
@@ -302,9 +299,9 @@ def draw_match_mode_overlay(self) -> None:
                 self.small_font,
                 "Use the host's Hamachi IPv4 address. Tab switches fields.",
                 MUTED_TEXT,
-                pygame.Rect(panel.x + 40, panel.y + 330, panel.width - 80, 28),
+                pygame.Rect(panel.x + s(40), panel.y + s(330), panel.width - s(80), s(28)),
             )
-            button_y = panel.y + 382
+            button_y = panel.y + s(382)
             primary_label = "Connect"
             primary_action = "join_connect"
         else:
@@ -312,17 +309,17 @@ def draw_match_mode_overlay(self) -> None:
                 self.small_font,
                 f"Your friend connects through Hamachi on port {DEFAULT_GAME_PORT}.",
                 MUTED_TEXT,
-                pygame.Rect(panel.x + 40, panel.y + 222, panel.width - 80, 28),
+                pygame.Rect(panel.x + s(40), panel.y + s(222), panel.width - s(80), s(28)),
             )
 
-        connect_rect = pygame.Rect(panel.centerx - 230, button_y, 210, 70)
-        cancel_rect = pygame.Rect(panel.centerx + 20, button_y, 210, 70)
+        connect_rect = pygame.Rect(panel.centerx - s(230), button_y, s(210), s(70))
+        cancel_rect = pygame.Rect(panel.centerx + s(20), button_y, s(210), s(70))
         for rect, label, action in (
             (connect_rect, primary_label, primary_action),
             (cancel_rect, "Back", "join_cancel"),
         ):
-            pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=8)
-            pygame.draw.rect(self.screen, HIGHLIGHT, rect, 2, border_radius=8)
+            pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=s(8))
+            pygame.draw.rect(self.screen, HIGHLIGHT, rect, s(2), border_radius=s(8))
             self.blit_centered_text(button_font, label, TEXT_COLOR, rect)
             self.match_mode_option_rects.append((rect, action))
     if self.network_error_text:
@@ -330,7 +327,7 @@ def draw_match_mode_overlay(self) -> None:
             self.small_font,
             self.network_error_text,
             (235, 118, 112),
-            pygame.Rect(panel.x + 30, panel.bottom - 64, panel.width - 60, 36),
+            pygame.Rect(panel.x + s(30), panel.bottom - s(64), panel.width - s(60), s(36)),
         )
 
 
@@ -342,23 +339,24 @@ def draw_network_status_overlay(self) -> None:
             peer_name = self.host_server.remote_name if self.host_server is not None else None
         else:
             peer_name = getattr(self.session, "host_name", None)
-        badge = pygame.Rect(18, 18, 310, 38)
-        pygame.draw.rect(self.screen, PANEL_COLOR, badge, border_radius=8)
-        pygame.draw.rect(self.screen, HIGHLIGHT, badge, 2, border_radius=8)
+        badge = pygame.Rect(self.scale_ui(18), self.scale_ui(18), self.scale_ui(310), self.scale_ui(38))
+        pygame.draw.rect(self.screen, PANEL_COLOR, badge, border_radius=self.scale_ui(8))
+        pygame.draw.rect(self.screen, HIGHLIGHT, badge, self.scale_ui(2), border_radius=self.scale_ui(8))
         label = f"PvP connected - {peer_name or 'opponent'}"
         self.blit_centered_text(self.small_font, label, TEXT_COLOR, badge)
         return
     overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
     overlay.fill(OVERLAY_COLOR)
     self.screen.blit(overlay, (0, 0))
+    s = self.scale_ui
     panel = pygame.Rect(
-        max(40, (self.window_width - 720) // 2),
-        max(40, (self.window_height - 250) // 2),
-        720,
-        250,
+        (self.window_width - s(720)) // 2,
+        (self.window_height - s(250)) // 2,
+        s(720),
+        s(250),
     )
-    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=10)
-    pygame.draw.rect(self.screen, HIGHLIGHT, panel, 2, border_radius=10)
+    pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=s(10))
+    pygame.draw.rect(self.screen, HIGHLIGHT, panel, s(2), border_radius=s(10))
     if self.network_role == "host":
         status = self.host_server.status if self.host_server is not None else ServerStatus.ERROR
         if status is ServerStatus.LISTENING and self.host_server is not None:
@@ -388,6 +386,6 @@ def draw_network_status_overlay(self) -> None:
         else:
             title = "Connection error - game paused"
             detail = getattr(self.session, "last_error", None) or "The host disconnected."
-    self.blit_centered_text(self.title_font, title, TEXT_COLOR, pygame.Rect(panel.x + 20, panel.y + 42, panel.width - 40, 42))
-    self.blit_centered_text(self.font, detail, MUTED_TEXT, pygame.Rect(panel.x + 30, panel.y + 112, panel.width - 60, 34))
-    self.blit_centered_text(self.small_font, "Press Esc to close GODAO.", MUTED_TEXT, pygame.Rect(panel.x + 30, panel.y + 168, panel.width - 60, 26))
+    self.blit_centered_text(self.title_font, title, TEXT_COLOR, pygame.Rect(panel.x + s(20), panel.y + s(42), panel.width - s(40), s(42)))
+    self.blit_centered_text(self.font, detail, MUTED_TEXT, pygame.Rect(panel.x + s(30), panel.y + s(112), panel.width - s(60), s(34)))
+    self.blit_centered_text(self.small_font, "Press Esc to close GODAO.", MUTED_TEXT, pygame.Rect(panel.x + s(30), panel.y + s(168), panel.width - s(60), s(26)))

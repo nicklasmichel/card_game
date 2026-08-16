@@ -22,9 +22,10 @@ def build_rule_text_lines(self, font: pygame.font.Font, max_width: int, text: st
 
 
 def get_card_text_fonts(self) -> tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font, pygame.font.Font]:
-    title_size = max(self.small_font.get_height() + 3, 15)
-    body_size = max(self.small_font.get_height(), 12)
-    number_size = max(body_size + 8, title_size + 5, 22)
+    scale = getattr(self, "font_scale", getattr(self, "layout_scale", 1.0))
+    title_size = max(9, round(15 * scale))
+    body_size = max(8, round(12 * scale))
+    number_size = max(13, round(22 * scale))
     title_font = pygame.font.SysFont("arial", title_size, bold=True)
     body_font = pygame.font.SysFont("arial", body_size)
     body_italic_font = pygame.font.SysFont("arial", body_size, italic=True)
@@ -146,7 +147,7 @@ def build_full_art_card_surface(
 
     scaled = pygame.transform.smoothscale(image, (self.card_width, self.card_height))
     clipped = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
-    pygame.draw.rect(clipped, (255, 255, 255), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=9)
+    pygame.draw.rect(clipped, (255, 255, 255), pygame.Rect(0, 0, self.card_width, self.card_height), border_radius=s(9))
     scaled.blit(clipped, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     base.blit(scaled, (0, 0))
 
@@ -252,7 +253,7 @@ def build_generic_card_surface(
     pygame.draw.rect(base, CARD_SHADOW, pygame.Rect(s(4), s(5), self.card_width - s(6), self.card_height - s(6)), border_radius=s(9))
     pygame.draw.rect(base, fill_color, outer_rect, border_radius=s(9))
     pygame.draw.rect(base, accent_light(fill_color), inner_rect, border_radius=s(7))
-    pygame.draw.rect(base, CARD_BORDER, outer_rect, 2, border_radius=s(9))
+    pygame.draw.rect(base, CARD_BORDER, outer_rect, s(2), border_radius=s(9))
 
     cost_value = cost if isinstance(cost, CardCost) else CardCost(resources=cost)
     cost_text = f"{cost_value.resources}/{cost_value.recycle}" if cost_value.recycle > 0 else str(cost_value.resources)
