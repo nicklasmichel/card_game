@@ -3,7 +3,13 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_ABILITY_COST, BUILDER_CREATURE_ABILITIES, BUILDER_CREATURE_CAP
+from core.builder_rules import (
+    BUILDER_ABILITIES_ENABLED,
+    BUILDER_CREATURE_CAP,
+    BUILDER_HASTE_COST,
+    BUILDER_PRIMARY_ABILITIES,
+    validate_builder_creature_abilities,
+)
 from core.game_logic import GameEngine
 from core.models import Ability, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_GAME_OVER, PHASE_MAIN_1, PlayerState, ResourceCard
 from ui.layout_sidepanel import get_overview_phase_label
@@ -84,7 +90,7 @@ class BuilderModeTests(unittest.TestCase):
         self.assertFalse(self.engine.can_builder_add_resource(player))
         self.assertFalse(self.engine.builder_add_resource(player))
 
-    def test_creature_build_with_zero_resources_uses_default_haste_and_can_confirm(self) -> None:
+    def test_creature_build_with_zero_resources_uses_default_free_ability_and_can_confirm(self) -> None:
         player = self.engine.human_player
         self.assertTrue(self.engine.can_builder_open_creature_build(player))
         self.assertTrue(self.engine.begin_builder_creature_build())
@@ -92,11 +98,12 @@ class BuilderModeTests(unittest.TestCase):
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         self.assertEqual((creature.aw, creature.vw, creature.sw, creature.lw, creature.current_hp), (0, 0, 0, 1, 1))
-        self.assertTrue(creature.has_ability(Ability.HASTE))
-        self.assertFalse(creature.tapped)
-        self.assertFalse(creature.summoning_sick)
-        self.assertEqual(self.engine.active_player, player)
-        self.assertEqual(self.engine.phase, PHASE_DECLARE_ATTACKERS)
+        self.assertTrue(creature.has_ability(Ability.FLYING))
+        self.assertFalse(creature.has_ability(Ability.HASTE))
+        self.assertTrue(creature.tapped)
+        self.assertTrue(creature.summoning_sick)
+        self.assertEqual(self.engine.active_player, self.engine.ai_player)
+        self.assertEqual(self.engine.phase, PHASE_MAIN_1)
         self.assertIsNone(self.engine.pending_builder_creature)
 
     def test_creature_build_distributes_resources_across_stats(self) -> None:
@@ -384,7 +391,7 @@ class BuilderModeTests(unittest.TestCase):
             ["+1 Atk", "-1 Atk", "+1 Def", "-1 Def", "+1 Dmg", "-1 Dmg", "+1 HP", "-1 HP"],
         )
 
-    def test_builder_creature_requires_exactly_one_valid_ability(self) -> None:
+    def test_builder_creature_requires_one_primary_and_optionally_paid_haste(self) -> None:
         player = self.engine.human_player
         self.set_builder_resources(player, 4)
         self.assertTrue(self.engine.begin_builder_creature_build())
@@ -395,19 +402,102 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.adjust_builder_creature_stat("sw", 1)
         self.assertEqual(pending.spent_resources, 3)
         self.assertFalse(self.engine.builder_creature_build_is_valid())
-        for ability in BUILDER_CREATURE_ABILITIES:
+        for ability in BUILDER_PRIMARY_ABILITIES:
             self.choose_builder_ability(ability)
-            self.assertEqual(pending.selected_ability, ability)
+            self.assertEqual(pending.selected_primary_ability, ability)
             self.assertEqual(pending.selected_abilities, frozenset({ability}))
             self.assertEqual(pending.spent_resources, 3)
             self.assertEqual(self.engine.builder_remaining_ready_resources(), 1)
+        self.choose_builder_ability(Ability.HASTE)
+        self.assertEqual(pending.selected_abilities, frozenset({Ability.TRAMPLE, Ability.HASTE}))
+        self.assertEqual(pending.spent_resources, 4)
+        self.assertEqual(self.engine.builder_remaining_ready_resources(), 0)
+        self.assertTrue(self.engine.builder_creature_build_is_valid())
+
+    def test_haste_toggle_consumes_and_refunds_one_shared_resource(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 2)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        pending = self.engine.pending_builder_creature
+        self.engine.adjust_builder_creature_stat("aw", 1)
+        self.engine.adjust_builder_creature_stat("sw", 1)
+
+        haste_button = next(
+            button for button in self.engine.get_button_specs()
+            if button.action == "builder_select_ability_haste"
+        )
+        self.assertFalse(haste_button.enabled)
+        self.engine.adjust_builder_creature_stat("aw", -1)
+        self.assertTrue(
+            next(
+                button for button in self.engine.get_button_specs()
+                if button.action == "builder_select_ability_haste"
+            ).enabled
+        )
+
+        self.choose_builder_ability(Ability.HASTE)
+        self.assertTrue(pending.has_haste)
+        self.assertEqual(pending.stat_cost, 1)
+        self.assertEqual(pending.ability_cost, BUILDER_HASTE_COST)
+        self.assertEqual(pending.spent_resources, 2)
+        self.choose_builder_ability(Ability.HASTE)
+        self.assertFalse(pending.has_haste)
+        self.assertEqual(pending.spent_resources, 1)
+
+    def test_five_resource_build_uses_four_stats_with_haste_and_free_primary(self) -> None:
+        player = self.engine.human_player
+        self.set_builder_resources(player, 5)
+        self.assertTrue(self.engine.begin_builder_creature_build())
+        self.choose_builder_ability(Ability.TRAMPLE)
+        for _ in range(4):
+            self.engine.adjust_builder_creature_stat("sw", 1)
+        self.choose_builder_ability(Ability.HASTE)
+
+        self.assertTrue(self.engine.confirm_builder_creature_build())
+        creature = player.battlefield[-1]
+        self.assertEqual((creature.aw, creature.vw, creature.sw, creature.lw), (0, 0, 4, 1))
+        self.assertEqual(creature.cost.resources, 5)
+        self.assertEqual(creature.abilities, frozenset({Ability.TRAMPLE, Ability.HASTE}))
+        counters = self.engine.statistics.player_stats[player.player_id]
+        self.assertEqual(counters.builder_trample_creatures_played, 1)
+        self.assertEqual(counters.builder_haste_creatures_played, 1)
+        self.assertEqual(counters.builder_stat_points_spent, 4)
+        self.assertEqual(counters.builder_resources_spent, 5)
+
+    def test_ai_builder_execution_registers_primary_haste_and_cost_split(self) -> None:
+        player = self.engine.ai_player
+        self.engine.active_player_index = player.player_id
+        self.set_builder_resources(player, 3)
+        self.engine.pending_ai_action = {
+            "kind": "builder_create_creature",
+            "plan": {
+                "aw": 0,
+                "vw": 1,
+                "sw": 1,
+                "lw": 1,
+                "ability": Ability.FLYING,
+                "abilities": frozenset({Ability.FLYING, Ability.HASTE}),
+                "haste": True,
+                "cost": 3,
+            },
+        }
+
+        self.engine.execute_prepared_ai_action()
+
+        counters = self.engine.statistics.player_stats[player.player_id]
+        self.assertEqual(counters.creatures_played, 1)
+        self.assertEqual(counters.builder_flying_creatures_played, 1)
+        self.assertEqual(counters.builder_haste_creatures_played, 1)
+        self.assertEqual(counters.builder_stat_points_spent, 2)
+        self.assertEqual(counters.builder_resources_spent, 3)
+        self.assertEqual(len(self.engine.statistics.builder_creature_records), 1)
 
     def test_haste_creature_enters_ready_and_can_attack_same_turn(self) -> None:
         player = self.engine.human_player
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
-        self.engine.adjust_builder_creature_stat("aw", 1)
+        self.choose_builder_ability(Ability.HASTE)
         preview = self.engine.get_builder_preview_creature(player)
         self.assertIsNotNone(preview)
         self.assertTrue(preview.has_ability(Ability.HASTE))
@@ -425,12 +515,20 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("vw", 1)
-        self.engine.adjust_builder_creature_stat("lw", 1)
+        self.choose_builder_ability(Ability.HASTE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         attacker = self.make_builder_creature(1, aw=1, vw=1, sw=2, lw=2, ready=True)
         self.engine.active_player_index = enemy.player_id
         self.assertTrue(self.engine.can_creature_block_attacker(creature, attacker))
+        self.engine.phase = PHASE_DECLARE_BLOCKERS
+        self.engine.block_assignments = {attacker.unit_id: creature.unit_id}
+        self.engine.finish_block_assignment(ai_assignment_prepared=True)
+        self.assertIn(
+            f"[COMBAT BLOCKS] turn={self.engine.turn_number} defender=Player_1 "
+            f"assignments={creature.name.replace(' ', '_')}>{attacker.name.replace(' ', '_')}",
+            self.engine.pending_log_file_lines,
+        )
 
     def test_haste_creature_taps_normally_when_it_attacks(self) -> None:
         player = self.engine.human_player
@@ -438,7 +536,7 @@ class BuilderModeTests(unittest.TestCase):
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         self.engine.adjust_builder_creature_stat("sw", 1)
-        self.engine.adjust_builder_creature_stat("aw", 1)
+        self.choose_builder_ability(Ability.HASTE)
         self.assertTrue(self.engine.confirm_builder_creature_build())
         creature = player.battlefield[-1]
         self.engine.active_player_index = player.player_id
@@ -446,8 +544,14 @@ class BuilderModeTests(unittest.TestCase):
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [creature.unit_id]
         enemy.life = 10
+        attack_turn = self.engine.turn_number
         self.engine.confirm_attackers()
         self.assertTrue(creature.tapped)
+        self.assertIn(
+            f"[COMBAT ATTACKERS] turn={attack_turn} player=Player_1 "
+            f"creatures={creature.name.replace(' ', '_')}",
+            self.engine.pending_log_file_lines,
+        )
 
     def test_flying_can_only_be_blocked_by_flying(self) -> None:
         flying_attacker = self.make_builder_creature(0, aw=1, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))
@@ -576,12 +680,12 @@ class BuilderModeTests(unittest.TestCase):
         self.assertTrue(creature.has_ability(Ability.FLYING))
         self.assertEqual(creature.builder_ability, Ability.FLYING)
 
-    def test_builder_ui_exposes_all_four_single_select_ability_buttons(self) -> None:
+    def test_builder_ui_exposes_three_primary_buttons_and_paid_haste_toggle(self) -> None:
         player = self.engine.human_player
         self.set_builder_resources(player, 2)
         self.assertTrue(self.engine.begin_builder_creature_build())
         labels = [button.label for button in self.engine.get_button_specs() if button.action.startswith("builder_select_ability_")]
-        self.assertIn("Haste", labels)
+        self.assertIn(f"Haste ({BUILDER_HASTE_COST})", labels)
         self.assertIn("Flying", labels)
         self.assertIn("Vigilance", labels)
         self.assertIn("Trample", labels)
@@ -622,7 +726,8 @@ class BuilderModeTests(unittest.TestCase):
         self.assertTrue(all(len(player.battlefield) <= BUILDER_CREATURE_CAP for player in self.engine.players))
         self.assertTrue(
             all(
-                creature.builder_ability in BUILDER_CREATURE_ABILITIES and creature.abilities == frozenset({creature.builder_ability})
+                validate_builder_creature_abilities(creature.abilities)
+                and creature.builder_ability in BUILDER_PRIMARY_ABILITIES
                 for player in self.engine.players
                 for creature in player.battlefield
             )

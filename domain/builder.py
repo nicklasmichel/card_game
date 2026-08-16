@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.builder_rules import builder_creature_ability_set, coerce_builder_creature_ability
+from core.builder_rules import (
+    BUILDER_HASTE_COST,
+    builder_creature_ability_set,
+    builder_creature_stat_cost,
+    validate_builder_primary_ability,
+)
 from .enums import Ability
 
 
@@ -17,27 +22,35 @@ class PendingBuilderCreatureBuild:
     sw: int = 0
     lw: int = 1
     available_resources: int = 0
-    selected_ability: Ability | None = None
+    selected_primary_ability: Ability | None = None
+    has_haste: bool = False
 
     @property
-    def spent_resources(self) -> int:
-        return (
-            max(0, self.aw - self.base_aw)
-            + max(0, self.vw - self.base_vw)
-            + max(0, self.sw - self.base_sw)
-            + max(0, self.lw - self.base_lw)
+    def stat_cost(self) -> int:
+        return builder_creature_stat_cost(
+            aw=max(0, self.aw - self.base_aw),
+            vw=max(0, self.vw - self.base_vw),
+            sw=max(0, self.sw - self.base_sw),
+            lw=1 + max(0, self.lw - self.base_lw),
         )
 
     @property
-    def has_haste(self) -> bool:
-        return self.selected_ability == Ability.HASTE
+    def ability_cost(self) -> int:
+        return BUILDER_HASTE_COST if self.has_haste else 0
+
+    @property
+    def spent_resources(self) -> int:
+        return self.stat_cost + self.ability_cost
 
     @property
     def selected_abilities(self) -> frozenset[Ability]:
-        return builder_creature_ability_set(self.selected_ability)
+        return builder_creature_ability_set(self.selected_primary_ability, has_haste=self.has_haste)
 
-    def choose_ability(self, ability: Ability) -> None:
-        self.selected_ability = coerce_builder_creature_ability(ability)
+    def choose_primary_ability(self, ability: Ability) -> None:
+        self.selected_primary_ability = validate_builder_primary_ability(ability)
+
+    def toggle_haste(self) -> None:
+        self.has_haste = not self.has_haste
 
 
 @dataclass

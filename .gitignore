@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+stats/data/soak_*.json
+stats/data/builder_creature_build_results.csv
+stats/data/latest_playtest*.json

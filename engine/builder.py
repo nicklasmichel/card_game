@@ -4,14 +4,20 @@ from datetime import datetime
 
 from core.builder_rules import (
     BUILDER_ABILITIES_ENABLED,
-    BUILDER_ABILITY_COST,
     BUILDER_CREATURE_ABILITIES,
     BUILDER_CREATURE_CAP,
     BUILDER_HASTE_COST,
     BUILDER_MAX_RESOURCES,
+    BUILDER_PRIMARY_ABILITIES,
     builder_creature_ability_set,
+    builder_creature_stat_cost,
+    calculate_builder_creature_cost,
     coerce_builder_creature_ability,
+    normalize_builder_creature_abilities,
+    normalize_builder_creature_ability,
+    validate_builder_creature_abilities,
     validate_builder_creature_ability,
+    validate_builder_primary_ability,
 )
 from core.config import STARTING_LIFE
 from core.models import (
@@ -91,6 +97,14 @@ def get_builder_creature_ability_label(ability: Ability | None) -> str:
     if ability is None:
         return "-"
     return BUILDER_ABILITY_LABELS[validate_builder_creature_ability(ability)]
+
+
+def get_builder_creature_abilities_label(abilities) -> str:
+    normalized = normalize_builder_creature_abilities(abilities)
+    ordered = [ability for ability in BUILDER_PRIMARY_ABILITIES if ability in normalized]
+    if Ability.HASTE in normalized:
+        ordered.append(Ability.HASTE)
+    return " + ".join(BUILDER_ABILITY_LABELS[ability] for ability in ordered) or "-"
 
 
 def builder_resource_template(self) -> CardTemplate:
@@ -300,7 +314,7 @@ def begin_builder_creature_build(self) -> bool:
         return False
     self.pending_builder_creature = PendingBuilderCreatureBuild(
         available_resources=self.active_player.available_resources(),
-        selected_ability=Ability.HASTE,
+        selected_primary_ability=Ability.FLYING,
     )
     self.phase = PHASE_BUILDER_CREATURE
     return True
@@ -342,14 +356,23 @@ def toggle_builder_creature_ability(self, ability: Ability) -> None:
     pending = self.pending_builder_creature
     if self.phase != PHASE_BUILDER_CREATURE or pending is None:
         return
-    pending.choose_ability(validate_builder_creature_ability(ability))
+    normalized = validate_builder_creature_ability(ability)
+    if normalized == Ability.HASTE:
+        if pending.has_haste or pending.spent_resources + BUILDER_HASTE_COST <= pending.available_resources:
+            pending.toggle_haste()
+        return
+    pending.choose_primary_ability(validate_builder_primary_ability(normalized))
 
 
 def builder_creature_build_is_valid(self, pending: PendingBuilderCreatureBuild | None = None) -> bool:
     current = self.pending_builder_creature if pending is None else pending
     if current is None:
         return False
-    if current.selected_ability is None:
+    if current.selected_primary_ability is None:
+        return False
+    try:
+        validate_builder_creature_abilities(current.selected_abilities)
+    except ValueError:
         return False
     return (
         current.spent_resources == current.available_resources
@@ -428,25 +451,42 @@ def create_builder_creature(
     sw: int,
     lw: int,
     ability: Ability | None = None,
+    primary_ability: Ability | None = None,
+    has_haste: bool = False,
     abilities: frozenset[Ability] = frozenset(),
 ):
     if len(player.battlefield) >= BUILDER_CREATURE_CAP:
         return None
-    raw_abilities = frozenset(abilities)
-    if ability is not None:
-        builder_ability = validate_builder_creature_ability(ability)
-        resolved_abilities = builder_creature_ability_set(builder_ability)
+    raw_abilities = frozenset(normalize_builder_creature_ability(current) for current in abilities)
+    requested_primary = primary_ability if primary_ability is not None else ability
+    if requested_primary is not None and requested_primary != Ability.HASTE:
+        builder_ability = validate_builder_primary_ability(requested_primary)
+        resolved_abilities = builder_creature_ability_set(builder_ability, has_haste=has_haste)
+    elif requested_primary == Ability.HASTE:
+        # Legacy/internal fixture support. Real builder actions are validated
+        # through PendingBuilderCreatureBuild and always include a primary.
+        builder_ability = Ability.HASTE
+        resolved_abilities = frozenset({Ability.HASTE})
     else:
         try:
-            builder_ability = coerce_builder_creature_ability(raw_abilities)
+            primary = [current for current in raw_abilities if current in BUILDER_PRIMARY_ABILITIES]
+            builder_ability = primary[0] if len(primary) == 1 else coerce_builder_creature_ability(raw_abilities)
         except ValueError:
             builder_ability = None
-        resolved_abilities = builder_creature_ability_set(builder_ability) if builder_ability is not None else raw_abilities
+        resolved_abilities = raw_abilities
     self.builder_creature_counter += 1
     template = CardTemplate(
         template_id=f"builder_creature_{self.builder_creature_counter}",
         name=f"Creature {self.builder_creature_counter}",
-        cost=CardCost(resources=aw + vw + sw + max(0, lw - 1)),
+        cost=CardCost(
+            resources=calculate_builder_creature_cost(
+                aw=aw,
+                vw=vw,
+                sw=sw,
+                lw=lw,
+                has_haste=Ability.HASTE in resolved_abilities,
+            )
+        ),
         aw=aw,
         vw=vw,
         lw=lw,
@@ -461,9 +501,8 @@ def create_builder_creature(
     instance_id = self.make_instance_id()
     built = BattlefieldCreature.from_card(CardInstance(instance_id, template))
     built.current_hp = lw
-    has_haste = built.builder_ability == Ability.HASTE
-    built.tapped = not has_haste
-    built.summoning_sick = not has_haste
+    built.tapped = not built.has_ability(Ability.HASTE)
+    built.summoning_sick = not built.has_ability(Ability.HASTE)
     player.battlefield.append(built)
     return built
 
@@ -487,8 +526,8 @@ def get_builder_preview_creature(self, player: PlayerState) -> BattlefieldCreatu
         lw=pending.lw,
         sw=pending.sw,
         element=Element.AIR,
-        abilities=builder_creature_ability_set(pending.selected_ability),
-        builder_ability=pending.selected_ability,
+        abilities=pending.selected_abilities,
+        builder_ability=pending.selected_primary_ability,
         rules_text="",
         allow_zero_stats=True,
     )
@@ -517,17 +556,34 @@ def confirm_builder_creature_build(self) -> bool:
         vw=pending.vw,
         sw=pending.sw,
         lw=pending.lw,
-        ability=pending.selected_ability,
+        primary_ability=pending.selected_primary_ability,
+        has_haste=pending.has_haste,
     )
     self.builder_created_this_turn_ids.add(creature.unit_id)
     self.active_player.main_action_used_this_turn = True
     self.pending_builder_creature = None
     if self.statistics is not None:
-        self.statistics.register_creature_played(self.active_player.player_id, 0)
+        self.statistics.register_builder_creature_played(
+            self.active_player.player_id,
+            primary_ability=creature.builder_ability,
+            has_haste=creature.has_ability(Ability.HASTE),
+            turn_number=self.turn_number,
+            aw=creature.aw,
+            vw=creature.vw,
+            sw=creature.sw,
+            lw=creature.lw,
+            stat_cost=builder_creature_stat_cost(
+                aw=creature.aw,
+                vw=creature.vw,
+                sw=creature.sw,
+                lw=creature.lw,
+            ),
+            total_cost=spent,
+        )
     self.log(
         f"{self.active_player.name} creates {creature.name} "
         f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}"
-        f" / {get_builder_creature_ability_label(creature.builder_ability)}) "
+        f" / {get_builder_creature_abilities_label(creature.abilities)}) "
         f"for {spent} resource(s)."
     )
     finish_builder_main_action(self)

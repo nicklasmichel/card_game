@@ -232,8 +232,8 @@ class BuilderAttackAITests(unittest.TestCase):
     def test_opponent_uses_worst_response_block(self) -> None:
         strong = self.make_builder_creature(1, aw=3, vw=1, sw=4, lw=3, ready=True)
         weak = self.make_builder_creature(1, aw=1, vw=1, sw=1, lw=2, ready=True)
-        tough = self.make_builder_creature(0, aw=1, vw=3, sw=3, lw=4, ready=True)
-        cheap = self.make_builder_creature(0, aw=1, vw=2, sw=1, lw=2, ready=True)
+        self.make_builder_creature(0, aw=1, vw=3, sw=3, lw=4, ready=True)
+        self.make_builder_creature(0, aw=1, vw=2, sw=1, lw=2, ready=True)
         candidate = BuilderAttackCandidate(attacker_ids=(strong.unit_id, weak.unit_id))
 
         score = score_builder_attack_candidate(candidate, self.engine.ai_player, self.engine)
@@ -281,7 +281,7 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
 
     def test_main_action_build_detects_fifth_haste_attack_as_immediate_lethal(self) -> None:
-        self.set_builder_resources(self.engine.ai_player, 2)
+        self.set_builder_resources(self.engine.ai_player, 3)
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_MAIN_1
         self.engine.human_player.life = 4
@@ -410,7 +410,7 @@ class BuilderAttackAITests(unittest.TestCase):
 
         score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
 
-        self.assertEqual(score.projected_counter_main_action, "build_haste")
+        self.assertEqual(score.projected_counter_main_action, "build_terminal")
         self.assertEqual(len(score.projected_counter_attackers), 5)
         self.assertGreaterEqual(score.projected_counter_damage, 9.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)

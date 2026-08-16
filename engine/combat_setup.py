@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.builder_rules import BUILDER_ABILITIES_ENABLED
-from engine.combat_dice import apply_life_steal_healing, apply_prepared_dice_battle
+from engine.combat_dice import apply_life_steal_healing
 
 from core.ai.builder import choose_builder_blocks
 from core.models import (
@@ -141,6 +141,11 @@ def confirm_attackers(self) -> None:
     attackers = [self.get_unit_by_id(attacker_id) for attacker_id in deduped_ids]
     attackers = [attacker for attacker in attackers if attacker is not None]
     self.selected_attackers = [attacker.unit_id for attacker in attackers]
+    attacker_names = ",".join(attacker.name.replace(" ", "_") for attacker in attackers) or "-"
+    self._write_log_line(
+        f"[COMBAT ATTACKERS] turn={self.turn_number} "
+        f"player={self.active_player.name.replace(' ', '_')} creatures={attacker_names}"
+    )
     if self.statistics is not None:
         self.statistics.register_attackers(self.active_player.player_id, len(attackers))
     if not attackers:
@@ -308,6 +313,19 @@ def finish_block_assignment(self, *, ai_assignment_prepared: bool = False) -> No
     if self.statistics is not None:
         for blocker_id in self.block_assignments.values():
             self.statistics.register_block_assignment(1 if blocker_id is not None else 0)
+    assignment_labels = []
+    for attacker_id, blocker_id in self.block_assignments.items():
+        attacker = self.get_unit_by_id(attacker_id)
+        blocker = self.get_unit_by_id(blocker_id) if blocker_id is not None else None
+        if attacker is not None and blocker is not None:
+            assignment_labels.append(
+                f"{blocker.name.replace(' ', '_')}>{attacker.name.replace(' ', '_')}"
+            )
+    self._write_log_line(
+        f"[COMBAT BLOCKS] turn={self.turn_number} "
+        f"defender={self.defending_player.name.replace(' ', '_')} "
+        f"assignments={','.join(assignment_labels) or '-'}"
+    )
     self.begin_pre_first_combat_window()
 
 

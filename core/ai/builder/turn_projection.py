@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES, BUILDER_CREATURE_CAP
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP, BUILDER_PRIMARY_ABILITIES
 from core.models import Ability, BattlefieldCreature, PlayerState
 
 from .turn_types import BuilderAbilityActionCandidate, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
@@ -400,8 +400,9 @@ def project_attack_to_next_turn(
 
 def synthetic_unit_id_for_candidate(candidate: BuilderCreatureCandidate) -> int:
     ability_index = 0
-    if candidate.builder_ability in BUILDER_CREATURE_ABILITIES:
-        ability_index = BUILDER_CREATURE_ABILITIES.index(candidate.builder_ability) + 1
+    if candidate.builder_ability in BUILDER_PRIMARY_ABILITIES:
+        primary_index = BUILDER_PRIMARY_ABILITIES.index(candidate.builder_ability)
+        ability_index = primary_index * 2 + (2 if candidate.has_haste else 1)
     encoded = (
         candidate.aw * 10000
         + candidate.vw * 1000

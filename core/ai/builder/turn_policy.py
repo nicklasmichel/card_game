@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from math import isfinite
 from time import monotonic
 
 import core.config as config
@@ -17,7 +16,7 @@ from .candidates import (
     is_legal_builder_candidate,
     select_builder_creature_search_frontier,
 )
-from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
+from .combat_eval import can_legally_block
 from .debug import (
     builder_debug_build_top_n,
     builder_debug_enabled,
@@ -34,7 +33,7 @@ from .debug import (
 )
 from .horizon import NEXT_TURN_LETHAL_BONUS, REPEATED_LETHAL_PREVENTION_BONUS, BuilderHorizonReport, evaluate_main_action_horizon
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
-from .search_budget import TURN_LOOKAHEAD_SEARCH_BUDGET
+from .search_budget import FINAL_DECISION_SEARCH_BUDGET, TURN_LOOKAHEAD_SEARCH_BUDGET
 from .search_control import builder_search_scope, builder_search_should_stop, store_bounded_cache_entry
 from .snapshot import build_builder_snapshot
 from .turn_projection import (
@@ -66,14 +65,21 @@ RISK_PENALTY_WEIGHT = 0.26
 FUTURE_OFFENSE_WEIGHT = 0.45
 BOARD_SLOT_OPPORTUNITY_WEIGHT = 0.65
 HASTE_IMMEDIATE_WEIGHT = 0.7
-FLYING_OFFENSE_WEIGHT = 0.35
+FLYING_OFFENSE_WEIGHT = 0.7
 FLYING_COVERAGE_WEIGHT = 0.45
 CURVE_DELAY_WEIGHT = 0.95
-ROLE_NOVELTY_WEIGHT = 0.45
+ROLE_NOVELTY_WEIGHT = 0.6
 PASS_ACTION_PENALTY = 0.35
 SUICIDE_ATTACK_PENALTY = 4.6
 GLASS_CANNON_PENALTY = 2.4
 RESOURCE_UNDER_PRESSURE_PENALTY = 1.45
+RESOURCE_SAFE_PRESSURE_SCALE = 0.18
+RESOURCE_CAUTION_PRESSURE_SCALE = 0.62
+RESOURCE_FOUNDATION_TARGET = 4
+RESOURCE_FOUNDATION_BONUS = 0.8
+RESOURCE_CATCHUP_BONUS = 0.4
+SAFE_FOUNDATION_BUILD_DELAY = 3.3
+SAFE_COUNTER_DAMAGE_PREVENTION_DISCOUNT = 1.7
 WIN_BONUS = 10000.0
 LOSS_PENALTY = -10000.0
 ZERO_OFFENSE_BUILD_RISK_PENALTY = 1.5
@@ -84,20 +90,18 @@ TAPPED_NEW_BODY_PENALTY = 0.45
 DRAW_REWARD_VALUE = 0.0
 CARD_HOLD_WEIGHT = 0.0
 ABILITY_IMPACT_WEIGHT = 0.0
-VIGILANCE_SUICIDE_PENALTY = 0.0
-HASTE_WITHOUT_ATTACK_PENALTY = 0.0
-PROVOKE_RELEASE_BONUS = 0.0
-STAT_BREAKPOINT_WEIGHT = 0.0
-REMOVE_BLOCKER_WEIGHT = 0.0
-OPEN_HAND_REMOVAL_RISK_PENALTY = 0.0
-NONLETHAL_GLASS_ABILITY_PENALTY = 0.0
 _FUTURE_SLOT_VALUE_CACHE: dict[tuple, float] = {}
 _BUDGET_FRONTIER_CACHE: dict[tuple, tuple[float, str]] = {}
 ROOT_BUILD_SCORING_LIMIT = 128
 FRONTIER_BUILD_SCORING_LIMIT = 48
 ROOT_BUILD_SCORING_SECONDS = 4.0
 FRONTIER_SCORING_SECONDS = 1.5
-ACTION_HORIZON_SECONDS = 1.0
+# Main-action candidates only need a representative future line. Giving every
+# candidate a full second lets 20+ otherwise legal builds consume the entire
+# turn deadline on repeated attack/block projections. The selected action still
+# retains the normal attack search; only its comparative future preview is
+# bounded more tightly.
+ACTION_HORIZON_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -120,7 +124,14 @@ def plan_builder_turn(player, engine, *, cancel_event=None) -> BuilderTurnDecisi
     runtime_signature = build_builder_runtime_fingerprint(player, engine)
     cached = getattr(engine.ai, "_last_builder_turn_decision", None)
     if cached is not None and _decision_matches_runtime(cached, engine.phase, runtime_signature):
-        return cached
+        cached_attack = cached.predicted_attack_decision
+        cached_budget = (
+            None
+            if cached_attack is None
+            else cached_attack.search_metadata.search_budget_name
+        )
+        if engine.phase != PHASE_DECLARE_ATTACKERS or cached_budget == FINAL_DECISION_SEARCH_BUDGET.mode_name:
+            return cached
 
     time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
     deadline = monotonic() + time_limit
@@ -242,7 +253,14 @@ def extract_candidate_future_value(candidate_score, candidate, snapshot) -> floa
     )
 
 
-def score_resource_growth_action(snapshot, current_candidate_frontier, next_resource_candidate_frontier) -> float:
+def score_resource_growth_action(
+    snapshot,
+    current_candidate_frontier,
+    next_resource_candidate_frontier,
+    *,
+    expected_counter_damage: float = 0.0,
+    counter_lethal_risk: float = 0.0,
+) -> float:
     if snapshot.own_total_resources >= 10:
         return float("-inf")
     current_best = max((projected.future_value for projected in current_candidate_frontier), default=0.0)
@@ -251,10 +269,40 @@ def score_resource_growth_action(snapshot, current_candidate_frontier, next_reso
     pressure = _base_survival_pressure(snapshot)
     horizon = max(0.16, RESOURCE_HORIZON_FACTOR - snapshot.own_total_resources * 0.07 - pressure * 0.07)
     level_bonus = max(0.0, RESOURCE_LOW_LEVEL_BONUS - snapshot.own_total_resources * RESOURCE_CAP_DECAY)
-    under_pressure_penalty = pressure * RESOURCE_UNDER_PRESSURE_PENALTY if pressure >= 3.0 else 0.0
+    life_after_counter = snapshot.own_life - max(0.0, expected_counter_damage)
+    if pressure < 3.0:
+        pressure_scale = 0.0
+    elif counter_lethal_risk > 0.0 or life_after_counter <= 2.0:
+        pressure_scale = 1.0
+    elif life_after_counter <= 4.0:
+        pressure_scale = RESOURCE_CAUTION_PRESSURE_SCALE
+    else:
+        # Board pressure matters, but taking a few non-lethal points at high life
+        # is often the correct price for permanently improving every later build.
+        pressure_scale = RESOURCE_SAFE_PRESSURE_SCALE
+    under_pressure_penalty = pressure * RESOURCE_UNDER_PRESSURE_PENALTY * pressure_scale
+    safe_to_develop = counter_lethal_risk <= 0.0 and life_after_counter >= 5.0
+    foundation_bonus = 0.0
+    catchup_bonus = 0.0
+    if safe_to_develop:
+        missing_foundation = max(0, RESOURCE_FOUNDATION_TARGET - snapshot.own_total_resources)
+        foundation_bonus = missing_foundation * RESOURCE_FOUNDATION_BONUS
+        catchup_bonus = min(
+            0.8,
+            max(0, snapshot.enemy_total_resources - snapshot.own_total_resources) * RESOURCE_CATCHUP_BONUS,
+        )
     empty_board_penalty = EMPTY_BOARD_RAMP_PENALTY if not snapshot.own_has_board and snapshot.own_total_resources >= 4 else 0.0
     at_cap_penalty = RESOURCE_AT_CAP_PENALTY if snapshot.own_creature_count >= BUILDER_CREATURE_CAP else 0.0
-    return round(level_bonus + marginal_capacity * horizon - under_pressure_penalty - empty_board_penalty - at_cap_penalty, 4)
+    return round(
+        level_bonus
+        + marginal_capacity * horizon
+        + foundation_bonus
+        + catchup_bonus
+        - under_pressure_penalty
+        - empty_board_penalty
+        - at_cap_penalty,
+        4,
+    )
 
 
 def build_builder_runtime_fingerprint(player, engine) -> tuple:
@@ -415,7 +463,16 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
     )
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
-    baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
+    attack_budget = (
+        FINAL_DECISION_SEARCH_BUDGET
+        if engine.phase == PHASE_DECLARE_ATTACKERS
+        else TURN_LOOKAHEAD_SEARCH_BUDGET
+    )
+    baseline_attack = _evaluate_attack_cached(
+        base_projection,
+        attack_cache,
+        search_budget=attack_budget,
+    )
     action_candidate = BuilderTurnActionCandidate(
         action_kind="continue",
         creature_candidate=None,
@@ -763,14 +820,30 @@ def _build_action_decision(
             deadline=min(deadline, monotonic() + ACTION_HORIZON_SECONDS),
         )
     creature_future_value = 0.0 if projected_candidate is None else projected_candidate.future_value * TURN_WEIGHTS.creature_future_value
-    resource_growth_value = (
-        score_resource_growth_action(snapshot, current_frontier, next_frontier)
-        * TURN_WEIGHTS.resource_growth
-        * BUILDER_AI_WEIGHTS.resource_growth_vs_build
+    raw_resource_growth_value = (
+        score_resource_growth_action(
+            snapshot,
+            current_frontier,
+            next_frontier,
+            expected_counter_damage=predicted_attack.score.projected_counter_damage,
+            counter_lethal_risk=predicted_attack.score.counter_lethal_risk,
+        )
         if action_candidate.action_kind == "resource"
         else 0.0
     )
-    immediate_combat_delta = (predicted_attack.score.total - baseline_attack.score.total) * TURN_WEIGHTS.immediate_combat_delta
+    resource_growth_value = (
+        raw_resource_growth_value
+        * TURN_WEIGHTS.resource_growth
+        * BUILDER_AI_WEIGHTS.resource_growth_vs_build
+    )
+    raw_immediate_combat_delta = _score_immediate_combat_delta(
+        snapshot,
+        projection,
+        baseline_attack,
+        predicted_attack,
+        projected_candidate,
+    )
+    immediate_combat_delta = raw_immediate_combat_delta * TURN_WEIGHTS.immediate_combat_delta
     end_of_turn_readiness = _score_end_of_turn_readiness(projection, predicted_attack, snapshot) * TURN_WEIGHTS.ready_defense
     survival_urgency = _score_action_survival_urgency(snapshot, projection, predicted_attack, action_candidate.action_kind) * TURN_WEIGHTS.survival_urgency
     board_value = _score_board_projection_value(projection) * TURN_WEIGHTS.board_value
@@ -781,7 +854,13 @@ def _build_action_decision(
     future_offense_value = future_offense_raw * FUTURE_OFFENSE_WEIGHT
     board_slot_raw = _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, projected_candidate, cap_context, horizon)
     board_slot_opportunity_cost = board_slot_raw * BOARD_SLOT_OPPORTUNITY_WEIGHT
-    haste_immediate_value = _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate) * HASTE_IMMEDIATE_WEIGHT
+    haste_immediate_value = _score_haste_immediate_value(
+        snapshot,
+        projection,
+        predicted_attack,
+        projected_candidate,
+        baseline_attack,
+    ) * HASTE_IMMEDIATE_WEIGHT
     flying_offense_value = _score_flying_offense_value(snapshot, projection, predicted_attack, projected_candidate) * FLYING_OFFENSE_WEIGHT
     flying_coverage_raw = _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate, horizon)
     flying_coverage_value = flying_coverage_raw * FLYING_COVERAGE_WEIGHT
@@ -796,6 +875,7 @@ def _build_action_decision(
     curve_delay_raw = _score_curve_delay(
         snapshot,
         projection,
+        baseline_attack,
         predicted_attack,
         projected_candidate,
         best_build_value_now,
@@ -815,11 +895,6 @@ def _build_action_decision(
         snapshot,
         action_candidate.action_kind,
     ) * TURN_WEIGHTS.ability_impact
-    raw_resource_growth_value = (
-        score_resource_growth_action(snapshot, current_frontier, next_frontier)
-        if action_candidate.action_kind == "resource"
-        else 0.0
-    )
     resource_value = resource_growth_value
     draw_value = _score_attack_draw_value(player, engine, predicted_attack)
     card_value = _remaining_hand_value(player, engine, ability_action.card_instance_id, snapshot, projection) - skip_hold_value
@@ -860,7 +935,7 @@ def _build_action_decision(
         ),
         (
             "combat_delta",
-            predicted_attack.score.total - baseline_attack.score.total,
+            raw_immediate_combat_delta,
             TURN_WEIGHTS.immediate_combat_delta,
             immediate_combat_delta,
         ),
@@ -891,7 +966,7 @@ def _build_action_decision(
         ),
         (
             "haste_immediate",
-            _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate),
+            _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate, baseline_attack),
             HASTE_IMMEDIATE_WEIGHT,
             haste_immediate_value,
         ),
@@ -1008,7 +1083,12 @@ def _build_action_decision(
     )
 
 
-def _evaluate_attack_cached(projection, cache: dict[tuple, BuilderAttackDecision]) -> BuilderAttackDecision:
+def _evaluate_attack_cached(
+    projection,
+    cache: dict[tuple, BuilderAttackDecision],
+    *,
+    search_budget=TURN_LOOKAHEAD_SEARCH_BUDGET,
+) -> BuilderAttackDecision:
     cache_key = _attack_cache_key(projection)
     cached = cache.get(cache_key)
     if cached is not None:
@@ -1016,7 +1096,7 @@ def _evaluate_attack_cached(projection, cache: dict[tuple, BuilderAttackDecision
     decision = evaluate_best_builder_attack(
         projection.players[projection.player_id],
         projection,
-        search_budget=TURN_LOOKAHEAD_SEARCH_BUDGET,
+        search_budget=search_budget,
     )
     cache[cache_key] = decision
     return decision
@@ -1368,16 +1448,17 @@ def _score_board_slot_opportunity_cost(snapshot, projection, predicted_attack, p
     return -(discounted_gap + safe_fifth_slot_penalty)
 
 
-def _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate) -> float:
+def _score_haste_immediate_value(snapshot, projection, predicted_attack, projected_candidate, baseline_attack) -> float:
     if projected_candidate is None or not projected_candidate.candidate.has_haste:
         return 0.0
     new_unit_id = projection.hypothetical_unit_id
     value = 0.0
     if new_unit_id is not None and new_unit_id in predicted_attack.candidate.attacker_ids:
-        new_unit = projection.get_unit_by_id(new_unit_id)
-        if new_unit is not None:
-            value += estimate_unblocked_attack(new_unit).player_damage * 0.65
-            value += new_unit.sw * 0.08
+        marginal_player_damage = max(
+            0.0,
+            predicted_attack.score.player_damage - baseline_attack.score.player_damage,
+        )
+        value += marginal_player_damage * 0.73
         if predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0:
             value += 2.2
     return value
@@ -1577,10 +1658,16 @@ def _score_role_novelty(snapshot, projection, predicted_attack, projected_candid
     if projected_candidate is None:
         return 0.0
     candidate = projected_candidate.candidate
+    hypothetical_unit_id = projection.hypothetical_unit_id
+    existing_units = [
+        unit
+        for unit in projection.own_units
+        if hypothetical_unit_id is None or unit.unit_id != hypothetical_unit_id
+    ]
     similar_units = 0
-    own_flying = sum(1 for unit in projection.own_units if unit.has_ability(Ability.FLYING))
-    own_zero_attack = sum(1 for unit in projection.own_units if unit.aw == 0 and unit.sw <= 1)
-    for unit in projection.own_units:
+    own_flying = sum(1 for unit in existing_units if unit.has_ability(Ability.FLYING))
+    own_zero_attack = sum(1 for unit in existing_units if unit.aw == 0 and unit.sw <= 1)
+    for unit in existing_units:
         same_ability = candidate.builder_ability is not None and unit.has_ability(candidate.builder_ability)
         similar_stats = abs(unit.aw - candidate.aw) <= 1 and abs(unit.vw - candidate.vw) <= 1 and abs(unit.sw - candidate.sw) <= 1
         if same_ability and similar_stats:
@@ -1609,6 +1696,7 @@ def _score_role_novelty(snapshot, projection, predicted_attack, projected_candid
 def _score_curve_delay(
     snapshot,
     projection,
+    baseline_attack,
     predicted_attack,
     projected_candidate,
     best_build_value_now: float,
@@ -1640,8 +1728,49 @@ def _score_curve_delay(
     safe_state = predicted_attack.score.counter_lethal_risk <= 0.0 and predicted_attack.score.projected_counter_damage < max(2.0, projection.own_life - 3.0)
     if safe_state:
         future_gap *= 1.1
+        new_unit_attacks = projection.hypothetical_unit_id in predicted_attack.candidate.attacker_ids
+        if candidate.has_haste and not new_unit_attacks and candidate.aw == 0 and candidate.sw <= 1:
+            # Haste may still be a useful emergency blocker, but paying for it on
+            # a tiny passive body is poor curve development while life is safe.
+            future_gap += 0.9
     dampener = max(0.15, 1.0 - min(0.82, tactical_impact * 0.22))
-    return future_gap * dampener
+    curve_delay = future_gap * dampener
+    safe_without_build = (
+        baseline_attack.score.counter_lethal_risk <= 0.0
+        and snapshot.own_life - baseline_attack.score.projected_counter_damage >= 5.0
+    )
+    immediate_lethal = predicted_attack.score.guaranteed_player_damage >= projection.enemy_life > 0
+    if safe_without_build and not immediate_lethal and snapshot.own_total_resources < RESOURCE_FOUNDATION_TARGET:
+        missing_foundation = RESOURCE_FOUNDATION_TARGET - snapshot.own_total_resources
+        marginal_player_damage = max(
+            0.0,
+            predicted_attack.score.player_damage - baseline_attack.score.player_damage,
+        )
+        development_delay = missing_foundation * SAFE_FOUNDATION_BUILD_DELAY
+        development_delay -= min(0.8, marginal_player_damage * 0.4)
+        curve_delay += max(0.0, development_delay)
+    return curve_delay
+
+
+def _score_immediate_combat_delta(snapshot, projection, baseline_attack, predicted_attack, projected_candidate) -> float:
+    value = predicted_attack.score.total - baseline_attack.score.total
+    if projected_candidate is None:
+        return value
+    new_unit_attacks = projection.hypothetical_unit_id in predicted_attack.candidate.attacker_ids
+    prevented_counter_damage = max(
+        0.0,
+        baseline_attack.score.projected_counter_damage - predicted_attack.score.projected_counter_damage,
+    )
+    safe_without_new_body = (
+        baseline_attack.score.counter_lethal_risk <= 0.0
+        and snapshot.own_life - baseline_attack.score.projected_counter_damage >= 5.0
+    )
+    if safe_without_new_body and not new_unit_attacks and prevented_counter_damage > 0.0:
+        # Counter damage is already represented by survival urgency. Discounting
+        # its second appearance prevents safe chump blockers from beating a
+        # permanent resource upgrade solely by absorbing optional chip damage.
+        value -= prevented_counter_damage * SAFE_COUNTER_DAMAGE_PREVENTION_DISCOUNT
+    return value
 
 
 def evaluate_builder_next_main_value(projection) -> tuple[float, str, str]:
@@ -1780,7 +1909,7 @@ def _score_ability_action_value(ability_action, main_projection, projection, pre
     if ability_action.action_kind == "add_stat" and target is not None and ability_action.selected_stat is not None:
         base = estimate_creature_board_value(target) * 0.08
         if ability_action.selected_stat == "aw":
-            base += target.sw * 0.14 + STAT_BREAKPOINT_WEIGHT
+            base += target.sw * 0.14
         elif ability_action.selected_stat == "vw":
             base += target.lw * 0.1 + 0.55
         elif ability_action.selected_stat == "sw":
@@ -1813,18 +1942,14 @@ def _score_granted_ability_shell(ability: Ability, target, predicted_attack, ski
             score += min(1.4, max(0.0, attack_delta) * 0.35)
         if target.sw <= 1:
             score -= 0.35
-        if target.current_hp <= 1 and target.aw == 0 and target.vw == 0:
-            score -= NONLETHAL_GLASS_ABILITY_PENALTY
         return score
     if ability == Ability.HASTE:
         attacks_now = target.unit_id in predicted_attack.candidate.attacker_ids
-        return (1.4 if attacks_now else -HASTE_WITHOUT_ATTACK_PENALTY) + target.sw * 0.25
+        return (1.4 if attacks_now else 0.0) + target.sw * 0.25
     if ability == Ability.VIGILANCE:
         attacks_now = target.unit_id in predicted_attack.candidate.attacker_ids
         defensive_body = target.vw + target.current_hp
         score = defensive_body * 0.12 + (0.55 if attacks_now else 0.0)
-        if target.aw == 0 and (target.vw == 0 or target.sw >= 3 and target.current_hp <= 1):
-            score -= VIGILANCE_SUICIDE_PENALTY
         return score
     if ability == Ability.LIFELINK:
         return target.sw * 0.22 + max(0, target.lw - target.current_hp) * 0.35 + target.lw * 0.05
@@ -1840,7 +1965,7 @@ def _score_granted_ability_shell(ability: Ability, target, predicted_attack, ski
         return score
     if ability == Ability.PROVOKE:
         attacks_now = target.unit_id in predicted_attack.candidate.attacker_ids
-        score = (PROVOKE_RELEASE_BONUS if attacks_now else 0.0) + target.sw * 0.16 + snapshot.enemy_creature_count * 0.08
+        score = target.sw * 0.16 + snapshot.enemy_creature_count * 0.08
         score += min(1.8, max(0.0, attack_delta) * 0.42)
         if attacks_now and predicted_attack.score.player_damage > skip_attack.score.player_damage:
             score += 0.45
@@ -2422,7 +2547,3 @@ def _debug_turn_decision(engine, player, runtime_signature: tuple, snapshot, bas
     if builder_debug_verbose() and builder_debug_include_fingerprints():
         after = build_builder_runtime_fingerprint(player, engine)
         log_builder_fingerprint(engine, player, decision="main", before=runtime_signature, after=after)
-
-
-def _is_finite_score(score: BuilderTurnScore) -> bool:
-    return all(isfinite(value) for value in score.__dict__.values() if isinstance(value, float))

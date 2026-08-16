@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import core.config as config
-
-from .build_policy import choose_builder_creature_candidate
 from .turn_policy import choose_builder_main_action as choose_builder_main_action_v3
 
 
@@ -43,27 +40,3 @@ def score_builder_resource_action(snapshot, resource_limit: int) -> float:
         pressure_penalty -= 0.6
 
     return round(early_ramp_bonus + board_safety + life_safety + pressure_penalty, 4)
-
-
-def _debug_builder_decision(engine, snapshot, scored_candidates, resource_score: float, decision: str) -> None:
-    if not getattr(config, "AI_DEBUG", getattr(config, "BUILDER_AI_DEBUG", 0)):
-        return
-    logger = getattr(engine, "debug_log", None) or engine.log
-    logger(
-        "Builder AI: "
-        f"resources={snapshot.own_total_resources} ready={snapshot.own_ready_resources} "
-        f"board={snapshot.own_board_value:.1f} enemy_board={snapshot.enemy_board_value:.1f}"
-    )
-    logger("Candidates:")
-    for index, (candidate, score) in enumerate(scored_candidates[:5], start=1):
-        abilities = ", ".join(ability.value for ability in sorted(candidate.abilities, key=lambda ability: ability.value)) or "-"
-        logger(
-            f"{index}. {candidate.aw}/{candidate.vw}/{candidate.sw}/{candidate.lw} {abilities} | "
-            f"cost {candidate.cost} | score {score.total:.2f} "
-            f"(stats {score.raw_stats:.2f}, abil {score.abilities:.2f}, fit {score.board_fit:.2f}, syn {score.synergy:.2f}, "
-            f"off {score.matchup_offense:.2f}, def {score.matchup_defense:.2f}, eva {score.evasion:.2f}, "
-            f"pdmg {score.expected_player_damage:.2f}, heal {score.expected_heal:.2f}, "
-            f"kill {score.kill_pressure:.2f}, risk {score.death_risk:.2f})"
-        )
-    logger(f"Resource score: {resource_score:.2f}")
-    logger(f"Decision: {decision}")

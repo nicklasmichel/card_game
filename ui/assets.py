@@ -35,6 +35,23 @@ def load_resource_back_images(self) -> dict[str, pygame.Surface]:
     return image_map
 
 
+def load_resource_segment_images(self) -> tuple[pygame.Surface | None, ...]:
+    resources_dir = Path(__file__).resolve().parent.parent / "ressources" / "resources"
+    images: list[pygame.Surface | None] = []
+    for resource_number in range(1, 11):
+        candidates = [resources_dir / f"res{resource_number}.png"]
+        if resource_number == 10:
+            # Keep compatibility with the supplied filename.
+            candidates.append(resources_dir / "res110.png")
+        image_path = next((candidate for candidate in candidates if candidate.exists()), None)
+        images.append(
+            pygame.image.load(str(image_path)).convert_alpha()
+            if image_path is not None
+            else None
+        )
+    return tuple(images)
+
+
 def load_summoner_images(self) -> dict[str, pygame.Surface]:
     resources_dir = Path(__file__).resolve().parent.parent / "ressources"
     image_map: dict[str, pygame.Surface] = {}
@@ -243,7 +260,9 @@ def handle_preview_start(self, position: tuple[int, int]) -> None:
             rect, builder, info_builder = target
         else:
             rect, builder = target
-            info_builder = lambda: []
+
+            def info_builder() -> list:
+                return []
         if rect.collidepoint(position):
             self.preview_builder = builder
             self.preview_info_builder = info_builder

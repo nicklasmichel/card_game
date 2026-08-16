@@ -11,27 +11,17 @@ from core.config import COMBAT_DIE_SIDES, STARTING_LIFE
 from core.models import (
     Ability,
     BattlefieldCreature,
-    ButtonSpec,
-    CardCost,
     CardInstance,
-    CardType,
     ControllerKind,
-    DiceRoundRecord,
     Element,
     MatchMode,
     PendingBuilderAbilityUse,
     PendingBuilderCreatureBuild,
     PendingDirectAttack,
-    PHASE_BUILDER_ABILITY,
-    PHASE_BUILDER_CREATURE,
-    PHASE_DECLARE_ATTACKERS,
-    PHASE_DECLARE_BLOCKERS,
     PHASE_DICE_BATTLE,
-    PHASE_GAME_OVER,
     PHASE_MAIN_1,
     PendingDiceBattle,
     PlayerState,
-    ResourceCard,
 )
 from stats import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH, LOG_PATH, GameStatistics
 
@@ -377,6 +367,9 @@ class GameEngine:
         self.rng = Random(self.seed)
         self.ai = SimpleAI(self.rng)
         self.game_id = f"game-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{self.seed}"
+        self._write_log_line(
+            f"[GAME START] id={self.game_id} seed={self.seed} mode={self.match_mode.value}"
+        )
         self.next_instance_id = 1
         self.players = [
             PlayerState(0, "Spieler", True, controller_kind=ControllerKind.LOCAL_HUMAN),

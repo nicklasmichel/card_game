@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from .paths import CREATURE_RESULTS_PATH, GAME_RESULTS_PATH
-from .records import CreatureCombatRecord, PendingCombatStats, PlayerCounters
+from .paths import BUILDER_BUILD_RESULTS_PATH, CREATURE_RESULTS_PATH, GAME_RESULTS_PATH
+from .records import BuilderCreatureBuildRecord, CreatureCombatRecord, PendingCombatStats, PlayerCounters
 
 
 @dataclass
@@ -19,6 +19,7 @@ class GameStatistics:
     player_names: Dict[int, str]
     results_path: Path = GAME_RESULTS_PATH
     creature_results_path: Path = CREATURE_RESULTS_PATH
+    builder_build_results_path: Path = BUILDER_BUILD_RESULTS_PATH
     player_stats: Dict[int, PlayerCounters] = field(default_factory=lambda: {0: PlayerCounters(), 1: PlayerCounters()})
     normal_blocks: int = 0
     multi_blocks: int = 0
@@ -29,6 +30,7 @@ class GameStatistics:
     current_turns: int = 0
     current_pending_combat: PendingCombatStats | None = None
     creature_records: List[CreatureCombatRecord] = field(default_factory=list)
+    builder_creature_records: List[BuilderCreatureBuildRecord] = field(default_factory=list)
     winner: str = ""
     reaction_chains_started: int = 0
     reaction_chain_total_length: int = 0
@@ -56,6 +58,52 @@ class GameStatistics:
                 self.player_stats[player_id].max_recycle_paid_once,
                 recycle_cost,
             )
+
+    def register_builder_creature_played(
+        self,
+        player_id: int,
+        *,
+        primary_ability,
+        has_haste: bool,
+        turn_number: int,
+        aw: int,
+        vw: int,
+        sw: int,
+        lw: int,
+        stat_cost: int,
+        total_cost: int,
+    ) -> None:
+        ability_name = getattr(primary_ability, "name", str(primary_ability)).upper()
+        primary_counter = {
+            "FLYING": "builder_flying_creatures_played",
+            "VIGILANCE": "builder_vigilance_creatures_played",
+            "VIGILANT": "builder_vigilance_creatures_played",
+            "TRAMPLE": "builder_trample_creatures_played",
+        }.get(ability_name)
+        if primary_counter is None:
+            raise ValueError(f"Unsupported builder primary ability: {primary_ability!r}")
+        self.register_creature_played(player_id)
+        counters = self.player_stats[player_id]
+        setattr(counters, primary_counter, getattr(counters, primary_counter) + 1)
+        counters.builder_haste_creatures_played += int(has_haste)
+        counters.builder_stat_points_spent += max(0, int(stat_cost))
+        counters.builder_resources_spent += max(0, int(total_cost))
+        self.builder_creature_records.append(
+            BuilderCreatureBuildRecord(
+                game_id=self.game_id,
+                timestamp=datetime.now().isoformat(timespec="seconds"),
+                turn=max(0, int(turn_number)),
+                player_name=self.player_names[player_id],
+                aw=int(aw),
+                vw=int(vw),
+                sw=int(sw),
+                lw=int(lw),
+                primary_ability="VIGILANCE" if ability_name == "VIGILANT" else ability_name,
+                has_haste=int(has_haste),
+                stat_cost=max(0, int(stat_cost)),
+                total_cost=max(0, int(total_cost)),
+            )
+        )
 
     def register_recycle_payment(self, player_id: int, recycle_cost: int) -> None:
         self.player_stats[player_id].recycled_resources += recycle_cost
@@ -286,6 +334,7 @@ class GameStatistics:
         }
         self.append_game_result(row)
         self.append_creature_results()
+        self.append_builder_creature_results()
         return row
 
     def append_game_result(self, row: Dict[str, str]) -> None:
@@ -308,4 +357,17 @@ class GameStatistics:
             if write_header:
                 writer.writeheader()
             for record in self.creature_records:
+                writer.writerow(record.__dict__)
+
+    def append_builder_creature_results(self) -> None:
+        fieldnames = [
+            "game_id", "timestamp", "turn", "player_name", "aw", "vw", "sw", "lw",
+            "primary_ability", "has_haste", "stat_cost", "total_cost",
+        ]
+        write_header = not self.builder_build_results_path.exists()
+        with self.builder_build_results_path.open("a", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            for record in self.builder_creature_records:
                 writer.writerow(record.__dict__)

@@ -190,8 +190,8 @@ class MultiplayerLoopbackTests(unittest.TestCase):
                 and self.client.state.pending_builder_creature is not None
             )
         )
-        self.client.submit_action("builder_aw_up")
         self.client.submit_action("builder_sw_up")
+        self.client.submit_action("builder_select_ability_haste")
         self.client.submit_action("builder_confirm_creature")
         self.assertTrue(
             self.pump_client_until(

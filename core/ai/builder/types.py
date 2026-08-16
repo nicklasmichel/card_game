@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.builder_rules import BUILDER_CREATURE_ABILITY_SET
+from core.builder_rules import BUILDER_HASTE_COST, BUILDER_PRIMARY_ABILITY_SET
 from core.models import Ability
 
 
@@ -61,23 +61,23 @@ class BuilderCreatureCandidate:
 
     @property
     def has_haste(self) -> bool:
-        return self.builder_ability == Ability.HASTE
+        return Ability.HASTE in self.abilities
 
     @property
     def builder_ability(self) -> Ability | None:
-        if len(self.abilities) != 1:
-            return None
-        ability = next(iter(self.abilities))
-        if ability == Ability.VIGILANT:
-            ability = Ability.VIGILANCE
-        return ability if ability in BUILDER_CREATURE_ABILITY_SET else None
+        primary = []
+        for ability in self.abilities:
+            normalized = Ability.VIGILANCE if ability == Ability.VIGILANT else ability
+            if normalized in BUILDER_PRIMARY_ABILITY_SET:
+                primary.append(normalized)
+        return primary[0] if len(primary) == 1 else None
 
     def has_ability(self, ability: Ability) -> bool:
         return ability in self.abilities
 
     @property
     def haste_cost(self) -> int:
-        return 0
+        return BUILDER_HASTE_COST if self.has_haste else 0
 
     @property
     def enters_tapped(self) -> bool:
@@ -85,7 +85,8 @@ class BuilderCreatureCandidate:
 
     @property
     def key(self) -> tuple[int, int, int, int, str]:
-        return self.signature + (getattr(self.builder_ability, "name", "-"),)
+        ability_key = "+".join(sorted(ability.name for ability in self.abilities)) or "-"
+        return self.signature + (ability_key,)
 
 
 @dataclass(frozen=True)

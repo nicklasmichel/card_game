@@ -186,7 +186,6 @@ def _score_raw_stats(candidate: BuilderCreatureCandidate) -> float:
 
 def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:
     score = sum(ABILITY_BASE_WEIGHTS.get(ability, 0.0) for ability in candidate.abilities)
-    offense = candidate.aw + candidate.sw
     defense = candidate.vw + candidate.lw
 
     if Ability.FLYING in candidate.abilities:
@@ -341,6 +340,7 @@ def _score_candidate_matchups(
     immediate_enemy_blockers = [coerce_builder_combatant(creature) for creature in enemy_creatures]
     enemy_attackers = [coerce_builder_combatant(creature, ready=True) for creature in enemy_creatures]
     own_blockers = [coerce_builder_combatant(creature) for creature in own_creatures]
+    future_own_blockers = [coerce_builder_combatant(creature, ready=True) for creature in own_creatures]
 
     offensive = _evaluate_offensive_matchups(
         candidate_future,
@@ -348,7 +348,12 @@ def _score_candidate_matchups(
         prefer_forced=Ability.ENRAGED in candidate.abilities,
         die_sides=die_sides,
     )
-    future_defense = _evaluate_defensive_matchups(candidate_future, enemy_attackers, die_sides=die_sides)
+    future_defense = _evaluate_marginal_defense(
+        candidate_future,
+        enemy_attackers,
+        future_own_blockers,
+        die_sides=die_sides,
+    )
     immediate_defense = _evaluate_marginal_immediate_defense(
         candidate_immediate,
         enemy_attackers,
@@ -360,13 +365,17 @@ def _score_candidate_matchups(
 
     return {
         "matchup_offense": offensive["score"],
-        "matchup_defense": future_defense["score"] + immediate_defense["score"],
+        # Long-term candidate quality only receives the marginal future defense
+        # value. Immediate Haste coverage is already represented by the turn
+        # projection and its counterattack score; adding it here again made
+        # redundant cheap Haste blockers dominate every other role.
+        "matchup_defense": future_defense["score"],
         "immediate_pressure": immediate["score"],
         "evasion": evasion["score"],
         "expected_player_damage": offensive["expected_player_damage"] + immediate["expected_player_damage"],
         "expected_heal": offensive["expected_heal"] + immediate["expected_heal"],
-        "kill_pressure": offensive["kill_pressure"] + future_defense["kill_pressure"] + immediate_defense["kill_pressure"],
-        "death_risk": offensive["death_risk"] + future_defense["death_risk"] + immediate_defense["death_risk"],
+        "kill_pressure": offensive["kill_pressure"] + future_defense["kill_pressure"],
+        "death_risk": offensive["death_risk"] + future_defense["death_risk"],
         "attack_access_probability": offensive["attack_access_probability"],
         "block_win_probability": max(future_defense["block_win_probability"], immediate_defense["block_win_probability"]),
         "attacker_kill_probability": max(offensive["attacker_kill_probability"], future_defense["attacker_kill_probability"], immediate_defense["attacker_kill_probability"]),
@@ -375,9 +384,9 @@ def _score_candidate_matchups(
         "stranded_damage": offensive["stranded_damage"],
         "overkill_damage": offensive["overkill_damage"],
         "life_breakpoint": max(future_defense["life_breakpoint"], immediate_defense["life_breakpoint"]),
-        "repeated_block_value": future_defense["repeated_block_value"] + immediate_defense["repeated_block_value"],
+        "repeated_block_value": future_defense["repeated_block_value"],
         "immediate_prevented_damage": immediate_defense["immediate_prevented_damage"],
-        "repeated_prevented_damage": future_defense["repeated_prevented_damage"] + immediate_defense["repeated_prevented_damage"],
+        "repeated_prevented_damage": future_defense["repeated_prevented_damage"],
     }
 
 
@@ -607,35 +616,6 @@ def _evaluate_immediate_pressure(candidate_view, snapshot: BuilderStrategicSnaps
     }
 
 
-def _evaluate_immediate_defense(candidate_view, enemy_attackers: list, *, die_sides: int) -> dict[str, float]:
-    if not candidate_view.has_ability(Ability.HASTE):
-        return {
-            "score": 0.0,
-            "kill_pressure": 0.0,
-            "death_risk": 0.0,
-            "repeated_block_value": 0.0,
-            "block_win_probability": 0.0,
-            "attacker_kill_probability": 0.0,
-            "blocker_survival_probability": 0.0,
-            "life_breakpoint": 0.0,
-            "immediate_prevented_damage": 0.0,
-            "repeated_prevented_damage": 0.0,
-        }
-    defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers, die_sides=die_sides)
-    return {
-        "score": defensive["score"],
-        "kill_pressure": defensive["kill_pressure"],
-        "death_risk": defensive["death_risk"],
-        "repeated_block_value": defensive["repeated_block_value"],
-        "block_win_probability": defensive["block_win_probability"],
-        "attacker_kill_probability": defensive["attacker_kill_probability"],
-        "blocker_survival_probability": defensive["blocker_survival_probability"],
-        "life_breakpoint": defensive["life_breakpoint"],
-        "immediate_prevented_damage": defensive["immediate_prevented_damage"],
-        "repeated_prevented_damage": defensive["repeated_prevented_damage"],
-    }
-
-
 def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, own_blockers: list, *, die_sides: int) -> dict[str, float]:
     if not candidate_view.has_ability(Ability.HASTE):
         return {
@@ -650,10 +630,19 @@ def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, 
             "repeated_block_value": 0.0,
             "repeated_prevented_damage": 0.0,
         }
+    return _evaluate_marginal_defense(
+        candidate_view,
+        enemy_attackers,
+        own_blockers,
+        die_sides=die_sides,
+    )
+
+
+def _evaluate_marginal_defense(candidate_view, enemy_attackers: list, own_blockers: list, *, die_sides: int) -> dict[str, float]:
     baseline_damage = _optimal_enemy_damage(enemy_attackers, own_blockers)
     with_candidate_damage = _optimal_enemy_damage(enemy_attackers, own_blockers + [candidate_view])
     marginal_prevented = max(0.0, baseline_damage - with_candidate_damage)
-    defensive = _evaluate_immediate_defense(candidate_view, enemy_attackers, die_sides=die_sides)
+    defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers, die_sides=die_sides)
     if marginal_prevented <= 0.0 and defensive["repeated_block_value"] <= 0.0:
         return {
             "score": 0.0,
@@ -667,22 +656,23 @@ def _evaluate_marginal_immediate_defense(candidate_view, enemy_attackers: list, 
             "repeated_block_value": defensive["repeated_block_value"],
             "repeated_prevented_damage": defensive["repeated_prevented_damage"],
         }
+    redundancy_scale = 1.0 if marginal_prevented > 0.0 or not own_blockers else 0.45
     score = marginal_prevented * (DEFENSIVE_PREVENTED_DAMAGE_WEIGHT + 0.35)
-    score += max(0.0, defensive["kill_pressure"]) * 1.35
-    score += max(0.0, defensive["death_risk"]) * 0.7
-    score += defensive["repeated_block_value"] * 1.1
-    score += defensive["life_breakpoint"] * 0.8
+    score += max(0.0, defensive["kill_pressure"]) * 1.35 * redundancy_scale
+    score += max(0.0, defensive["death_risk"]) * 0.7 * redundancy_scale
+    score += defensive["repeated_block_value"] * 1.1 * redundancy_scale
+    score += defensive["life_breakpoint"] * 0.8 * redundancy_scale
     return {
         "score": score,
-        "kill_pressure": defensive["kill_pressure"],
-        "death_risk": defensive["death_risk"],
+        "kill_pressure": defensive["kill_pressure"] * redundancy_scale,
+        "death_risk": defensive["death_risk"] * redundancy_scale,
         "block_win_probability": defensive["block_win_probability"],
         "attacker_kill_probability": defensive["attacker_kill_probability"],
         "blocker_survival_probability": defensive["blocker_survival_probability"],
         "life_breakpoint": defensive["life_breakpoint"],
         "immediate_prevented_damage": marginal_prevented,
-        "repeated_block_value": defensive["repeated_block_value"],
-        "repeated_prevented_damage": defensive["repeated_prevented_damage"],
+        "repeated_block_value": defensive["repeated_block_value"] * redundancy_scale,
+        "repeated_prevented_damage": defensive["repeated_prevented_damage"] * redundancy_scale,
     }
 
 

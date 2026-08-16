@@ -7,14 +7,7 @@ from typing import Callable, Dict, List, Tuple
 import pygame
 
 from core.branding import APP_WINDOW_TITLE
-from core.models import (
-    ButtonSpec,
-    PHASE_DECLARE_ATTACKERS,
-    PHASE_DECLARE_BLOCKERS,
-    PHASE_DICE_BATTLE,
-    PHASE_GAME_OVER,
-    PHASE_MAIN_1,
-)
+from core.models import ButtonSpec
 from core.session import GameSession, LocalPveSession
 from ui.card_rendering import (
     blit_centered_text,
@@ -70,6 +63,7 @@ from ui.assets import (
     handle_preview_stop,
     load_card_art_images,
     load_resource_back_images,
+    load_resource_segment_images,
     load_summoner_images,
     load_ui_symbol_images,
     render_scaled_card_surface,
@@ -216,6 +210,7 @@ class GodaoApp:
     blit_text = blit_text
     draw_section_box = draw_section_box
     load_resource_back_images = load_resource_back_images
+    load_resource_segment_images = load_resource_segment_images
     load_summoner_images = load_summoner_images
     load_ui_symbol_images = load_ui_symbol_images
     load_card_art_images = load_card_art_images
@@ -291,6 +286,8 @@ class GodaoApp:
         self.session = session or LocalPveSession(auto_start=False)
         self.engine = self.session.state
         self.resource_back_images = self.load_resource_back_images()
+        self.resource_segment_images = self.load_resource_segment_images()
+        self.resource_background_scaled_images: dict[tuple[int, int, int], pygame.Surface] = {}
         self.summoner_images = self.load_summoner_images()
         self.ui_symbol_images = self.load_ui_symbol_images()
         self.card_art_images = self.load_card_art_images()
@@ -305,8 +302,6 @@ class GodaoApp:
         self.timer_last_update_ms = pygame.time.get_ticks()
         self.game_elapsed_ms = 0
         self.phase_elapsed_ms = 0
-        self.resource_background_counts: dict[int, int] = {}
-        self.resource_background_pulses: dict[int, tuple[int, int]] = {}
         self.player_creature_rect = pygame.Rect(0, 0, 0, 0)
         self.player_resource_rect = pygame.Rect(0, 0, 0, 0)
         self.dragged_hand_card_id: int | None = None

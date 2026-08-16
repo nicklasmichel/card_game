@@ -10,7 +10,7 @@ from uuid import uuid4
 from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS
 
 
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 
 class SnapshotValidationError(ValueError):
@@ -173,7 +173,8 @@ def _serialize_builder_creature(pending) -> dict[str, Any] | None:
         "sw": pending.sw,
         "lw": pending.lw,
         "available_resources": pending.available_resources,
-        "selected_ability": pending.selected_ability.name if pending.selected_ability else None,
+        "selected_primary_ability": pending.selected_primary_ability.name if pending.selected_primary_ability else None,
+        "has_haste": pending.has_haste,
     }
 
 

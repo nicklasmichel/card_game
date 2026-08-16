@@ -7,7 +7,7 @@ import pygame
 from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.config import STARTING_LIFE
 from core.models import PHASE_BUILDER_CREATURE
-from ui.style import CARD_BORDER, HIGHLIGHT, TEXT_COLOR
+from ui.style import HIGHLIGHT, TEXT_COLOR
 
 
 def draw_enemy_area(self) -> None:

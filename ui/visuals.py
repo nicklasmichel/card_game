@@ -4,8 +4,6 @@ from typing import Dict
 
 import pygame
 
-from core.models import CardInstance
-
 DIRECT_ATTACK_FORWARD_DURATION_MS = 620
 DIRECT_ATTACK_ANIMATION_TOTAL_MS = 1550
 

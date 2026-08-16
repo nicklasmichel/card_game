@@ -34,8 +34,6 @@ from .block_policy import (
     score_builder_block_candidate,
 )
 from .combat_assignments import (
-    FULL_BLOCK_ENUMERATION_ATTACKER_THRESHOLD,
-    FULL_BLOCK_ENUMERATION_BLOCKER_THRESHOLD,
     convolve_damage_distributions,
     estimate_block_assignment_upper_bound,
     generate_block_assignment_tuples,

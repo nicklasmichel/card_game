@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from time import monotonic
-
 from core.builder_rules import BUILDER_CREATURE_CAP
 from core.models import Ability
 

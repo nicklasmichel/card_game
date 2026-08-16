@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import List
-
 import pygame
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_ABILITY_COST, BUILDER_CREATURE_ABILITIES
-from core.models import ButtonSpec, PHASE_BUILDER_ABILITY, PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
-from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_ABILITIES, BUILDER_HASTE_COST
+from core.models import Ability, PHASE_BUILDER_ABILITY, PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
+from engine.builder import BUILDER_ABILITY_LABELS, BUILDER_CREATURE_ABILITY_RULES_TEXT, get_builder_creature_abilities_label
 from ui.style import BUTTON_COLOR, BUTTON_DISABLED, CARD_BORDER, HIGHLIGHT, MUTED_TEXT, PANEL_COLOR, PLAYER_CARD_COLOR, SECTION_COLOR, TEXT_COLOR
 from ui.timers import format_elapsed_ms
 
@@ -241,7 +239,7 @@ def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
                     f"Cost: {self.engine.builder_creature_build_cost()} / {build.available_resources} available",
                     f"Ready after build: {self.engine.builder_remaining_ready_resources()}",
                     f"Enters tapped: {'No' if build.has_haste else 'Yes'}",
-                    f"Chosen ability: {BUILDER_ABILITY_LABELS.get(build.selected_ability, '-')}",
+                    f"Abilities: {get_builder_creature_abilities_label(build.selected_abilities)}",
                 ],
             )
         )
@@ -249,7 +247,7 @@ def get_action_detail_sections(self) -> list[tuple[str, list[str]]]:
             (
                 "Ability choice",
                 [
-                    f"{'[x]' if build.selected_ability == ability else '[ ]'} {BUILDER_ABILITY_LABELS[ability]} ({BUILDER_ABILITY_COST}) - {BUILDER_CREATURE_ABILITY_RULES_TEXT[ability]}"
+                    f"{'[x]' if ability in build.selected_abilities else '[ ]'} {BUILDER_ABILITY_LABELS[ability]} ({BUILDER_HASTE_COST if ability == Ability.HASTE else 0}) - {BUILDER_CREATURE_ABILITY_RULES_TEXT[ability]}"
                     for ability in BUILDER_CREATURE_ABILITIES
                 ],
             )
@@ -409,12 +407,14 @@ def draw_side_actions(self, rect: pygame.Rect) -> None:
             current_y += builder_resource_line_height + gap
         for spec in ability_specs:
             button_rect = pygame.Rect(start_x, current_y, width, 44)
-            selected_ability_action = None
-            if self.engine.pending_builder_creature is not None and self.engine.pending_builder_creature.selected_ability is not None:
-                selected_ability_action = (
-                    f"builder_select_ability_{self.engine.pending_builder_creature.selected_ability.name.lower()}"
-                )
-            is_selected_ability = spec.action == selected_ability_action
+            selected_ability_actions = set()
+            if self.engine.pending_builder_creature is not None:
+                pending = self.engine.pending_builder_creature
+                if pending.selected_primary_ability is not None:
+                    selected_ability_actions.add(f"builder_select_ability_{pending.selected_primary_ability.name.lower()}")
+                if pending.has_haste:
+                    selected_ability_actions.add("builder_select_ability_haste")
+            is_selected_ability = spec.action in selected_ability_actions
             button_color = HIGHLIGHT if is_selected_ability and spec.enabled else BUTTON_COLOR if spec.enabled else BUTTON_DISABLED
             pygame.draw.rect(self.screen, button_color, button_rect, border_radius=6)
             pygame.draw.rect(self.screen, CARD_BORDER, button_rect, 2, border_radius=6)

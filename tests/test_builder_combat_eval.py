@@ -240,6 +240,35 @@ class BuilderCombatEvalTests(unittest.TestCase):
         if BUILDER_ABILITIES_ENABLED:
             self.assertGreater(no_flying_score.total, flying_score.total)
 
+    def test_redundant_blocker_gets_less_defensive_value(self) -> None:
+        enemy = self.make_builder_creature(0, aw=0, vw=1, sw=2, lw=1, ready=True)
+        candidate = BuilderCreatureCandidate(
+            aw=0,
+            vw=2,
+            sw=1,
+            lw=2,
+            abilities=frozenset({Ability.HASTE}),
+            cost=4,
+        )
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        first_score = score_builder_creature_candidate(
+            candidate,
+            snapshot,
+            available_resources=4,
+            enemy_creatures=[enemy],
+            own_creatures=[],
+        )
+        existing = self.make_builder_creature(1, aw=0, vw=2, sw=1, lw=2, ready=True)
+        redundant_score = score_builder_creature_candidate(
+            candidate,
+            build_builder_snapshot(self.engine.ai_player, self.engine),
+            available_resources=4,
+            enemy_creatures=[enemy],
+            own_creatures=[existing],
+        )
+
+        self.assertGreater(first_score.matchup_defense, redundant_score.matchup_defense)
+
     def test_enraged_prefers_better_forced_matchup_and_respects_flying_legality(self) -> None:
         weak_ground = self.make_builder_creature(0, aw=1, vw=0, sw=1, lw=1, ready=True)
         strong_flier = self.make_builder_creature(0, aw=3, vw=3, sw=4, lw=5, abilities=(Ability.FLYING,), ready=True)

@@ -5,7 +5,6 @@ import inspect
 from typing import Iterable
 
 import core.config as config
-from core.builder_rules import BUILDER_ABILITIES_ENABLED
 from core.models import (
     Ability,
     PHASE_BUILDER_ABILITY,
@@ -389,28 +388,6 @@ def _iter_weight_rows() -> list[tuple[str, str, float]]:
                     rows.append((short_name, f"{attr_name}.{getattr(dict_key, 'value', dict_key)}", float(dict_value)))
     rows.sort(key=lambda row: (row[0], row[1]))
     return rows
-
-
-def _weight_entry_is_ability_related(attr_name: str, dict_key) -> bool:
-    if "ABILITY" in attr_name or "SYNERGY" in attr_name:
-        return True
-    if isinstance(dict_key, Ability):
-        return True
-    if isinstance(dict_key, str):
-        lowered = dict_key.lower()
-        if any(token in lowered for token in ("haste", "flying", "trample", "vigil", "life", "rage", "provoke", "touch")):
-            return True
-    return False
-
-
-def _weight_entry_mentions_haste(attr_name: str, dict_key) -> bool:
-    if "HASTE" in attr_name:
-        return True
-    if isinstance(dict_key, Ability):
-        return dict_key == Ability.HASTE
-    if isinstance(dict_key, str):
-        return "haste" in dict_key.lower()
-    return False
 
 
 def _call_optional(module_name: str, attr_name: str, *args):

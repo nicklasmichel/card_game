@@ -17,7 +17,7 @@ from .combat_assignments import (
     player_damage_distribution_for_combat,
 )
 from .attack_policy import BuilderAttackCandidate
-from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack, project_builder_combat_outcome
+from .combat_eval import can_legally_block, estimate_builder_combat, estimate_unblocked_attack
 from .debug import (
     builder_debug_enabled,
     builder_debug_include_fingerprints,
@@ -34,8 +34,7 @@ from .debug import (
 from .horizon import evaluate_block_horizon
 from .scoring import estimate_creature_board_value
 from .search_control import builder_search_scope, builder_search_should_stop, count_builder_search_work
-from .turn_projection import build_current_turn_projection, normalize_builder_abilities
-from .turn_types import ProjectedUnitView
+from .turn_projection import build_current_turn_projection
 
 PLAYER_DAMAGE_TAKEN_PENALTY = 2.6
 OWN_DEATH_VALUE_PENALTY = 1.35
@@ -434,103 +433,6 @@ def _block_candidate_sort_key(scored_candidate: tuple[BuilderBlockCandidate, Bui
         score.enemy_kill_value,
         tuple(candidate.assignments),
     )
-
-
-def _estimate_known_next_flying_damage(defending_player, engine, *, attackers: list, blockers: list, assignments: dict[int, int]) -> float:
-    assignment_map = dict(assignments)
-    attacker_lookup = {attacker.unit_id: attacker for attacker in attackers}
-    blocker_lookup = {blocker.unit_id: blocker for blocker in blockers}
-    surviving_enemy: list[ProjectedUnitView] = []
-    surviving_own: list[ProjectedUnitView] = []
-    removed_enemy_ids: set[int] = set()
-    removed_own_ids: set[int] = set()
-    post_hp: dict[int, int] = {}
-
-    for attacker in attackers:
-        blocker_id = assignment_map.get(attacker.unit_id)
-        if blocker_id is None:
-            unblocked = estimate_unblocked_attack(attacker)
-            post_hp[attacker.unit_id] = min(int(attacker.lw), int(attacker.current_hp) + int(round(unblocked.attacker_heal)))
-            continue
-        blocker = blocker_lookup.get(blocker_id)
-        if blocker is None:
-            continue
-        outcome = project_builder_combat_outcome(
-            attacker,
-            blocker,
-            int(getattr(engine, "combat_die_sides", config.COMBAT_DIE_SIDES)),
-        )
-        if not outcome.attacker_survives:
-            removed_enemy_ids.add(attacker.unit_id)
-        else:
-            post_hp[attacker.unit_id] = outcome.attacker_remaining_hp
-        if not outcome.defender_survives:
-            removed_own_ids.add(blocker.unit_id)
-        else:
-            post_hp[blocker.unit_id] = outcome.defender_remaining_hp
-
-    enemy_player = engine.players[1 - defending_player.player_id]
-    for unit in enemy_player.battlefield:
-        if unit.unit_id in removed_enemy_ids:
-            continue
-        surviving_enemy.append(
-            ProjectedUnitView(
-                unit_id=unit.unit_id,
-                name=unit.name,
-                aw=unit.aw,
-                vw=unit.vw,
-                sw=unit.sw,
-                lw=unit.lw,
-                current_hp=post_hp.get(unit.unit_id, unit.current_hp),
-                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
-                tapped=False,
-                summoning_sickness=False,
-                cannot_block=getattr(unit, "cannot_block", False),
-                debug_label=unit.name,
-            )
-        )
-    for unit in defending_player.battlefield:
-        if unit.unit_id in removed_own_ids:
-            continue
-        surviving_own.append(
-            ProjectedUnitView(
-                unit_id=unit.unit_id,
-                name=unit.name,
-                aw=unit.aw,
-                vw=unit.vw,
-                sw=unit.sw,
-                lw=unit.lw,
-                current_hp=post_hp.get(unit.unit_id, unit.current_hp),
-                abilities=normalize_builder_abilities(frozenset(unit.abilities)),
-                tapped=False,
-                summoning_sickness=False,
-                cannot_block=getattr(unit, "cannot_block", False),
-                debug_label=unit.name,
-            )
-        )
-
-    flying_attackers = [unit for unit in surviving_enemy if unit.has_ability(Ability.FLYING) and unit.sw > 0]
-    flying_blockers = [unit for unit in surviving_own if unit.has_ability(Ability.FLYING) and not unit.cannot_block]
-    if not flying_attackers:
-        return 0.0
-    assignments = generate_block_assignment_tuples(flying_attackers, flying_blockers, {})
-    best_damage = None
-    for current in assignments:
-        mapping = dict(current)
-        total_damage = 0.0
-        for attacker in flying_attackers:
-            blocker_id = mapping.get(attacker.unit_id)
-            if blocker_id is None:
-                total_damage += attacker.sw
-                continue
-            blocker = next((existing for existing in flying_blockers if existing.unit_id == blocker_id), None)
-            if blocker is None:
-                total_damage += attacker.sw
-                continue
-            total_damage += estimate_builder_combat(attacker, blocker).expected_player_damage
-        if best_damage is None or total_damage < best_damage:
-            best_damage = total_damage
-    return 0.0 if best_damage is None else best_damage
 
 
 def _debug_block_decision(engine, defending_player, scored_candidates, best_candidate) -> None:

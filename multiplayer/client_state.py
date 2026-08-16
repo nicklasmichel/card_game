@@ -177,7 +177,12 @@ def _deserialize_builder_creature(data: dict[str, Any] | None) -> PendingBuilder
         sw=data["sw"],
         lw=data["lw"],
         available_resources=data["available_resources"],
-        selected_ability=(Ability[data["selected_ability"]] if data["selected_ability"] else None),
+        selected_primary_ability=(
+            Ability[data["selected_primary_ability"]]
+            if data["selected_primary_ability"]
+            else None
+        ),
+        has_haste=data["has_haste"],
     )
 
 

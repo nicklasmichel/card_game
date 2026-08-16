@@ -4,7 +4,6 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from itertools import combinations
 
-import core.config as config
 from core.config import COMBAT_DIE_SIDES
 from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
 from core.models import Ability
@@ -43,7 +42,6 @@ from .search_control import builder_search_should_stop, count_builder_search_wor
 from .scoring import estimate_creature_board_value, score_builder_creature_candidate
 from .turn_projection import (
     BuilderTurnProjection,
-    ProjectedPlayerView,
     ProjectedUnitView,
     normalize_builder_abilities,
     project_attack_to_next_turn,

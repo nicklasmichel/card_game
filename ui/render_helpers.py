@@ -63,6 +63,11 @@ ABILITY_ART_KEYS = {
     Ability.LIFE_STEAL: "lifesteal",
 }
 
+# Haste is the paid secondary Builder ability. When another ability is present,
+# that ability defines the creature's artwork; Haste remains the fallback for
+# legacy or test creatures that have no primary ability.
+ABILITY_ART_ORDER = [ability for ability in ABILITY_NAME_ORDER if ability != Ability.HASTE] + [Ability.HASTE]
+
 
 def blit_text_with_shadow(surface: pygame.Surface, font: pygame.font.Font, text: str, color, x: int, y: int) -> None:
     shadow = font.render(text, True, (0, 0, 0))
@@ -151,7 +156,7 @@ def get_card_art_key(self, source) -> str | None:
     if isinstance(template_id, str) and template_id in getattr(self, "card_art_images", {}):
         return template_id
     abilities = getattr(source, "abilities", frozenset())
-    for ability in ABILITY_NAME_ORDER:
+    for ability in ABILITY_ART_ORDER:
         if ability not in abilities:
             continue
         art_key = ABILITY_ART_KEYS.get(ability)

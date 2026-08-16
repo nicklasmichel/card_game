@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from core.builder_rules import BUILDER_CREATURE_ABILITIES, builder_creature_ability_set, is_valid_builder_creature_ability
+from core.builder_rules import (
+    BUILDER_HASTE_COST,
+    BUILDER_PRIMARY_ABILITIES,
+    builder_creature_ability_set,
+    calculate_builder_creature_cost,
+    validate_builder_creature_abilities,
+)
 from core.models import Ability
 
 from .types import BuilderCreatureCandidate, BuilderStrategicSnapshot
@@ -21,13 +27,21 @@ _SEARCH_FRONTIER_PROFILES = (
 
 
 def candidate_cost(*, aw: int, vw: int, sw: int, lw: int, ability: Ability | None = None, has_haste: bool = False) -> int:
-    return aw + vw + sw + max(0, lw - 1)
+    return calculate_builder_creature_cost(
+        aw=aw,
+        vw=vw,
+        sw=sw,
+        lw=lw,
+        has_haste=has_haste or ability == Ability.HASTE,
+    )
 
 
 def is_legal_builder_candidate(candidate: BuilderCreatureCandidate, available_resources: int) -> bool:
     if min(candidate.aw, candidate.vw, candidate.sw) < 0 or candidate.lw < 1:
         return False
-    if len(candidate.abilities) != 1 or not is_valid_builder_creature_ability(candidate.builder_ability):
+    try:
+        validate_builder_creature_abilities(candidate.abilities)
+    except ValueError:
         return False
     expected_cost = candidate_cost(
         aw=candidate.aw,
@@ -35,6 +49,7 @@ def is_legal_builder_candidate(candidate: BuilderCreatureCandidate, available_re
         sw=candidate.sw,
         lw=candidate.lw,
         ability=candidate.builder_ability,
+        has_haste=candidate.has_haste,
     )
     if candidate.cost != expected_cost:
         return False
@@ -58,8 +73,15 @@ def generate_builder_creature_candidates(
 @lru_cache(maxsize=32)
 def _generate_cached_budget_candidates(budget: int) -> tuple[BuilderCreatureCandidate, ...]:
     candidates: dict[tuple[int, int, int, int, str], BuilderCreatureCandidate] = {}
-    for ability in BUILDER_CREATURE_ABILITIES:
-        _generate_budget_candidates(candidates, budget, ability=ability)
+    for ability in BUILDER_PRIMARY_ABILITIES:
+        _generate_budget_candidates(candidates, budget, ability=ability, has_haste=False)
+        if budget >= BUILDER_HASTE_COST:
+            _generate_budget_candidates(
+                candidates,
+                budget - BUILDER_HASTE_COST,
+                ability=ability,
+                has_haste=True,
+            )
     return tuple(sorted(candidates.values(), key=lambda candidate: (candidate.cost, candidate.key, candidate.generation_reason)))
 
 
@@ -88,12 +110,16 @@ def select_builder_creature_search_frontier(
 
     buckets: list[list[BuilderCreatureCandidate]] = []
     ability_groups: list[list[BuilderCreatureCandidate]] = []
-    abilities = sorted(
-        {candidate.builder_ability for candidate in candidates},
-        key=lambda ability: getattr(ability, "value", ""),
+    ability_profiles = sorted(
+        {(candidate.builder_ability, candidate.has_haste) for candidate in candidates},
+        key=lambda profile: (getattr(profile[0], "value", ""), profile[1]),
     )
-    for ability in abilities:
-        group = [candidate for candidate in candidates if candidate.builder_ability == ability]
+    for ability, has_haste in ability_profiles:
+        group = [
+            candidate
+            for candidate in candidates
+            if candidate.builder_ability == ability and candidate.has_haste == has_haste
+        ]
         if not group:
             continue
         ability_groups.append(group)
@@ -204,9 +230,10 @@ def _generate_budget_candidates(
     budget: int,
     *,
     ability: Ability,
+    has_haste: bool,
 ) -> None:
     if budget == 0:
-        _add_candidate(candidates, aw=0, vw=0, sw=0, lw=1, ability=ability, generation_reason="zero_budget")
+        _add_candidate(candidates, aw=0, vw=0, sw=0, lw=1, ability=ability, has_haste=has_haste, generation_reason="zero_budget")
         return
 
     for aw in range(budget + 1):
@@ -214,7 +241,7 @@ def _generate_budget_candidates(
             for sw in range(budget - aw - vw + 1):
                 hp_budget = budget - aw - vw - sw
                 lw = 1 + hp_budget
-                _add_candidate(candidates, aw=aw, vw=vw, sw=sw, lw=lw, ability=ability, generation_reason="exhaustive")
+                _add_candidate(candidates, aw=aw, vw=vw, sw=sw, lw=lw, ability=ability, has_haste=has_haste, generation_reason="exhaustive")
 
     for profile_name, weights in (
         ("aggressive", (3, 0, 3, 1)),
@@ -226,7 +253,7 @@ def _generate_budget_candidates(
         ("sturdy", (1, 2, 1, 4)),
     ):
         aw, vw, sw, lw = _allocate_stats_by_weights(budget, weights)
-        _add_candidate(candidates, aw=aw, vw=vw, sw=sw, lw=lw, ability=ability, generation_reason=profile_name)
+        _add_candidate(candidates, aw=aw, vw=vw, sw=sw, lw=lw, ability=ability, has_haste=has_haste, generation_reason=profile_name)
 
 
 def _allocate_stats_by_weights(stat_budget: int, weights: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
@@ -261,15 +288,16 @@ def _add_candidate(
     sw: int,
     lw: int,
     ability: Ability,
+    has_haste: bool,
     generation_reason: str,
 ) -> None:
-    abilities = builder_creature_ability_set(ability)
+    abilities = builder_creature_ability_set(ability, has_haste=has_haste)
     candidate = BuilderCreatureCandidate(
         aw=aw,
         vw=vw,
         sw=sw,
         lw=lw,
-        cost=candidate_cost(aw=aw, vw=vw, sw=sw, lw=lw, ability=ability),
+        cost=candidate_cost(aw=aw, vw=vw, sw=sw, lw=lw, ability=ability, has_haste=has_haste),
         abilities=abilities,
         generation_reason=generation_reason,
     )

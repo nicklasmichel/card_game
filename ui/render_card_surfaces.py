@@ -121,7 +121,9 @@ def build_full_art_card_surface(
     hide_title: bool,
     hide_cost: bool,
 ) -> pygame.Surface:
-    s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
+    def s(value: int) -> int:
+        return max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
+
     image = self.card_art_images.get(art_key or template_id)
     if image is None:
         return build_generic_card_surface(
@@ -197,7 +199,6 @@ def build_full_art_card_surface(
         blit_text_with_shadow(base, body_font, line, (255, 255, 255), rules_rect.x, rule_y)
         rule_y += rule_line_height
 
-    footer_y = self.card_height - s(14)
     if is_builder_creature and stats is not None:
         aw_text, vw_text, sw_text, lw_text = stats
         stat_font = number_font
@@ -240,7 +241,9 @@ def build_generic_card_surface(
     hide_title: bool = False,
     hide_cost: bool = False,
 ) -> pygame.Surface:
-    s = lambda value: max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
+    def s(value: int) -> int:
+        return max(1, int(round(value * getattr(self, "layout_scale", 1.0))))
+
     base = pygame.Surface((self.card_width, self.card_height), pygame.SRCALPHA)
     title_font, body_font, body_italic_font, number_font = get_card_text_fonts(self)
     fill_color = self.get_element_color(element) if hasattr(self, "get_element_color") else CARD_COLOR

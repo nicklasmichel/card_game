@@ -4,6 +4,7 @@ import unittest
 
 from core.game_logic import GameEngine
 from core.models import (
+    Ability,
     CardCost,
     CardInstance,
     CardTemplate,
@@ -64,7 +65,12 @@ class GameStateSnapshotTests(unittest.TestCase):
         self.engine.active_player_index = 0
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.selected_attackers = [99]
-        self.engine.pending_builder_creature = PendingBuilderCreatureBuild(aw=3, vw=2)
+        self.engine.pending_builder_creature = PendingBuilderCreatureBuild(
+            aw=3,
+            vw=2,
+            selected_primary_ability=Ability.FLYING,
+            has_haste=True,
+        )
 
         active_view = GameStateSnapshot.from_engine(self.engine, 0, revision=0)
         opponent_view = GameStateSnapshot.from_engine(self.engine, 1, revision=0)
@@ -72,6 +78,8 @@ class GameStateSnapshotTests(unittest.TestCase):
         self.assertEqual(active_view.state["selected_attackers"], [99])
         self.assertEqual(opponent_view.state["selected_attackers"], [])
         self.assertIsNotNone(active_view.state["pending_builder_creature"])
+        self.assertEqual(active_view.state["pending_builder_creature"]["selected_primary_ability"], "FLYING")
+        self.assertTrue(active_view.state["pending_builder_creature"]["has_haste"])
         self.assertIsNone(opponent_view.state["pending_builder_creature"])
 
     def test_unconfirmed_block_choices_are_hidden_from_attacker(self) -> None:

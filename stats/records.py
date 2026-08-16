@@ -27,6 +27,28 @@ class PlayerCounters:
     brandzeichen_destroyed_blockers: int = 0
     gegenfeuer_damage: int = 0
     flammenzorn_destroyed_creatures: int = 0
+    builder_haste_creatures_played: int = 0
+    builder_flying_creatures_played: int = 0
+    builder_vigilance_creatures_played: int = 0
+    builder_trample_creatures_played: int = 0
+    builder_stat_points_spent: int = 0
+    builder_resources_spent: int = 0
+
+
+@dataclass
+class BuilderCreatureBuildRecord:
+    game_id: str
+    timestamp: str
+    turn: int
+    player_name: str
+    aw: int
+    vw: int
+    sw: int
+    lw: int
+    primary_ability: str
+    has_haste: int
+    stat_cost: int
+    total_cost: int
 
 
 @dataclass
