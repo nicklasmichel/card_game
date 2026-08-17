@@ -165,9 +165,9 @@ def get_card_art_key(self, source) -> str | None:
     if (
         isinstance(template_id, str)
         and (template_id.startswith("builder_creature_") or template_id == "builder_creature_preview")
-        and "haste" in getattr(self, "card_art_images", {})
+        and "vigilance" in getattr(self, "card_art_images", {})
     ):
-        return "haste"
+        return "vigilance"
     return None
 
 

@@ -77,10 +77,10 @@ class MultiplayerLoopbackTests(unittest.TestCase):
 
         self.assertTrue(
             self.pump_client_until(
-                lambda: self.client.state.human_player.total_resources() == 1
+                lambda: self.client.state.human_player.total_resources() == 2
             )
         )
-        self.assertEqual(self.host.state.player_two.total_resources(), 1)
+        self.assertEqual(self.host.state.player_two.total_resources(), 2)
         self.assertEqual(self.client.state.snapshot_revision, self.host.revision)
         self.assertEqual(
             self.client.state.log_messages,
@@ -148,7 +148,7 @@ class MultiplayerLoopbackTests(unittest.TestCase):
             self.pump_client_until(lambda: self.client.state.active_player.player_id == 1)
         )
 
-        for expected_resource_count in range(1, 4):
+        for host_resources, remote_resources in ((2, 3), (4, 5), (6, 7)):
             self.client.submit_action("builder_add_resource")
             self.assertTrue(
                 self.pump_client_until(
@@ -159,14 +159,14 @@ class MultiplayerLoopbackTests(unittest.TestCase):
             self.assertTrue(
                 self.pump_client_until(
                     lambda: self.client.state.active_player.player_id == 1
-                    and self.client.state.ai_player.total_resources() == expected_resource_count
-                    and self.client.state.human_player.total_resources() == expected_resource_count
+                    and self.client.state.ai_player.total_resources() == host_resources
+                    and self.client.state.human_player.total_resources() == remote_resources
                 )
             )
 
         self.assertEqual(self.client.state.snapshot_revision, self.host.revision)
-        self.assertEqual(self.host.state.player_one.total_resources(), 3)
-        self.assertEqual(self.host.state.player_two.total_resources(), 3)
+        self.assertEqual(self.host.state.player_one.total_resources(), 6)
+        self.assertEqual(self.host.state.player_two.total_resources(), 7)
 
     def test_remote_builder_and_attack_flow_round_trips_rich_snapshots(self) -> None:
         self.host.start_new_game(starting_player_id=1)
@@ -190,8 +190,9 @@ class MultiplayerLoopbackTests(unittest.TestCase):
                 and self.client.state.pending_builder_creature is not None
             )
         )
-        self.client.submit_action("builder_sw_up")
-        self.client.submit_action("builder_sw_up")
+        for _ in range(4):
+            self.client.submit_action("builder_sw_up")
+        self.client.submit_action("builder_aw_up")
         self.client.submit_action("builder_confirm_creature")
         self.assertTrue(
             self.pump_client_until(

@@ -177,6 +177,7 @@ def _deserialize_builder_creature(data: dict[str, Any] | None) -> PendingBuilder
         sw=data["sw"],
         lw=data["lw"],
         available_resources=data["available_resources"],
+        has_haste=bool(data.get("has_haste", False)),
     )
 
 

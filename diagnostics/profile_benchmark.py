@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import Callable, Iterable
 
 from core.ai.builder.combat_eval import estimate_dice_win_probabilities
-from core.builder_rules import BUILDER_CREATURE_CAP
+from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_CREATURE_STAT_CAP
 from core.config import STARTING_LIFE
 from core.models import (
     PHASE_BUILDER_ABILITY,
@@ -243,7 +243,7 @@ class FixedOpponentProfile:
         return resources < 7 and not pressure and self.rng.random() < 0.62
 
     def _creature_plan(self, spend: int) -> dict:
-        stats = [1, 1, 1, 1]
+        stats = [0, 0, 0, 1]
         if self.name == "aggressive":
             order = (0, 2, 0, 2, 3, 1)
         elif self.name == "defensive":
@@ -255,6 +255,15 @@ class FixedOpponentProfile:
             order = tuple(self.rng.randrange(4) for _ in range(max(1, spend)))
         for index in range(spend):
             stat_index = order[index % len(order)]
+            if stats[stat_index] >= BUILDER_CREATURE_STAT_CAP:
+                available_indexes = [
+                    current
+                    for current in range(4)
+                    if stats[current] < BUILDER_CREATURE_STAT_CAP
+                ]
+                if not available_indexes:
+                    break
+                stat_index = self.rng.choice(available_indexes) if self.name == "random" else available_indexes[0]
             stats[stat_index] += 1
         self.build_number += 1
         return {

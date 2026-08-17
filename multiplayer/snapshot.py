@@ -173,6 +173,7 @@ def _serialize_builder_creature(pending) -> dict[str, Any] | None:
         "sw": pending.sw,
         "lw": pending.lw,
         "available_resources": pending.available_resources,
+        "has_haste": pending.has_haste,
     }
 
 

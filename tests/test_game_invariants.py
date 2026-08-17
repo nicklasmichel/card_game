@@ -119,8 +119,18 @@ class GameInvariantTests(unittest.TestCase):
         violations = "\n".join(collect_prepared_action_violations(self.engine, action))
 
         self.assertIn("does not match expected cost", violations)
-        self.assertIn("only 0 ready resources", violations)
+        self.assertIn("only 1 ready resources", violations)
         self.assertIn("invalid abilities", violations)
+
+    def test_prepared_creature_action_rejects_a_stat_above_five(self) -> None:
+        action = {
+            "kind": "builder_create_creature",
+            "plan": {"aw": 1, "vw": 1, "sw": 6, "lw": 1, "cost": 5},
+        }
+
+        violations = collect_prepared_action_violations(self.engine, action)
+
+        self.assertIn("creature plan has invalid stats 1/1/6/1", violations)
 
 
 if __name__ == "__main__":

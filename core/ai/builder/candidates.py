@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from core.builder_rules import calculate_builder_creature_cost, validate_builder_creature_abilities
+from core.builder_rules import (
+    BUILDER_BASE_STATS,
+    BUILDER_CREATURE_STAT_CAP,
+    builder_creature_stat_cost,
+    builder_creature_stats_are_valid,
+    validate_builder_creature_abilities,
+)
 from core.models import Ability
 
 from .types import BuilderCreatureCandidate, BuilderStrategicSnapshot
@@ -21,9 +27,9 @@ _SEARCH_FRONTIER_PROFILES = (
 
 
 def candidate_cost(*, aw: int, vw: int, sw: int, lw: int, ability: Ability | None = None, has_haste: bool = False) -> int:
-    if ability is not None or has_haste:
-        raise ValueError("Builder creature abilities are disabled in vanilla mode")
-    return calculate_builder_creature_cost(
+    if ability is not None:
+        raise ValueError("Haste is the only ability available during creature building")
+    return builder_creature_stat_cost(
         aw=aw,
         vw=vw,
         sw=sw,
@@ -32,7 +38,12 @@ def candidate_cost(*, aw: int, vw: int, sw: int, lw: int, ability: Ability | Non
 
 
 def is_legal_builder_candidate(candidate: BuilderCreatureCandidate, available_resources: int) -> bool:
-    if min(candidate.aw, candidate.vw, candidate.sw, candidate.lw) < 1:
+    if not builder_creature_stats_are_valid(
+        aw=candidate.aw,
+        vw=candidate.vw,
+        sw=candidate.sw,
+        lw=candidate.lw,
+    ):
         return False
     try:
         validate_builder_creature_abilities(candidate.abilities)
@@ -48,7 +59,7 @@ def is_legal_builder_candidate(candidate: BuilderCreatureCandidate, available_re
     )
     if candidate.cost != expected_cost:
         return False
-    return candidate.cost <= available_resources
+    return candidate.cost <= available_resources and (not candidate.has_haste or available_resources >= 1)
 
 
 def generate_builder_creature_candidates(
@@ -180,7 +191,10 @@ def _cheap_candidate_search_key(candidate: BuilderCreatureCandidate) -> tuple:
 
 
 def _profile_fit_key(candidate: BuilderCreatureCandidate, profile: tuple[int, int, int, int]) -> tuple:
-    candidate_stats = tuple(max(0, value - 1) for value in candidate.signature)
+    candidate_stats = tuple(
+        max(0, value - base)
+        for value, base in zip(candidate.signature, BUILDER_BASE_STATS)
+    )
     candidate_total = max(1, sum(candidate_stats))
     profile_total = max(1, sum(profile))
     distance = sum(
@@ -201,19 +215,23 @@ def _generate_budget_candidates(
     budget: int,
 ) -> None:
     if budget == 0:
-        _add_candidate(candidates, aw=1, vw=1, sw=1, lw=1, generation_reason="zero_budget")
+        _add_candidate(candidates, aw=0, vw=0, sw=0, lw=1, generation_reason="zero_budget")
         return
 
-    for aw_bonus in range(budget + 1):
-        for vw_bonus in range(budget - aw_bonus + 1):
-            for sw_bonus in range(budget - aw_bonus - vw_bonus + 1):
+    maximum_stat = BUILDER_CREATURE_STAT_CAP
+    maximum_life_bonus = BUILDER_CREATURE_STAT_CAP - 1
+    for aw_bonus in range(min(budget, maximum_stat) + 1):
+        for vw_bonus in range(min(budget - aw_bonus, maximum_stat) + 1):
+            for sw_bonus in range(min(budget - aw_bonus - vw_bonus, maximum_stat) + 1):
                 hp_budget = budget - aw_bonus - vw_bonus - sw_bonus
+                if hp_budget > maximum_life_bonus:
+                    continue
                 lw = 1 + hp_budget
                 _add_candidate(
                     candidates,
-                    aw=1 + aw_bonus,
-                    vw=1 + vw_bonus,
-                    sw=1 + sw_bonus,
+                    aw=aw_bonus,
+                    vw=vw_bonus,
+                    sw=sw_bonus,
                     lw=lw,
                     generation_reason="exhaustive",
                 )
@@ -232,9 +250,9 @@ def _generate_budget_candidates(
 
 
 def _allocate_stats_by_weights(stat_budget: int, weights: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    aw = 1
-    vw = 1
-    sw = 1
+    aw = 0
+    vw = 0
+    sw = 0
     lw = 1
     if stat_budget <= 0:
         return aw, vw, sw, lw
@@ -242,16 +260,28 @@ def _allocate_stats_by_weights(stat_budget: int, weights: tuple[int, int, int, i
     labels = ("aw", "vw", "sw", "lw")
     for label, weight in zip(labels, weights):
         weighted_order.extend([label] * max(1, weight))
-    for index in range(stat_budget):
+    allocated = 0
+    index = 0
+    while allocated < stat_budget:
         stat = weighted_order[index % len(weighted_order)]
+        index += 1
         if stat == "aw":
+            if aw >= BUILDER_CREATURE_STAT_CAP:
+                continue
             aw += 1
         elif stat == "vw":
+            if vw >= BUILDER_CREATURE_STAT_CAP:
+                continue
             vw += 1
         elif stat == "sw":
+            if sw >= BUILDER_CREATURE_STAT_CAP:
+                continue
             sw += 1
         else:
+            if lw >= BUILDER_CREATURE_STAT_CAP:
+                continue
             lw += 1
+        allocated += 1
     return aw, vw, sw, lw
 
 
@@ -264,15 +294,20 @@ def _add_candidate(
     lw: int,
     generation_reason: str,
 ) -> None:
-    candidate = BuilderCreatureCandidate(
-        aw=aw,
-        vw=vw,
-        sw=sw,
-        lw=lw,
-        cost=candidate_cost(aw=aw, vw=vw, sw=sw, lw=lw),
-        abilities=frozenset(),
-        generation_reason=generation_reason,
-    )
-    current = candidates.get(candidate.key)
-    if current is None or len(generation_reason) < len(current.generation_reason):
-        candidates[candidate.key] = candidate
+    if not builder_creature_stats_are_valid(aw=aw, vw=vw, sw=sw, lw=lw):
+        return
+    stat_cost = candidate_cost(aw=aw, vw=vw, sw=sw, lw=lw)
+    ability_sets = (frozenset(), frozenset({Ability.HASTE})) if stat_cost > 0 else (frozenset(),)
+    for abilities in ability_sets:
+        candidate = BuilderCreatureCandidate(
+            aw=aw,
+            vw=vw,
+            sw=sw,
+            lw=lw,
+            cost=stat_cost,
+            abilities=abilities,
+            generation_reason=generation_reason,
+        )
+        current = candidates.get(candidate.key)
+        if current is None or len(generation_reason) < len(current.generation_reason):
+            candidates[candidate.key] = candidate

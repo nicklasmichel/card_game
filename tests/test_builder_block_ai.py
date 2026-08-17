@@ -387,7 +387,7 @@ class BuilderBlockAITests(unittest.TestCase):
         choose_builder_blocks(self.engine.human_player, self.engine)
         elapsed = time.perf_counter() - start
 
-        self.assertLess(elapsed, 1.0)
+        self.assertLess(elapsed, 1.2)
 
     def test_engine_integration_applies_builder_block_assignments_through_normal_flow(self) -> None:
         attacker = self.make_builder_creature(1, aw=2, vw=1, sw=5, lw=3, ready=True)

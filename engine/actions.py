@@ -68,6 +68,8 @@ def handle_action(self, action: str) -> None:
         self.adjust_builder_creature_stat("lw", -1)
     elif action == "builder_lw_up":
         self.adjust_builder_creature_stat("lw", 1)
+    elif action == "builder_toggle_haste":
+        self.toggle_builder_creature_ability(Ability.HASTE)
     elif action == "builder_confirm_creature":
         self.confirm_builder_creature_build()
     elif action == "builder_cancel_creature":

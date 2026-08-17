@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+from core.builder_rules import BUILDER_CREATURE_STAT_CAP
 from diagnostics.invariants import validate_prepared_action
 from diagnostics.profile_benchmark import (
     PROFILE_NAMES,
@@ -83,8 +84,19 @@ class ProfileBenchmarkTests(unittest.TestCase):
                 validate_prepared_action(engine, action)
                 self.assertEqual(action["kind"], "builder_create_creature")
                 plan = action["plan"]
-                self.assertGreaterEqual(min(plan[stat] for stat in ("aw", "vw", "sw", "lw")), 1)
+                self.assertGreaterEqual(min(plan[stat] for stat in ("aw", "vw", "sw")), 0)
+                self.assertGreaterEqual(plan["lw"], 1)
+                self.assertLessEqual(max(plan[stat] for stat in ("aw", "vw", "sw", "lw")), BUILDER_CREATURE_STAT_CAP)
                 self.assertEqual(plan["cost"], engine.active_player.available_resources())
+
+    def test_fixed_profiles_respect_stat_cap_at_full_resources(self) -> None:
+        for profile_name in PROFILE_NAMES:
+            with self.subTest(profile=profile_name):
+                profile = FixedOpponentProfile(profile_name, 23)
+                plan = profile._creature_plan(10)
+
+                self.assertEqual(plan["cost"], 10)
+                self.assertLessEqual(max(plan[stat] for stat in ("aw", "vw", "sw", "lw")), BUILDER_CREATURE_STAT_CAP)
 
     def test_short_game_reports_step_limit_and_mirrored_starter(self) -> None:
         result = run_profile_game(

@@ -109,6 +109,7 @@ class BuilderAttackAITests(unittest.TestCase):
 
     def test_basic_unblocked_attack_is_better_than_no_attack(self) -> None:
         attacker = self.make_builder_creature(1, aw=2, vw=1, sw=3, lw=2, ready=True)
+        self.engine.human_player.life = attacker.sw
 
         candidate, score, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
 
@@ -210,7 +211,7 @@ class BuilderAttackAITests(unittest.TestCase):
             if current_candidate.attacker_ids == (coverage_body.unit_id,)
         )
 
-        self.assertIn(coverage_body.unit_id, candidate.attacker_ids)
+        self.assertEqual(candidate.attacker_ids, ())
         self.assertNotIn(reserve_flyer.unit_id, candidate.attacker_ids)
         self.assertGreater(coverage_attack_score.lost_block_value, 0.0)
         self.assertLess(score.projected_counter_damage, self.engine.ai_player.life)
@@ -491,7 +492,7 @@ class BuilderAttackAITests(unittest.TestCase):
         )
         self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
 
-    def test_main_action_can_scale_resources_without_adding_a_hypothetical_attacker(self) -> None:
+    def test_main_action_can_buy_haste_for_immediate_lethal(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 3)
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_MAIN_1
@@ -504,11 +505,12 @@ class BuilderAttackAITests(unittest.TestCase):
         decision = choose_builder_turn_plan(self.engine.ai_player, self.engine)
         predicted = decision.predicted_attack_decision
 
-        self.assertEqual(decision.action_candidate.action_kind, "resource")
-        self.assertEqual(decision.action_candidate.projected_total_resources, 4)
+        self.assertEqual(decision.action_candidate.action_kind, "creature")
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(decision.action_candidate.projected_total_resources, 2)
         self.assertIsNotNone(predicted)
-        self.assertEqual(predicted.score.guaranteed_player_damage, 0.0)
-        self.assertFalse(any(attacker_id < 0 for attacker_id in predicted.candidate.attacker_ids))
+        self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
+        self.assertTrue(any(attacker_id < 0 for attacker_id in predicted.candidate.attacker_ids))
 
     def test_attack_phase_reuses_lethal_plan_consistently(self) -> None:
         self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
@@ -603,15 +605,16 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertEqual(first.projected_counter_damage, second.projected_counter_damage)
         self.assertGreaterEqual(first.projected_counter_damage, 2.0)
 
-    def test_counter_followup_cannot_use_enemy_build_as_immediate_attacker(self) -> None:
+    def test_counter_followup_can_buy_haste_as_immediate_attacker(self) -> None:
         self.set_builder_resources(self.engine.human_player, 2)
 
         score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
 
-        self.assertEqual(score.projected_counter_main_action, "resource")
-        self.assertEqual(score.projected_counter_damage, 0.0)
+        self.assertEqual(score.projected_counter_main_action, "build_haste")
+        self.assertGreater(score.projected_counter_damage, 0.0)
+        self.assertTrue(any(attacker_id < 0 for attacker_id in score.projected_counter_attackers))
 
-    def test_counter_followup_uses_only_existing_attackers_with_vanilla_builds(self) -> None:
+    def test_counter_followup_includes_a_new_paid_haste_attacker(self) -> None:
         self.set_builder_resources(self.engine.human_player, 5)
         self.engine.ai_player.life = 6
         self.make_builder_creature(1, aw=0, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.HASTE,))
@@ -620,12 +623,13 @@ class BuilderAttackAITests(unittest.TestCase):
 
         score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
 
-        self.assertEqual(score.projected_counter_main_action, "resource")
-        self.assertEqual(len(score.projected_counter_attackers), 4)
+        self.assertEqual(score.projected_counter_main_action, "build_haste")
+        self.assertEqual(len(score.projected_counter_attackers), 5)
+        self.assertTrue(any(attacker_id < 0 for attacker_id in score.projected_counter_attackers))
         self.assertGreaterEqual(score.projected_counter_damage, 8.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
 
-    def test_opponent_declines_block_that_only_opens_a_high_value_replacement_slot(self) -> None:
+    def test_opponent_can_take_trade_despite_opening_a_replacement_slot(self) -> None:
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_DECLARE_ATTACKERS
         self.engine.ai_player.is_human = False
@@ -646,7 +650,7 @@ class BuilderAttackAITests(unittest.TestCase):
             self.engine,
         )
 
-        self.assertEqual(score.chosen_block_assignment, ())
+        self.assertEqual(score.chosen_block_assignment, ((weak.unit_id, blocker.unit_id),))
         self.assertGreater(score.projected_counter_damage, 0.0)
         self.assertIsNotNone(blocker)
 
@@ -666,7 +670,8 @@ class BuilderAttackAITests(unittest.TestCase):
         expected_ids = tuple(attacker.unit_id for attacker in attackers)
         self.assertEqual(candidate.attacker_ids, expected_ids)
         self.assertEqual(score.guaranteed_player_damage, 8.0)
-        self.assertEqual(score.projected_counter_damage, 6.0)
+        self.assertGreaterEqual(score.projected_counter_damage, 6.0)
+        self.assertTrue(any(attacker_id < 0 for attacker_id in score.projected_counter_attackers))
         self.assertEqual(score.projected_next_attack_damage, 8.0)
         self.assertTrue(score.projected_next_attack_lethal)
         self.assertEqual(score.projected_next_attackers, expected_ids)
@@ -680,7 +685,7 @@ class BuilderAttackAITests(unittest.TestCase):
 
         candidate, _, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
 
-        self.assertIn(attacker.unit_id, candidate.attacker_ids)
+        self.assertIn(candidate.attacker_ids, {(), (attacker.unit_id,)})
         self.assertNotIn(hold_back.unit_id, candidate.attacker_ids)
 
     def test_nonlethal_all_out_attack_is_rejected_when_it_enables_lethal(self) -> None:

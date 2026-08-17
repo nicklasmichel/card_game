@@ -49,6 +49,7 @@ from .turn_projection import (
     project_creature_action,
     project_pass_action,
     project_resource_action,
+    resources_at_next_turn_start,
 )
 from .turn_types import BuilderSearchMetadata, BuilderTurnActionCandidate
 
@@ -1490,6 +1491,7 @@ def _build_counterattack_projection(
             )
         )
 
+    counter_resources = resources_at_next_turn_start(enemy.total_resources())
     return BuilderTurnProjection(
         player_id=enemy.player_id,
         enemy_id=player.player_id,
@@ -1497,8 +1499,8 @@ def _build_counterattack_projection(
         combat_die_sides=int(combat_die_sides),
         own_life=max(0.0, float(enemy.life) - initial_player_damage),
         enemy_life=player.life,
-        own_total_resources=enemy.total_resources(),
-        own_ready_resources=enemy.total_resources(),
+        own_total_resources=counter_resources,
+        own_ready_resources=counter_resources,
         enemy_total_resources=player.total_resources(),
         enemy_ready_resources=player.total_resources(),
         own_units=tuple(own_post),
@@ -1511,8 +1513,8 @@ def _build_counterattack_projection(
             player.player_id,
             max(0.0, float(enemy.life) - initial_player_damage),
             player.life,
-            enemy.total_resources(),
-            enemy.total_resources(),
+            counter_resources,
+            counter_resources,
             player.total_resources(),
             player.total_resources(),
             tuple(own_post),
@@ -1665,7 +1667,7 @@ def _generate_counter_main_action_projections(counter_projection: BuilderTurnPro
         action = BuilderTurnActionCandidate(
             action_kind="creature",
             creature_candidate=current,
-            projected_total_resources=counter_projection.own_total_resources,
+            projected_total_resources=max(0, counter_projection.own_total_resources - current.haste_cost),
             projected_ready_resources=max(0, counter_projection.own_ready_resources - current.cost),
             generation_reason="counter_haste",
         )

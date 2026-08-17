@@ -4,6 +4,7 @@ import unittest
 
 from core.game_logic import GameEngine
 from core.models import (
+    Ability,
     CardCost,
     CardInstance,
     CardTemplate,
@@ -70,7 +71,7 @@ class ClientGameViewTests(unittest.TestCase):
         engine.active_player_index = 1
         engine.pending_builder_creature = PendingBuilderCreatureBuild(
             available_resources=5,
-            sw=5,
+            sw=4,
             lw=2,
         )
         view = ClientGameView(local_player_id=1)
@@ -79,10 +80,30 @@ class ClientGameViewTests(unittest.TestCase):
 
         pending = view.pending_builder_creature
         self.assertIsNotNone(pending)
-        self.assertEqual((pending.aw, pending.vw, pending.sw, pending.lw), (1, 1, 5, 2))
+        self.assertEqual((pending.aw, pending.vw, pending.sw, pending.lw), (0, 0, 4, 2))
         self.assertEqual(pending.spent_resources, 5)
         self.assertEqual(pending.ability_cost, 0)
         self.assertEqual(pending.selected_abilities, frozenset())
+        self.assertFalse(pending.has_haste)
+
+    def test_pending_haste_choice_round_trips_to_remote_client(self) -> None:
+        engine = GameEngine(auto_start=False, match_mode=MatchMode.PVP)
+        engine.active_player_index = 1
+        engine.pending_builder_creature = PendingBuilderCreatureBuild(
+            available_resources=2,
+            sw=2,
+            has_haste=True,
+        )
+        view = ClientGameView(local_player_id=1)
+
+        view.apply_snapshot(GameStateSnapshot.from_engine(engine, 1, revision=1))
+
+        pending = view.pending_builder_creature
+        self.assertIsNotNone(pending)
+        self.assertTrue(pending.has_haste)
+        self.assertEqual(pending.selected_abilities, frozenset({Ability.HASTE}))
+        self.assertEqual(pending.spent_resources, 2)
+        self.assertEqual(pending.total_cost, 3)
 
 
 if __name__ == "__main__":

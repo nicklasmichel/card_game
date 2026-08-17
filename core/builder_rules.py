@@ -7,8 +7,13 @@ BUILDER_CREATURE_CAP = 5
 BUILDER_ABILITY_COST = 0
 BUILDER_HASTE_COST = 1
 BUILDER_ABILITIES_ENABLED = False
-BUILDER_CREATURE_ABILITIES_ENABLED = False
-BUILDER_BASE_STAT_VALUE = 1
+BUILDER_CREATURE_ABILITIES_ENABLED = True
+BUILDER_BASE_AW = 0
+BUILDER_BASE_VW = 0
+BUILDER_BASE_SW = 0
+BUILDER_BASE_LW = 1
+BUILDER_BASE_STATS = (BUILDER_BASE_AW, BUILDER_BASE_VW, BUILDER_BASE_SW, BUILDER_BASE_LW)
+BUILDER_CREATURE_STAT_CAP = 5
 
 BUILDER_PRIMARY_ABILITY_NAMES = (
     "FLYING",
@@ -18,13 +23,22 @@ BUILDER_PRIMARY_ABILITY_NAMES = (
 BUILDER_PRIMARY_ABILITY_NAME_SET = frozenset(BUILDER_PRIMARY_ABILITY_NAMES)
 BUILDER_CREATURE_ABILITY_NAMES = (
     "HASTE",
-    *BUILDER_PRIMARY_ABILITY_NAMES,
 )
 BUILDER_CREATURE_ABILITY_NAME_SET = frozenset(BUILDER_CREATURE_ABILITY_NAMES)
 
 
 def builder_creature_stat_cost(*, aw: int, vw: int, sw: int, lw: int) -> int:
-    return sum(max(0, value - BUILDER_BASE_STAT_VALUE) for value in (aw, vw, sw, lw))
+    return sum(
+        max(0, value - base)
+        for value, base in zip((aw, vw, sw, lw), BUILDER_BASE_STATS)
+    )
+
+
+def builder_creature_stats_are_valid(*, aw: int, vw: int, sw: int, lw: int) -> bool:
+    return all(
+        base <= value <= BUILDER_CREATURE_STAT_CAP
+        for value, base in zip((aw, vw, sw, lw), BUILDER_BASE_STATS)
+    )
 
 
 def calculate_builder_creature_cost(*, aw: int, vw: int, sw: int, lw: int, has_haste: bool = False) -> int:
@@ -95,10 +109,7 @@ def validate_builder_creature_abilities(abilities: Iterable) -> frozenset:
             raise ValueError("Builder creature abilities are disabled in vanilla mode")
         return normalized
     haste = _resolve_builder_ability("HASTE")
-    primary = [ability for ability in normalized if is_valid_builder_primary_ability(ability)]
-    if len(primary) != 1:
-        raise ValueError(f"Builder creatures require exactly one primary ability, got {sorted(ability.name for ability in normalized)!r}")
-    if normalized - {primary[0], haste}:
+    if normalized - {haste}:
         raise ValueError(f"Invalid builder creature ability combination: {sorted(ability.name for ability in normalized)!r}")
     return normalized
 
@@ -121,9 +132,9 @@ def builder_creature_ability_set(primary_ability, *, has_haste: bool = False) ->
         if primary_ability is not None or has_haste:
             raise ValueError("Builder creature abilities are disabled in vanilla mode")
         return frozenset()
-    if primary_ability is None:
-        return frozenset()
-    abilities = {validate_builder_primary_ability(primary_ability)}
+    if primary_ability is not None:
+        raise ValueError("Haste is the only ability available during creature building")
+    abilities = set()
     if has_haste:
         abilities.add(_resolve_builder_ability("HASTE"))
     return frozenset(abilities)

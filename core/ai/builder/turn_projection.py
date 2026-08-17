@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP, BUILDER_PRIMARY_ABILITIES
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES, BUILDER_PRIMARY_ABILITIES
 from core.models import Ability, BattlefieldCreature, PlayerState
 
 from .turn_types import BuilderAbilityActionCandidate, BuilderTurnActionCandidate, ProjectedPlayerView, ProjectedUnitView
@@ -197,6 +197,7 @@ def project_creature_action(
         base_projection,
         action_kind="creature",
         own_units=own_units,
+        own_total_resources=max(0, base_projection.own_total_resources - candidate.haste_cost),
         own_ready_resources=max(0, base_projection.own_ready_resources - candidate.cost),
         hypothetical_unit_id=projected_unit.unit_id,
         candidate_signature=("creature",) + candidate.key,
@@ -310,6 +311,10 @@ def project_ability_action(
     )
 
 
+def resources_at_next_turn_start(current_total: int) -> int:
+    return min(BUILDER_MAX_RESOURCES, max(0, int(current_total)) + 1)
+
+
 def project_attack_to_next_turn(
     base_projection: BuilderTurnProjection,
     attacker_ids: tuple[int, ...],
@@ -371,6 +376,7 @@ def project_attack_to_next_turn(
     )
     next_active_life = max(0.0, float(base_projection.enemy_life) - float(player_damage))
     made_progress = bool(removed_attacker_ids or removed_blocker_ids or player_damage > 0.0)
+    next_active_resources = resources_at_next_turn_start(base_projection.enemy_total_resources)
     return BuilderTurnProjection(
         player_id=base_projection.enemy_id,
         enemy_id=base_projection.player_id,
@@ -378,8 +384,8 @@ def project_attack_to_next_turn(
         combat_die_sides=base_projection.combat_die_sides,
         own_life=next_active_life,
         enemy_life=float(base_projection.own_life),
-        own_total_resources=base_projection.enemy_total_resources,
-        own_ready_resources=base_projection.enemy_total_resources,
+        own_total_resources=next_active_resources,
+        own_ready_resources=next_active_resources,
         enemy_total_resources=base_projection.own_total_resources,
         enemy_ready_resources=base_projection.own_ready_resources,
         own_units=next_active_units,
@@ -392,8 +398,8 @@ def project_attack_to_next_turn(
             base_projection.player_id,
             next_active_life,
             float(base_projection.own_life),
-            base_projection.enemy_total_resources,
-            base_projection.enemy_total_resources,
+            next_active_resources,
+            next_active_resources,
             base_projection.own_total_resources,
             base_projection.own_ready_resources,
             next_active_units,
@@ -416,10 +422,10 @@ def project_attack_to_next_turn(
 
 
 def synthetic_unit_id_for_candidate(candidate: BuilderCreatureCandidate) -> int:
-    ability_index = 0
+    ability_index = 1 if candidate.has_haste else 0
     if candidate.builder_ability in BUILDER_PRIMARY_ABILITIES:
         primary_index = BUILDER_PRIMARY_ABILITIES.index(candidate.builder_ability)
-        ability_index = primary_index * 2 + (2 if candidate.has_haste else 1)
+        ability_index = (primary_index + 1) * 2 + (1 if candidate.has_haste else 0)
     encoded = (
         candidate.aw * 10000
         + candidate.vw * 1000

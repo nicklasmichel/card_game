@@ -79,7 +79,7 @@ class GameStateSnapshotTests(unittest.TestCase):
         self.assertEqual(active_view.state["pending_builder_creature"]["aw"], 3)
         self.assertEqual(active_view.state["pending_builder_creature"]["vw"], 2)
         self.assertNotIn("selected_primary_ability", active_view.state["pending_builder_creature"])
-        self.assertNotIn("has_haste", active_view.state["pending_builder_creature"])
+        self.assertFalse(active_view.state["pending_builder_creature"]["has_haste"])
         self.assertIsNone(opponent_view.state["pending_builder_creature"])
 
     def test_unconfirmed_block_choices_are_hidden_from_attacker(self) -> None:

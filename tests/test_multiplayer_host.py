@@ -69,10 +69,11 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         self.host.start_new_game(starting_player_id=1)
 
         self.assertEqual(
-            self.host.state.public_log_messages[:2],
+            self.host.state.public_log_messages[:3],
             [
                 "New game started in builder mode. Bob begins.",
                 "Turn 1: Bob is active.",
+                "Bob gains 1 free turn resource (1/10).",
             ],
         )
         remote_events = self.host.drain_player_events(1)
@@ -89,7 +90,7 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         event = self.host.receive_command(command, authenticated_player_id=1)
 
         self.assertEqual(event.kind, EventKind.COMMAND_APPLIED)
-        self.assertEqual(self.host.state.player_two.total_resources(), 1)
+        self.assertEqual(self.host.state.player_two.total_resources(), 2)
         self.assertEqual(self.host.revision, 2)
         remote_events = self.host.drain_player_events(1)
         self.assertEqual([item.kind for item in remote_events], [
@@ -284,7 +285,7 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
         second_event = self.host.receive_command(command, authenticated_player_id=1)
 
         self.assertIs(second_event, first_event)
-        self.assertEqual(self.host.state.player_two.total_resources(), 1)
+        self.assertEqual(self.host.state.player_two.total_resources(), 2)
         self.assertEqual(self.host.revision, 2)
 
     def test_queued_remote_command_waits_while_host_is_paused(self) -> None:
@@ -294,9 +295,9 @@ class AuthoritativeHostSessionTests(unittest.TestCase):
 
         self.host.update(allow_commands=False)
 
-        self.assertEqual(self.host.state.player_two.total_resources(), 0)
-        self.host.update(allow_commands=True)
         self.assertEqual(self.host.state.player_two.total_resources(), 1)
+        self.host.update(allow_commands=True)
+        self.assertEqual(self.host.state.player_two.total_resources(), 2)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from random import Random
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, builder_creature_stat_cost
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, BUILDER_CREATURE_STAT_CAP, builder_creature_stat_cost
 from core.ai.builder import choose_builder_attackers as choose_builder_attackers_v2
 from core.ai.builder import choose_builder_creature_plan as choose_builder_creature_plan_v2
 from core.ai.builder import choose_builder_main_action as choose_builder_main_action_v2
@@ -65,13 +65,13 @@ class HeuristicStrategicAI:
         enemy = engine.players[1 - player.player_id]
         if len(player.battlefield) >= engine.BUILDER_CREATURE_CAP:
             return "resource" if engine.can_builder_add_resource(player) else "pass"
-        if player.total_resources() < 3 and player.total_resources() < engine.BUILDER_MAX_RESOURCES:
+        if player.total_resources() < 2 and player.total_resources() < engine.BUILDER_MAX_RESOURCES:
             return "resource" if engine.can_builder_add_resource(player) else "creature"
         if not player.battlefield and enemy.battlefield and player.available_resources() >= 1:
             return "creature"
         if player.life <= enemy.life and player.available_resources() >= 1:
             return "creature"
-        if player.total_resources() < 5 and len(player.battlefield) >= len(enemy.battlefield) and engine.can_builder_add_resource(player):
+        if player.total_resources() < 3 and len(player.battlefield) >= len(enemy.battlefield) and engine.can_builder_add_resource(player):
             return "resource"
         if player.available_resources() >= 1:
             return "creature"
@@ -80,38 +80,51 @@ class HeuristicStrategicAI:
     def choose_builder_runtime_creature_plan(self, player: PlayerState, engine) -> dict | None:
         budget = max(0, player.available_resources())
         enemy = engine.players[1 - player.player_id]
-        aw = vw = sw = 1
-        lw = 1
+        stats = [0, 0, 0, 1]
+
+        def add_to_first_available(preferred_indexes: tuple[int, ...]) -> None:
+            for stat_index in preferred_indexes:
+                if stats[stat_index] < BUILDER_CREATURE_STAT_CAP:
+                    stats[stat_index] += 1
+                    return
+
         if player.life <= 4 or len(player.battlefield) < len(enemy.battlefield):
             for index in range(budget):
                 if index % 3 == 0:
-                    vw += 1
+                    add_to_first_available((1, 3, 2, 0))
                 elif index % 3 == 1:
-                    lw += 1
+                    add_to_first_available((3, 1, 2, 0))
                 else:
-                    sw += 1
+                    add_to_first_available((2, 1, 3, 0))
         else:
             for _ in range(budget):
+                aw, vw, sw, lw = stats
                 if vw <= lw - 1:
-                    vw += 1
+                    add_to_first_available((1, 0, 2, 3))
                 elif aw <= sw:
-                    aw += 1
+                    add_to_first_available((0, 2, 1, 3))
                 else:
-                    sw += 1
+                    add_to_first_available((2, 0, 1, 3))
+        aw, vw, sw, lw = stats
         cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
         while cost > budget and lw > 1:
             lw -= 1
             cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
-        while cost > budget and vw > 1:
+        while cost > budget and vw > 0:
             vw -= 1
             cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
-        while cost > budget and aw > 1:
+        while cost > budget and aw > 0:
             aw -= 1
             cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
-        while cost > budget and sw > 1:
+        while cost > budget and sw > 0:
             sw -= 1
             cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
-        return {"aw": aw, "vw": vw, "sw": sw, "lw": lw, "cost": cost}
+        incoming_damage = sum(creature.sw for creature in enemy.battlefield if creature.current_hp > 0)
+        has_haste = budget > 0 and (
+            (sw > 0 and sw >= enemy.life)
+            or (vw > 0 and incoming_damage >= player.life)
+        )
+        return {"aw": aw, "vw": vw, "sw": sw, "lw": lw, "cost": cost, "haste": has_haste}
 
     def choose_builder_runtime_ability_action(self, player: PlayerState, engine) -> dict | None:
         if not BUILDER_ABILITIES_ENABLED or not player.hand:

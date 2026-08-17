@@ -5,7 +5,7 @@ from time import sleep
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1
+from core.models import PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_GAME_OVER, PHASE_MAIN_1
 from tests.helpers import EngineTestCase
 from ui.layout_sidepanel import get_action_panel_prompt
 
@@ -20,6 +20,7 @@ class AiConfirmationTests(EngineTestCase):
 
     def test_ai_main_phase_prepares_with_confirmation_button_and_prompt(self) -> None:
         self.engine.phase = PHASE_MAIN_1
+        resources_before = len(self.engine.ai_player.resources)
 
         prepared = self.engine.prepare_ai_turn_action()
 
@@ -36,7 +37,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.handle_action("confirm_ai_action")
 
         self.assertFalse(self.engine.has_pending_ai_action())
-        self.assertEqual(len(self.engine.ai_player.resources), 1)
+        self.assertEqual(len(self.engine.ai_player.resources), resources_before + 1)
         self.assertEqual(self.engine.phase, PHASE_MAIN_1)
 
     def test_ai_thinking_state_shows_prompt_and_hides_buttons(self) -> None:
@@ -103,6 +104,7 @@ class AiConfirmationTests(EngineTestCase):
         assert attacker is not None
         attacker.tapped = False
         attacker.summoning_sick = False
+        self.engine.human_player.life = attacker.sw
         self.engine.phase = PHASE_DECLARE_ATTACKERS
 
         prepared = self.engine.prepare_ai_turn_action()
@@ -118,7 +120,7 @@ class AiConfirmationTests(EngineTestCase):
         self.engine.handle_action("confirm_ai_action")
 
         self.assertFalse(self.engine.has_pending_ai_action())
-        self.assertIn(self.engine.phase, {PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_MAIN_1})
+        self.assertIn(self.engine.phase, {PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE, PHASE_GAME_OVER, PHASE_MAIN_1})
 
     def test_ai_block_step_waits_for_confirmation(self) -> None:
         self.engine.active_player_index = self.engine.human_player.player_id

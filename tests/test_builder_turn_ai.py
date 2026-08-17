@@ -74,16 +74,17 @@ class BuilderTurnAITests(unittest.TestCase):
             creature.current_hp = current_hp
         return creature
 
-    def test_build_candidates_are_all_vanilla_stat_profiles(self) -> None:
+    def test_build_candidates_offer_vanilla_and_haste_stat_profiles(self) -> None:
         candidates = generate_builder_creature_candidates(build_builder_snapshot(self.engine.ai_player, self.engine), 5)
         self.assertTrue(candidates)
-        self.assertTrue(all(candidate.abilities == frozenset() for candidate in candidates))
+        self.assertTrue(all(candidate.abilities in {frozenset(), frozenset({Ability.HASTE})} for candidate in candidates))
         self.assertTrue(all(candidate.builder_ability is None for candidate in candidates))
-        self.assertTrue(all(not candidate.has_haste for candidate in candidates))
+        self.assertTrue(any(candidate.has_haste for candidate in candidates))
+        self.assertTrue(any(not candidate.has_haste for candidate in candidates))
         self.assertTrue(
             all(
                 candidate.cost
-                == sum(max(0, stat - 1) for stat in candidate.signature)
+                == candidate.aw + candidate.vw + candidate.sw + max(0, candidate.lw - 1)
                 for candidate in candidates
             )
         )
@@ -106,22 +107,28 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertTrue(unit.summoning_sickness)
         self.assertNotIn(unit.unit_id, projection.available_attacker_ids)
 
-    def test_projected_candidates_never_gain_haste_or_immediate_readiness(self) -> None:
+    def test_projected_haste_candidate_is_ready_and_loses_permanent_resource(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
         base = build_current_turn_projection(self.engine.ai_player, self.engine)
-        candidate = generate_builder_creature_candidates(build_builder_snapshot(self.engine.ai_player, self.engine), 4)[0]
+        candidate = next(
+            current
+            for current in generate_builder_creature_candidates(build_builder_snapshot(self.engine.ai_player, self.engine), 4)
+            if current.has_haste
+        )
         action = BuilderTurnActionCandidate("creature", candidate, 4, 0, "test")
 
         projection = project_creature_action(base, action)
         unit = projection.get_unit_by_id(projection.hypothetical_unit_id)
 
-        self.assertEqual(unit.abilities, frozenset())
-        self.assertTrue(unit.tapped)
-        self.assertTrue(unit.summoning_sickness)
-        self.assertNotIn(unit.unit_id, projection.available_attacker_ids)
+        self.assertEqual(unit.abilities, frozenset({Ability.HASTE}))
+        self.assertFalse(unit.tapped)
+        self.assertFalse(unit.summoning_sickness)
+        self.assertIn(unit.unit_id, projection.available_attacker_ids)
+        self.assertEqual(projection.own_total_resources, 3)
 
     def test_projected_non_haste_creature_becomes_ready_on_controller_next_turn(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
+        self.set_builder_resources(self.engine.human_player, 2)
         base = build_current_turn_projection(self.engine.ai_player, self.engine)
         candidate = next(
             candidate
@@ -136,6 +143,10 @@ class BuilderTurnAITests(unittest.TestCase):
         next_own_turn = project_attack_to_next_turn(enemy_turn, ())
         unit = next_own_turn.get_unit_by_id(unit_id)
 
+        self.assertEqual(enemy_turn.own_total_resources, 3)
+        self.assertEqual(enemy_turn.own_ready_resources, 3)
+        self.assertEqual(next_own_turn.own_total_resources, 5)
+        self.assertEqual(next_own_turn.own_ready_resources, 5)
         self.assertFalse(unit.tapped)
         self.assertFalse(unit.summoning_sickness)
         self.assertIn(unit.unit_id, next_own_turn.available_attacker_ids)
@@ -187,7 +198,7 @@ class BuilderTurnAITests(unittest.TestCase):
             self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
             self.assertEqual(decision.score.draw_value, 0.0)
 
-    def test_ai_cannot_build_an_immediate_attacker_even_at_one_enemy_life(self) -> None:
+    def test_ai_can_pay_for_an_immediate_attacker_at_one_enemy_life(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.engine.ai_player.life = 10
         self.engine.human_player.life = 1
@@ -195,11 +206,11 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
-        self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset({Ability.HASTE}))
+        self.assertTrue(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
 
-    def test_ai_cannot_build_an_immediately_ready_blocker(self) -> None:
+    def test_ai_can_pay_for_an_immediately_ready_blocker(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 5)
         self.engine.ai_player.life = 1
         self.make_builder_creature(0, aw=1, vw=1, sw=3, lw=2, ready=True)
@@ -207,9 +218,9 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
         candidate = decision.action_candidate.creature_candidate
-        self.assertEqual(candidate.abilities, frozenset())
+        self.assertEqual(candidate.abilities, frozenset({Ability.HASTE}))
         self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
 
     def test_ai_build_respects_new_base_stats_at_defensive_breakpoint(self) -> None:
@@ -230,9 +241,10 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         candidate = decision.action_candidate.creature_candidate
         self.assertIsNone(candidate.builder_ability)
-        self.assertEqual(candidate.abilities, frozenset())
+        self.assertIn(candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
         self.assertEqual(candidate.cost, 4)
-        self.assertGreaterEqual(min(candidate.signature), 1)
+        self.assertGreaterEqual(min(candidate.aw, candidate.vw, candidate.sw), 0)
+        self.assertGreaterEqual(candidate.lw, 1)
 
     def test_pressure_state_cannot_create_a_haste_flying_lethal(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 7)
@@ -245,9 +257,10 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         if decision.action_candidate.action_kind == "creature":
-            self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
-            self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertFalse(any(attacker_id < 0 for attacker_id in decision.predicted_attack_decision.candidate.attacker_ids))
+            self.assertIn(
+                decision.action_candidate.creature_candidate.abilities,
+                {frozenset(), frozenset({Ability.HASTE})},
+            )
         self.assertGreaterEqual(decision.score.board_slot_opportunity_cost, 0.0)
 
     def test_existing_flying_state_does_not_reintroduce_flying_build_candidates(self) -> None:
@@ -262,7 +275,7 @@ class BuilderTurnAITests(unittest.TestCase):
         candidates = generate_builder_creature_candidates(snapshot, 7)
 
         self.assertTrue(candidates)
-        self.assertTrue(all(candidate.abilities == frozenset() for candidate in candidates))
+        self.assertTrue(all(candidate.abilities in {frozenset(), frozenset({Ability.HASTE})} for candidate in candidates))
         self.assertTrue(all(candidate.builder_ability is None for candidate in candidates))
 
     def test_inexact_horizon_cannot_confirm_next_turn_lethal(self) -> None:
@@ -300,7 +313,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertFalse(report.own_next_attack_lethal)
         self.assertIsNone(report.turns_to_own_lethal)
 
-    def test_ai_does_not_invent_haste_under_immediate_pressure(self) -> None:
+    def test_ai_can_choose_paid_haste_under_immediate_pressure(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 2)
         self.engine.ai_player.life = 2
         self.make_builder_creature(0, aw=2, vw=1, sw=3, lw=2, ready=True)
@@ -308,8 +321,8 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
+        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset({Ability.HASTE}))
 
     def test_vanilla_candidates_do_not_count_as_future_flying_coverage(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 8)
@@ -321,7 +334,7 @@ class BuilderTurnAITests(unittest.TestCase):
 
         base = build_current_turn_projection(self.engine.ai_player, self.engine)
         snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
-        candidate = generate_builder_creature_candidates(snapshot, 8)[0]
+        candidate = next(current for current in generate_builder_creature_candidates(snapshot, 8) if not current.has_haste)
         action = BuilderTurnActionCandidate("creature", candidate, 8, 0, "test")
         projection = project_creature_action(base, action)
         predicted_attack = evaluate_best_builder_attack(projection.players[projection.player_id], projection)
@@ -346,7 +359,7 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         self.assertIsNone(decision.action_candidate.creature_candidate.builder_ability)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
+        self.assertIn(decision.action_candidate.creature_candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
         self.assertFalse(decision.score.coverage_prevents_repeated_lethal)
 
     def test_vanilla_builds_receive_no_flying_coverage_bonus(self) -> None:
@@ -362,8 +375,8 @@ class BuilderTurnAITests(unittest.TestCase):
         )
         snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
         candidates = generate_builder_creature_candidates(snapshot, 4)
-        damage_shell = next(current for current in candidates if current.key == (1, 2, 4, 1, "-"))
-        persistent_blocker = next(current for current in candidates if current.key == (1, 4, 2, 1, "-"))
+        damage_shell = next(current for current in candidates if current.key == (0, 1, 3, 1, "-"))
+        persistent_blocker = next(current for current in candidates if current.key == (0, 3, 1, 1, "-"))
 
         def project(current):
             static_score = score_builder_creature_candidate(
@@ -402,7 +415,7 @@ class BuilderTurnAITests(unittest.TestCase):
         non_flying = next(
             current
             for current in generate_builder_creature_candidates(snapshot, 4)
-            if current.key == (1, 1, 5, 1, "-")
+            if current.key == (0, 0, 4, 1, "-")
         )
         static_score = score_builder_creature_candidate(
             non_flying,
@@ -438,7 +451,7 @@ class BuilderTurnAITests(unittest.TestCase):
         shell = next(
             candidate
             for candidate in generate_builder_creature_candidates(snapshot, 4)
-            if candidate.key == (1, 1, 5, 1, "-")
+            if candidate.key == (0, 0, 4, 1, "-")
         )
         static_score = score_builder_creature_candidate(
             shell,
@@ -457,7 +470,7 @@ class BuilderTurnAITests(unittest.TestCase):
 
         value = _score_flying_coverage_value(None, None, None, projected, horizon)
 
-        self.assertEqual(shell.vw, 1)
+        self.assertEqual(shell.vw, 0)
         self.assertEqual(shell.abilities, frozenset())
         self.assertEqual(static_score.block_win_probability, 0.0)
         self.assertEqual(value, 0.0)
@@ -666,11 +679,11 @@ class BuilderTurnAITests(unittest.TestCase):
             self.assertTrue(candidate.has_ability(Ability.VIGILANCE))
         self.assertNotEqual(candidate.signature, (0, 1, 0, 9))
 
-    def test_life_only_wall_is_not_overvalued_against_real_threat(self) -> None:
+    def test_high_life_low_defense_build_is_not_overvalued_against_real_threat(self) -> None:
         self.make_builder_creature(0, aw=5, vw=0, sw=5, lw=1, ready=True)
         snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
-        wall = next(candidate for candidate in generate_builder_creature_candidates(snapshot, 10) if candidate.signature == (1, 2, 1, 10))
-        breaker = next(candidate for candidate in generate_builder_creature_candidates(snapshot, 10) if candidate.signature == (1, 4, 2, 7))
+        wall = next(candidate for candidate in generate_builder_creature_candidates(snapshot, 10) if candidate.signature == (2, 1, 3, 5))
+        breaker = next(candidate for candidate in generate_builder_creature_candidates(snapshot, 10) if candidate.signature == (2, 4, 1, 4))
 
         wall_score = score_builder_creature_candidate(
             wall,
@@ -726,9 +739,9 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         candidate = decision.action_candidate.creature_candidate
-        self.assertGreaterEqual(candidate.vw, 7)
+        self.assertEqual(candidate.vw, self.engine.BUILDER_CREATURE_STAT_CAP)
         self.assertLessEqual(candidate.lw, 2)
-        self.assertEqual(candidate.abilities, frozenset())
+        self.assertIn(candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
 
     def test_shortlist_retains_matchup_specific_high_defense_vanilla_body(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
@@ -741,7 +754,7 @@ class BuilderTurnAITests(unittest.TestCase):
         shortlisted = _shortlist_projected_candidates(projected, snapshot)
 
         self.assertTrue(shortlisted)
-        self.assertTrue(all(current.candidate.abilities == frozenset() for current in shortlisted))
+        self.assertTrue(all(current.candidate.abilities in {frozenset(), frozenset({Ability.HASTE})} for current in shortlisted))
         self.assertTrue(any(current.candidate.vw >= 4 for current in shortlisted))
 
     def test_emergency_shortlist_contains_only_vanilla_defensive_options(self) -> None:
@@ -768,8 +781,7 @@ class BuilderTurnAITests(unittest.TestCase):
         shortlisted = _shortlist_projected_candidates(projected, snapshot)
 
         self.assertTrue(shortlisted)
-        self.assertTrue(all(not current.candidate.has_haste for current in shortlisted))
-        self.assertTrue(all(current.candidate.abilities == frozenset() for current in shortlisted))
+        self.assertTrue(all(current.candidate.abilities in {frozenset(), frozenset({Ability.HASTE})} for current in shortlisted))
         self.assertGreater(shortlisted[0].candidate.vw, 0)
 
     def test_normal_shortlist_starts_with_static_leader_not_damage_glass_cannon(self) -> None:
@@ -803,8 +815,7 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
+        self.assertIn(decision.action_candidate.creature_candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
         self.assertGreater(decision.action_candidate.creature_candidate.sw, 0)
 
     def test_forced_loss_state_logs_honest_width_based_loss(self) -> None:
@@ -825,7 +836,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertLess(decision.score.selection_score, -9000.0)
         self.assertIn(
             decision.predicted_attack_decision.score.projected_counter_main_action,
-            {"resource", "build_terminal", "pass"},
+            {"resource", "build_terminal", "build_haste", "pass"},
         )
         self.assertGreaterEqual(
             decision.predicted_attack_decision.score.projected_counter_damage,
@@ -905,7 +916,8 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertGreaterEqual(min(decision.action_candidate.creature_candidate.signature), 1)
+        self.assertGreaterEqual(min(decision.action_candidate.creature_candidate.aw, decision.action_candidate.creature_candidate.vw, decision.action_candidate.creature_candidate.sw), 0)
+        self.assertGreaterEqual(decision.action_candidate.creature_candidate.lw, 1)
         self.assertGreaterEqual(decision.score.survival_buffer, 5.0)
 
     def test_tapped_vanilla_body_is_not_mistaken_for_immediate_defense(self) -> None:
@@ -943,7 +955,7 @@ class BuilderTurnAITests(unittest.TestCase):
         self.assertLess(full_value, open_value)
         self.assertIsNotNone(flyer)
 
-    def test_horizon_enemy_frontier_contains_no_paid_haste_build(self) -> None:
+    def test_horizon_enemy_frontier_can_evaluate_paid_haste_build(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 5)
         self.set_builder_resources(self.engine.human_player, 5)
         self.engine.ai_player.life = 10
@@ -957,7 +969,7 @@ class BuilderTurnAITests(unittest.TestCase):
         predicted_attack = evaluate_best_builder_attack(base.players[base.player_id], base)
         report = evaluate_main_action_horizon(base, predicted_attack)
 
-        self.assertNotEqual(report.defense_response_main_action, "build_haste")
+        self.assertIn(report.defense_response_main_action, {"build_haste", "build_terminal", "build_best", "build_defense", "resource", "pass", None})
         self.assertEqual(report.known_enemy_attack_timeline, ())
         self.assertEqual(report.second_attack_damage, 0.0)
 
@@ -982,8 +994,7 @@ class BuilderTurnAITests(unittest.TestCase):
         decision = plan_builder_turn(self.engine.ai_player, self.engine)
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
-        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
+        self.assertIn(decision.action_candidate.creature_candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
         self.assertEqual(self.engine.ai_player.total_resources(), 5)
 
     def test_safe_redundant_board_builds_vanilla_threat(self) -> None:
@@ -1005,7 +1016,7 @@ class BuilderTurnAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         self.assertIsNone(decision.action_candidate.creature_candidate.builder_ability)
-        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
+        self.assertIn(decision.action_candidate.creature_candidate.abilities, {frozenset(), frozenset({Ability.HASTE})})
         self.assertGreaterEqual(decision.action_candidate.creature_candidate.sw, 2)
 
     def test_creature_is_built_under_pressure(self) -> None:

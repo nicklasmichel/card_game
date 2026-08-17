@@ -29,10 +29,21 @@ hands and tentative attacker/blocker choices remain hidden.
 
 ## Creature builder
 
-The current vanilla ruleset does not grant creature abilities. Every creature
-starts at **1 Attack / 1 Defense / 1 Damage / 1 Life**. All ready resources are
-then distributed across those four stats; only points above the four base
-values contribute to the creature's resource cost.
+Every creature starts at **0 Attack / 0 Defense / 0 Damage / 1 Life**. All ready
+resources are then distributed across those four stats; only points above those
+base values contribute to the stat cost. No individual stat can be raised above
+**5** during creature construction.
+
+Haste is the only ability available while building a creature. It is optional
+and does not reduce the stat budget: with five ready resources, all five may be
+spent on stats. Afterward, granting Haste permanently removes one resource from
+the player. A creature with Haste enters play ready; every other newly built
+creature enters tapped. Builder creatures without Haste use the Vigilance
+artwork as their default image.
+
+At the beginning of each turn, the active player automatically gains one ready
+resource for free, up to the resource cap of **10**. This does not consume the
+turn's main action; choosing to add another resource remains a valid main action.
 
 ## Tests
 
@@ -57,9 +68,9 @@ runs in an isolated process by default, so a stuck calculation is terminated
 and reported instead of hanging the complete run. Add `--json soak-report.json`
 to save all per-game and per-decision measurements, including phase/action
 breakdowns, search work counters, board snapshots for slow decisions, and the
-distribution of actual creature builds. The build report separates primary
-abilities, paid Haste, immediate Haste attacks, defensive Haste coverage, and
-average stat allocation. The snapshot threshold can be changed with
+distribution of actual creature builds. The build report separates paid Haste,
+immediate Haste attacks, defensive Haste coverage, and average stat allocation.
+The snapshot threshold can be changed with
 `--slow-snapshot-ms`.
 
 ## AI profile benchmark
@@ -87,7 +98,7 @@ python scripts/retry_profile_benchmark_failures.py --game-timeout 300 --workers 
 
 Completed games also append every created builder creature to
 `stats/data/builder_creature_build_results.csv`. Each row contains its stats,
-free primary ability, paid Haste choice, stat cost, and total resource cost.
+paid Haste choice, stat cost, and total resource cost.
 
 ## Playtest report
 
@@ -97,6 +108,6 @@ After a PvE test, including an aborted game, analyze the latest logged match:
 python scripts/analyze_playtest.py --json stats/data/latest_playtest.json
 ```
 
-The report compares player and AI builds, paid Haste rates, primary abilities,
-resource-cost consistency, and AI decision times. Structured game markers keep
+The report compares player and AI builds, paid Haste rates, resource-cost
+consistency, and AI decision times. Structured game markers keep
 the latest match separate from older log entries.

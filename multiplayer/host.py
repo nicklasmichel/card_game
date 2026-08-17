@@ -198,6 +198,8 @@ class AuthoritativeHostSession:
             new_engine_messages = [
                 f"New game started in builder mode. {self._state.active_player.name} begins.",
                 f"Turn {self._state.turn_number}: {self._state.active_player.name} is active.",
+                f"{self._state.active_player.name} gains 1 free turn resource "
+                f"({self._state.active_player.total_resources()}/{self._state.BUILDER_MAX_RESOURCES}).",
             ]
         else:
             new_engine_messages = [

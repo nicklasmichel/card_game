@@ -80,6 +80,10 @@ class BuilderCreatureCandidate:
         return BUILDER_HASTE_COST if self.has_haste else 0
 
     @property
+    def total_cost(self) -> int:
+        return self.cost + self.haste_cost
+
+    @property
     def enters_tapped(self) -> bool:
         return not self.has_haste
 

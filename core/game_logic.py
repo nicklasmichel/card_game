@@ -6,7 +6,7 @@ from threading import Event, Lock
 from typing import Dict, List, Optional
 
 from core.ai_logic import SimpleAI
-from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_MAX_RESOURCES
+from core.builder_rules import BUILDER_CREATURE_CAP, BUILDER_CREATURE_STAT_CAP, BUILDER_MAX_RESOURCES
 from core.config import COMBAT_DIE_SIDES, STARTING_LIFE
 from core.models import (
     Ability,
@@ -41,10 +41,12 @@ class GameEngine:
         can_builder_use_ability_card,
         get_builder_preview_creature,
         get_builder_card_ability,
+        grant_builder_turn_resource,
         builder_mode_active,
         builder_remaining_ready_resources,
         builder_resource_template,
         builder_spend_ready_resources,
+        builder_sacrifice_resource,
         cancel_builder_ability_use,
         choose_builder_ability_mode,
         toggle_builder_creature_ability,
@@ -64,6 +66,7 @@ class GameEngine:
         start_builder_turn,
     )
     BUILDER_CREATURE_CAP = BUILDER_CREATURE_CAP
+    BUILDER_CREATURE_STAT_CAP = BUILDER_CREATURE_STAT_CAP
     BUILDER_MAX_RESOURCES = BUILDER_MAX_RESOURCES
 
     from engine.combat import (

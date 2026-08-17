@@ -4,7 +4,12 @@ from dataclasses import replace
 from threading import Event, Thread
 from typing import List
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED, builder_creature_stat_cost, calculate_builder_creature_cost
+from core.builder_rules import (
+    BUILDER_ABILITIES_ENABLED,
+    BUILDER_CREATURE_STAT_CAP,
+    builder_creature_stat_cost,
+    builder_creature_stats_are_valid,
+)
 from engine.builder import BUILDER_ABILITY_LABELS
 from core.ai.builder import build_builder_runtime_fingerprint, choose_builder_blocks, materialize_builder_turn_decision
 from core.ai.builder.attack_policy import log_builder_attack_decision
@@ -65,6 +70,8 @@ def _format_builder_creature_plan(plan: dict) -> str:
         f"Atk {int(plan.get('aw', 0))} / Def {int(plan.get('vw', 0))} / "
         f"Dmg {int(plan.get('sw', 0))} / Life {int(plan.get('lw', 1))}"
     )
+    if bool(plan.get("haste", False)):
+        text += " + Haste (-1 permanent resource)"
     return text
 
 
@@ -107,6 +114,7 @@ def _compute_prepared_ai_action(self, *, cancel_event=None) -> dict | None:
                     "sw": candidate.sw,
                     "lw": candidate.lw,
                     "cost": candidate.cost,
+                    "haste": candidate.has_haste,
                     "candidate_signature": getattr(candidate, "key", candidate.signature),
                 }
                 return {
@@ -428,11 +436,12 @@ def execute_prepared_ai_action(self) -> None:
             vw = int(plan.get("vw", 0))
             sw = int(plan.get("sw", 0))
             lw = int(plan.get("lw", 1))
-            if min(aw, vw, sw, lw) < 1:
+            if not builder_creature_stats_are_valid(aw=aw, vw=vw, sw=sw, lw=lw):
                 return
-            if plan.get("ability") is not None or plan.get("abilities") or bool(plan.get("haste", False)):
+            if plan.get("ability") is not None or plan.get("abilities"):
                 return
-            expected_cost = calculate_builder_creature_cost(
+            has_haste = bool(plan.get("haste", False))
+            expected_cost = builder_creature_stat_cost(
                 aw=aw,
                 vw=vw,
                 sw=sw,
@@ -441,7 +450,7 @@ def execute_prepared_ai_action(self) -> None:
             cost = int(plan.get("cost", -1))
         except (TypeError, ValueError):
             return
-        if cost != expected_cost:
+        if cost != expected_cost or (has_haste and self.active_player.total_resources() < 1):
             return
         if self.can_builder_open_creature_build(self.active_player):
             if self.builder_spend_ready_resources(self.active_player, cost):
@@ -451,7 +460,10 @@ def execute_prepared_ai_action(self) -> None:
                     vw=vw,
                     sw=sw,
                     lw=lw,
+                    has_haste=has_haste,
                 )
+                if creature is not None and has_haste and not self.builder_sacrifice_resource(self.active_player):
+                    return
         if creature is not None:
             self.builder_created_this_turn_ids.add(creature.unit_id)
             self.active_player.main_action_used_this_turn = True
@@ -459,7 +471,7 @@ def execute_prepared_ai_action(self) -> None:
                 self.statistics.register_builder_creature_played(
                     self.active_player.player_id,
                     primary_ability=None,
-                    has_haste=False,
+                    has_haste=has_haste,
                     turn_number=self.turn_number,
                     aw=creature.aw,
                     vw=creature.vw,
@@ -471,13 +483,16 @@ def execute_prepared_ai_action(self) -> None:
                         sw=creature.sw,
                         lw=creature.lw,
                     ),
-                    total_cost=cost,
+                    total_cost=cost + (1 if has_haste else 0),
                 )
             self.log(
                 f"{self.active_player.name} creates {creature.name} "
-                f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}) "
-                f"for {cost} resource(s)."
+                f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}"
+                + (" / Haste" if has_haste else "")
+                + f") for {cost + (1 if has_haste else 0)} resource(s)."
             )
+            if has_haste:
+                self.log(f"{self.active_player.name} permanently loses 1 resource to grant Haste.")
             self.finish_builder_main_action()
             turn_decision = action.get("turn_decision")
             if turn_decision is not None and turn_decision.action_candidate.creature_candidate is not None:
@@ -744,7 +759,7 @@ def current_prompt(self) -> str:
     if self.pending_ai_action is not None:
         return self.pending_ai_action.get("description", "Player 2 action is waiting for confirmation.")
     if self.phase == PHASE_BUILDER_CREATURE:
-        return "Distribute all ready resources across the creature's stats."
+        return "Distribute all ready resources across the stats. Optional Haste permanently costs 1 resource."
     if self.phase == PHASE_BUILDER_ABILITY:
         if not BUILDER_ABILITIES_ENABLED:
             return "Attack or end the turn."
@@ -787,19 +802,24 @@ def get_button_specs(self) -> List[ButtonSpec]:
         if pending is None:
             return []
         spent = self.builder_creature_build_cost()
-        plus_enabled = spent < pending.available_resources
+        has_resources_left = spent < pending.available_resources
         buttons = [
-            ButtonSpec("+1 Atk", plus_enabled, "builder_aw_up"),
+            ButtonSpec("+1 Atk", has_resources_left and pending.aw < BUILDER_CREATURE_STAT_CAP, "builder_aw_up"),
             ButtonSpec("-1 Atk", pending.aw > pending.base_aw, "builder_aw_down"),
-            ButtonSpec("+1 Def", plus_enabled, "builder_vw_up"),
+            ButtonSpec("+1 Def", has_resources_left and pending.vw < BUILDER_CREATURE_STAT_CAP, "builder_vw_up"),
             ButtonSpec("-1 Def", pending.vw > pending.base_vw, "builder_vw_down"),
-            ButtonSpec("+1 Dmg", plus_enabled, "builder_sw_up"),
+            ButtonSpec("+1 Dmg", has_resources_left and pending.sw < BUILDER_CREATURE_STAT_CAP, "builder_sw_up"),
             ButtonSpec("-1 Dmg", pending.sw > pending.base_sw, "builder_sw_down"),
-            ButtonSpec("+1 HP", plus_enabled, "builder_lw_up"),
+            ButtonSpec("+1 HP", has_resources_left and pending.lw < BUILDER_CREATURE_STAT_CAP, "builder_lw_up"),
             ButtonSpec("-1 HP", pending.lw > pending.base_lw, "builder_lw_down"),
         ]
         buttons.extend(
             [
+                ButtonSpec(
+                    "Haste: On (-1 Resource)" if pending.has_haste else "Haste: Off (-1 Resource)",
+                    pending.has_haste or self.active_player.total_resources() >= 1,
+                    "builder_toggle_haste",
+                ),
                 ButtonSpec("Create", self.builder_creature_build_is_valid(), "builder_confirm_creature"),
                 ButtonSpec("Cancel", True, "builder_cancel_creature"),
             ]

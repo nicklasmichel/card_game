@@ -377,7 +377,7 @@ def _generate_enemy_main_projections(enemy_turn_projection: BuilderTurnProjectio
         action = BuilderTurnActionCandidate(
             action_kind="creature",
             creature_candidate=candidate,
-            projected_total_resources=enemy_turn_projection.own_total_resources,
+            projected_total_resources=max(0, enemy_turn_projection.own_total_resources - candidate.haste_cost),
             projected_ready_resources=max(0, enemy_turn_projection.own_ready_resources - candidate.cost),
             generation_reason=label,
         )

@@ -225,6 +225,7 @@ def build_builder_plan_dict(candidate) -> dict:
         "sw": candidate.sw,
         "lw": candidate.lw,
         "cost": candidate.cost,
+        "haste": candidate.has_haste,
         "profile": candidate.generation_reason or "planned",
         "candidate_signature": candidate.key,
     }
@@ -595,7 +596,7 @@ def _generate_main_action_projections(player, engine, base_projection, shortlist
             action_candidate = BuilderTurnActionCandidate(
                 action_kind="creature",
                 creature_candidate=projected_candidate.candidate,
-                projected_total_resources=player.total_resources(),
+                projected_total_resources=max(0, player.total_resources() - projected_candidate.candidate.haste_cost),
                 projected_ready_resources=max(0, player.available_resources() - projected_candidate.candidate.cost),
                 generation_reason="|".join(projected_candidate.shortlist_reasons) or projected_candidate.candidate.generation_reason,
             )

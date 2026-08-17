@@ -539,7 +539,7 @@ def _builder_build_sample(engine, action: dict) -> BuilderBuildSample | None:
         primary_ability=primary_name,
         has_haste=has_haste,
         stat_cost=builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw),
-        total_cost=int(plan.get("cost", 0)),
+        total_cost=int(plan.get("cost", 0)) + (1 if has_haste else 0),
         planned_immediate_attack=immediate_attack,
         planned_immediate_block=planned_immediate_block,
         projected_counter_damage=float(getattr(predicted_score, "projected_counter_damage", 0.0)),
