@@ -321,12 +321,48 @@ def build_builder_runtime_fingerprint(player, engine) -> tuple:
         tuple(_runtime_unit_signature(creature) for creature in player.battlefield),
         tuple(_runtime_unit_signature(creature) for creature in enemy.battlefield),
         int(getattr(engine, "builder_stalled_turns", 0)),
+        int(getattr(engine, "builder_player_damage_stalled_turns", getattr(engine, "builder_stalled_turns", 0))),
     )
 
 
 def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadline: float) -> BuilderTurnDecision:
     if builder_debug_enabled():
         ensure_builder_weights_logged(engine)
+    if (
+        len(player.battlefield) >= engine.BUILDER_CREATURE_CAP
+        and player.total_resources() >= engine.BUILDER_MAX_RESOURCES
+    ):
+        # No main action can change this state.  Running the full build and
+        # resource frontier here only re-evaluates hundreds of hypothetical
+        # creatures before arriving at the inevitable "continue" action.
+        decision = _plan_builder_continuation(
+            player,
+            engine,
+            runtime_signature,
+            allow_ability=False,
+            deadline=deadline,
+        )
+        decision = replace(
+            decision,
+            action_candidate=BuilderTurnActionCandidate(
+                action_kind="pass",
+                creature_candidate=None,
+                projected_total_resources=player.total_resources(),
+                projected_ready_resources=player.available_resources(),
+                generation_reason="no_legal_main_action",
+            ),
+        )
+        setattr(engine.ai, "_last_builder_turn_alternatives", (decision,))
+        _debug_turn_decision(
+            engine,
+            player,
+            runtime_signature,
+            build_builder_snapshot(player, engine),
+            decision.predicted_attack_decision,
+            [decision],
+            False,
+        )
+        return decision
     snapshot = build_builder_snapshot(player, engine)
     if builder_debug_verbose():
         log_builder_state(engine, player, decision="main", snapshot=snapshot)
@@ -368,6 +404,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
             evaluate_horizon=engine.phase != PHASE_DECLARE_ATTACKERS,
         )
         decision = _finalize_selected_attack_plan(base_projection, decision)
+        setattr(engine.ai, "_last_builder_turn_alternatives", (decision,))
         _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [decision], False)
         return decision
     static_candidates, fallback_used, build_debug = _build_projected_candidates(
@@ -414,6 +451,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                 and current_decision.predicted_attack_decision.score.guaranteed_player_damage >= base_projection.enemy_life > 0
             ):
                 _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, current_decision)
+                setattr(engine.ai, "_last_builder_turn_alternatives", (current_decision,))
                 _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [current_decision], fallback_used)
                 return current_decision
             if decisions and builder_search_should_stop(comparison_deadline):
@@ -441,6 +479,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     decision = _finalize_selected_attack_plan(base_projection, decisions[0])
     decisions[0] = decision
+    setattr(engine.ai, "_last_builder_turn_alternatives", tuple(decisions))
     _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, decision)
     _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, decisions, fallback_used)
     return decision
@@ -458,7 +497,12 @@ def _plan_builder_continuation(player, engine, runtime_signature: tuple, *, allo
             snapshot=snapshot,
         )
     base_projection = build_current_turn_projection(player, engine)
-    if engine.phase == PHASE_DECLARE_ATTACKERS:
+    locked_main_phase = (
+        engine.phase == PHASE_MAIN_1
+        and len(player.battlefield) >= engine.BUILDER_CREATURE_CAP
+        and player.total_resources() >= engine.BUILDER_MAX_RESOURCES
+    )
+    if engine.phase == PHASE_DECLARE_ATTACKERS or locked_main_phase:
         # Creature-frontier values cannot change the already committed main
         # action.  Computing them here used to consume the attack phase's local
         # budget before the accurate combat search even started.
@@ -1188,6 +1232,7 @@ def _attack_cache_key(projection) -> tuple:
         projection.own_life,
         projection.enemy_life,
         int(getattr(projection, "builder_stalled_turns", 0)),
+        int(getattr(projection, "builder_player_damage_stalled_turns", getattr(projection, "builder_stalled_turns", 0))),
         projection.available_attacker_ids,
         tuple(_projection_unit_signature(unit) for unit in projection.own_units),
         tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
@@ -2383,6 +2428,7 @@ def _projection_runtime_fingerprint(projection, *, phase: str, ability_used: boo
         tuple(_projection_unit_signature(unit) for unit in projection.own_units),
         tuple(_projection_unit_signature(unit) for unit in projection.enemy_units),
         int(getattr(projection, "builder_stalled_turns", 0)),
+        int(getattr(projection, "builder_player_damage_stalled_turns", getattr(projection, "builder_stalled_turns", 0))),
     )
 
 

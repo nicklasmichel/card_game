@@ -53,6 +53,7 @@ class BuilderTurnProjection:
     candidate_signature: tuple
     state_signature: tuple
     builder_stalled_turns: int = 0
+    builder_player_damage_stalled_turns: int = 0
     hand_signature: tuple = ()
     used_card_instance_id: int | None = None
 
@@ -138,6 +139,9 @@ def build_current_turn_projection(player: PlayerState, engine) -> BuilderTurnPro
             None,
         ),
         builder_stalled_turns=int(getattr(engine, "builder_stalled_turns", 0)),
+        builder_player_damage_stalled_turns=int(
+            getattr(engine, "builder_player_damage_stalled_turns", getattr(engine, "builder_stalled_turns", 0))
+        ),
         hand_signature=hand_signature,
     )
 
@@ -403,6 +407,11 @@ def project_attack_to_next_turn(
             if made_progress
             else max(0, int(base_projection.builder_stalled_turns) + 1)
         ),
+        builder_player_damage_stalled_turns=(
+            0
+            if player_damage > 0.0
+            else max(0, int(base_projection.builder_player_damage_stalled_turns) + 1)
+        ),
     )
 
 
@@ -480,6 +489,7 @@ def _rebuild_projection(
         candidate_signature=base_projection.candidate_signature if candidate_signature is None else candidate_signature,
         state_signature=state_signature,
         builder_stalled_turns=base_projection.builder_stalled_turns,
+        builder_player_damage_stalled_turns=base_projection.builder_player_damage_stalled_turns,
         hand_signature=resolved_hand,
         used_card_instance_id=resolved_used_card,
     )

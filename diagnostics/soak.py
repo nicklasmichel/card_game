@@ -416,6 +416,9 @@ def _state_snapshot(engine) -> dict:
     return {
         "turn": int(getattr(engine, "turn_number", 0)),
         "stalled_turns": int(getattr(engine, "builder_stalled_turns", 0)),
+        "player_damage_stalled_turns": int(
+            getattr(engine, "builder_player_damage_stalled_turns", getattr(engine, "builder_stalled_turns", 0))
+        ),
         "phase": _phase_label(getattr(engine, "phase", "unknown")),
         "active_player_id": int(getattr(engine, "active_player_index", 0)),
         "players": [
@@ -543,7 +546,12 @@ def _builder_build_sample(engine, action: dict) -> BuilderBuildSample | None:
     )
 
 
-def _create_soak_engine(seed: int, *, starting_life: int = STARTING_LIFE) -> GameEngine:
+def _create_soak_engine(
+    seed: int,
+    *,
+    starting_life: int = STARTING_LIFE,
+    starting_player_id: int | None = None,
+) -> GameEngine:
     engine = GameEngine(auto_start=False)
     engine.seed = seed
     engine.rng = Random(seed)
@@ -553,7 +561,7 @@ def _create_soak_engine(seed: int, *, starting_life: int = STARTING_LIFE) -> Gam
     engine.debug_log = lambda _message: None
     engine.simulation_mode = True
     engine.initialize_builder_game(
-        starting_player_id=seed % 2,
+        starting_player_id=seed % 2 if starting_player_id is None else starting_player_id,
         auto_begin=True,
         log_start=False,
     )

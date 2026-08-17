@@ -31,6 +31,7 @@ class GameStartTests(unittest.TestCase):
         engine = GameEngine()
         engine.turn_number = 10
         engine.builder_last_combat_progress_turn = 3
+        engine.builder_last_player_damage_turn = 3
 
         self.assertEqual(engine.builder_stalled_turns, 7)
 
@@ -41,8 +42,10 @@ class GameStartTests(unittest.TestCase):
         )
 
         self.assertEqual(engine.builder_stalled_turns, 0)
+        self.assertEqual(engine.builder_player_damage_stalled_turns, 0)
         engine.turn_number = 12
         self.assertEqual(engine.builder_stalled_turns, 2)
+        self.assertEqual(engine.builder_player_damage_stalled_turns, 2)
 
         engine.queue_creature_damage_event(
             target_role="attacker",
@@ -51,6 +54,7 @@ class GameStartTests(unittest.TestCase):
         )
 
         self.assertEqual(engine.builder_stalled_turns, 2)
+        self.assertEqual(engine.builder_player_damage_stalled_turns, 2)
 
     def test_start_test_combat_uses_builder_setup(self) -> None:
         engine = GameEngine()

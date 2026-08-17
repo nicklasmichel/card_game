@@ -141,10 +141,13 @@ def _generate_heuristic_block_assignments(
     *,
     limit: int,
 ) -> list[tuple[tuple[int, int], ...]]:
-    assignments: set[tuple[tuple[int, int], ...]] = {canonicalize_assignment(forced_map)}
+    assignments: dict[tuple[tuple[int, int], ...], int] = {
+        canonicalize_assignment(forced_map): 0
+    }
 
     def add_assignment(assignment: dict[int, int] | tuple[tuple[int, int], ...]) -> None:
-        assignments.add(canonicalize_assignment(assignment))
+        canonical = canonicalize_assignment(assignment)
+        assignments.setdefault(canonical, len(assignments))
 
     def greedy(attacker_order: list, blocker_mode: str) -> None:
         current = dict(forced_map)
@@ -179,12 +182,16 @@ def _generate_heuristic_block_assignments(
         for blocker_mode in blocker_modes:
             greedy(attacker_order, blocker_mode)
 
-    current_assignments = sorted(assignments)
+    current_assignments = list(assignments)
     for assignment in current_assignments[:8]:
         add_assignment(_single_swap_variant(assignment, attackers, blockers, forced_map))
         add_assignment(_single_drop_variant(assignment, forced_map))
 
-    return sorted(assignments)[: max(1, limit)]
+    # Keep generation priority.  In particular this guarantees that the
+    # no-block baseline and a maximal damage-prevention assignment survive a
+    # small nested-search budget.  Lexicographic sorting used to fill the
+    # shortlist with arbitrary low-id partial blocks instead.
+    return list(assignments)[: max(1, limit)]
 
 
 def _attacker_priority(attacker, *, mode: str) -> tuple[float, ...]:

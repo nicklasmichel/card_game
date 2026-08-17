@@ -462,6 +462,7 @@ def _choose_builder_blocks(defending_player, engine) -> dict[int, int | None]:
         result[attacker_id] = blocker_id
     setattr(engine.ai, "_last_builder_block_candidate", best_candidate)
     setattr(engine.ai, "_last_builder_block_score", best_score)
+    setattr(engine.ai, "_last_builder_block_scored_candidates", tuple(scored))
     return result
 
 

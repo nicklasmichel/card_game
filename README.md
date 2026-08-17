@@ -29,12 +29,10 @@ hands and tentative attacker/blocker choices remain hidden.
 
 ## Creature builder
 
-Every new creature receives exactly one free primary ability: **Flying**,
-**Vigilance**, or **Trample**. **Haste** is an independent optional upgrade and
-costs one resource. The remaining ready resources are distributed across
-Attack, Defense, Damage, and Life, so a five-resource creature has either five
-stat points or four stat points plus Haste. A creature with Haste can therefore
-have two abilities: Haste and its free primary ability.
+The current vanilla ruleset does not grant creature abilities. Every creature
+starts at **1 Attack / 1 Defense / 1 Damage / 1 Life**. All ready resources are
+then distributed across those four stats; only points above the four base
+values contribute to the creature's resource cost.
 
 ## Tests
 
@@ -63,6 +61,29 @@ distribution of actual creature builds. The build report separates primary
 abilities, paid Haste, immediate Haste attacks, defensive Haste coverage, and
 average stat allocation. The snapshot threshold can be changed with
 `--slow-snapshot-ms`.
+
+## AI profile benchmark
+
+Benchmark the production AI against independent aggressive, defensive,
+balanced, and seeded-random policies:
+
+```powershell
+python scripts/run_profile_benchmark.py --seeds 5 --workers 4
+```
+
+Every seed is played twice with the starting player mirrored. The report tracks
+win rate, game length, resource and board curves, attacks and passes, creature
+stat allocation, player damage, creature trades, dice expectation versus actual
+results, decision timing, and automatic audits for score inversions or missed
+guaranteed lethal. JSON and Markdown reports are written to
+`stats/data/profile_benchmark_latest.*`.
+
+If only a few games exceed the configured game timeout, retry those exact
+profile/seed/start combinations without replaying completed games:
+
+```powershell
+python scripts/retry_profile_benchmark_failures.py --game-timeout 300 --workers 2
+```
 
 Completed games also append every created builder creature to
 `stats/data/builder_creature_build_results.csv`. Each row contains its stats,

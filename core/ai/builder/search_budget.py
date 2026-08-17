@@ -16,7 +16,10 @@ FINAL_DECISION_SEARCH_BUDGET = BuilderSearchBudget(
     max_exact_attack_candidates=256,
     max_exact_block_assignments=256,
     max_heuristic_attack_candidates=48,
-    max_heuristic_block_responses=24,
+    # Heuristic responses are strategically ordered (no block, maximal block,
+    # then trade/survival/damage-prevention variants).  Sixteen covers those
+    # distinct plans without repeatedly scoring near-duplicate assignments.
+    max_heuristic_block_responses=16,
     mode_name="final",
 )
 

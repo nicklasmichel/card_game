@@ -26,7 +26,12 @@ WEAKEST_GLASS_CANNON_PENALTY = 1.15
 WEAKEST_SOFT_WALL_PENALTY = 1.2
 CAP_PRESSURE_REPLACEMENT_WEIGHT = 0.92
 CAP_PRESSURE_WEAK_SLOT_BONUS = 0.55
-CAP_REPLACEMENT_SCORING_LIMIT = 48
+# Cap pressure is consulted in many hypothetical attack/counterattack states.
+# Scoring 48 replacement bodies in every one of those states multiplied a
+# five-on-five turn into thousands of full creature evaluations.  The shared
+# frontier is already role-diverse; sixteen candidates retain its offensive,
+# defensive and balanced leaders while keeping the tactical search usable.
+CAP_REPLACEMENT_SCORING_LIMIT = 16
 
 
 def estimate_builder_slot_unit_value(unit) -> float:

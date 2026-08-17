@@ -661,7 +661,7 @@ class BuilderAttackAITests(unittest.TestCase):
             counter_attacker = self.make_builder_creature(0, aw=5, vw=1, sw=sw, lw=3, ready=True)
             counter_attacker.cannot_block = True
 
-        candidate, score, _ = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+        candidate, score, scored = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
 
         expected_ids = tuple(attacker.unit_id for attacker in attackers)
         self.assertEqual(candidate.attacker_ids, expected_ids)
@@ -741,6 +741,61 @@ class BuilderAttackAITests(unittest.TestCase):
         start = time.perf_counter()
         choose_builder_attack_candidate(self.engine.ai_player, self.engine)
         self.assertLess(time.perf_counter() - start, 2.0)
+
+    def test_wide_board_uses_structured_attack_set_with_none_and_all(self) -> None:
+        attackers = [
+            self.make_builder_creature(1, aw=2, vw=1, sw=index + 1, lw=2, ready=True)
+            for index in range(5)
+        ]
+        for _ in range(5):
+            self.make_builder_creature(0, aw=2, vw=2, sw=2, lw=3, ready=True)
+
+        candidates = generate_builder_attack_candidates(self.engine.ai_player, self.engine)
+        attack_sets = {candidate.attacker_ids for candidate in candidates}
+
+        self.assertLess(len(candidates), 32)
+        self.assertIn((), attack_sets)
+        self.assertIn(tuple(attacker.unit_id for attacker in attackers), attack_sets)
+
+    def test_full_board_main_plan_finishes_without_exhausting_turn_budget(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_MAIN_1
+        for index in range(5):
+            self.make_builder_creature(1, aw=2, vw=2 + index % 2, sw=2, lw=3, ready=True)
+            self.make_builder_creature(0, aw=2, vw=2, sw=2 + index % 2, lw=3, ready=True)
+
+        start = time.perf_counter()
+        decision = choose_builder_turn_plan(self.engine.ai_player, self.engine)
+        elapsed = time.perf_counter() - start
+
+        self.assertIn(decision.action_candidate.action_kind, {"continue", "pass", "resource"})
+        self.assertLess(elapsed, 8.0, self.engine.ai._last_builder_search_metrics)
+        self.assertEqual(self.engine.ai._last_builder_search_metrics["stop_reason"], "complete")
+
+    def test_extreme_full_board_stall_prefers_safe_combat_progress(self) -> None:
+        self.engine.active_player_index = self.engine.ai_player.player_id
+        self.engine.phase = PHASE_DECLARE_ATTACKERS
+        self.engine.turn_number = 200
+        self.engine.builder_last_combat_progress_turn = 198
+        self.engine.builder_last_player_damage_turn = 0
+        self.engine.human_player.life = 15
+        self.engine.ai_player.life = 11
+        self.set_builder_resources(self.engine.human_player, self.engine.BUILDER_MAX_RESOURCES)
+        self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
+        for stats in ((1, 1, 1, 1), (2, 2, 3, 2), (2, 2, 2, 3), (3, 2, 2, 2), (3, 4, 3, 3)):
+            self.make_builder_creature(0, aw=stats[0], vw=stats[1], sw=stats[2], lw=stats[3], ready=True)
+        for stats in ((1, 2, 1, 3), (1, 3, 1, 3), (1, 3, 1, 3), (1, 5, 1, 1), (4, 1, 2, 1)):
+            self.make_builder_creature(1, aw=stats[0], vw=stats[1], sw=stats[2], lw=stats[3], ready=True)
+
+        candidate, score, scored = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+
+        self.assertTrue(
+            candidate.attacker_ids,
+            [(current.attacker_ids, current_score.total, current_score.projected_counter_damage, current_score.counter_lethal_risk, current_score.debug_contributions) for current, current_score in scored],
+        )
+        self.assertLess(score.counter_lethal_risk, 0.5)
+        self.assertTrue(any(name == "stall_pressure" for name, *_rest in score.debug_contributions))
 
     def test_wide_block_search_uses_bounded_response_set(self) -> None:
         attackers = [

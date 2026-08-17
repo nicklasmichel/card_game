@@ -26,6 +26,7 @@ from .cap_strategy import compute_builder_cap_context
 from .candidates import generate_builder_creature_candidates, is_legal_builder_candidate, select_builder_creature_search_frontier
 from .combat_assignments import (
     convolve_damage_distributions,
+    estimate_block_assignment_upper_bound,
     generate_block_assignment_tuples,
     player_damage_distribution_for_combat,
 )
@@ -70,17 +71,23 @@ NEXT_OWN_ATTACK_DAMAGE_WEIGHT = 1.1
 NEXT_OWN_ATTACK_LETHAL_BONUS = 24.0
 STALL_GRACE_TURNS = 6
 STALL_RAMP_TURNS = 10
+STALL_EXTENDED_RAMP_TURNS = 20
+STALL_MAX_PRESSURE = 7.0
 STALL_MIN_BOARD_SIZE = 4
 STALL_NO_ATTACK_MAX_PENALTY = 3.6
-STALL_ATTACK_MAX_BONUS = 5.0
+STALL_ATTACK_MAX_BONUS = 20.0
 STALL_COUNTER_EXPOSURE_PENALTY = 0.55
+STALL_EXTENDED_SAFE_PROGRESS_BONUS = 0.35
 FULL_ATTACK_ENUMERATION_THRESHOLD = 8
 ENRAGED_TARGET_LIMIT = 2
 COUNTERATTACK_SEARCH_BUDGET = BuilderSearchBudget(
     max_exact_attack_candidates=24,
     max_exact_block_assignments=96,
-    max_heuristic_attack_candidates=10,
-    max_heuristic_block_responses=8,
+    # This is a nested opponent reply, often evaluated dozens of times per
+    # root choice.  The structured ordering guarantees no-attack, all-out and
+    # the strongest pressure groups before narrower variants.
+    max_heuristic_attack_candidates=6,
+    max_heuristic_block_responses=4,
     mode_name="counter",
 )
 LOOKAHEAD_FOLLOWUP_SHORTLIST_LIMIT = 1
@@ -443,11 +450,24 @@ def generate_builder_attack_candidates(player, engine, *, search_budget=FINAL_DE
 def _generate_builder_attack_candidates_with_metadata(player, engine, *, search_budget=FINAL_DECISION_SEARCH_BUDGET) -> tuple[list[BuilderAttackCandidate], bool, int]:
     available_attackers = list(engine.available_attackers(player))
     enemy_battlefield = list(engine.players[1 - player.player_id].battlefield)
+    ready_blockers = list(engine.available_blockers(engine.players[1 - player.player_id]))
     exact_upper_bound = estimate_attack_candidate_upper_bound(available_attackers, enemy_battlefield)
     exact_cap_threshold = max(search_budget.max_exact_attack_candidates, 2 ** BUILDER_CREATURE_CAP)
+    # A five-creature board has only 32 attack subsets, but each subset can
+    # fan out into hundreds of blocking assignments.  Enumerating all subsets
+    # in that state repeatedly consumed the complete turn deadline and, worse,
+    # stopped before strategically important candidates such as "attack all"
+    # were evaluated.  Switch to the structured set whenever the widest combat
+    # already requires heuristic block search.  That set deliberately contains
+    # no attack, all attackers, singles, pressure groups and value groups.
+    widest_block_upper_bound = estimate_block_assignment_upper_bound(
+        len(available_attackers),
+        len(ready_blockers),
+    )
     if (
         len(available_attackers) <= FULL_ATTACK_ENUMERATION_THRESHOLD
         and exact_upper_bound <= exact_cap_threshold
+        and widest_block_upper_bound <= search_budget.max_exact_block_assignments
     ):
         candidates = _generate_exhaustive_attack_candidates(available_attackers, enemy_battlefield)
         return candidates, True, 0
@@ -974,7 +994,18 @@ def _generate_structured_attack_candidates(available_attackers: list, enemy_batt
         add([attacker], "single")
     for count in range(2, min(4, len(sorted_by_value)) + 1):
         add(sorted_by_value[:count], "top_combo")
-    return sorted(candidates.values(), key=lambda candidate: (len(candidate.attacker_ids), candidate.attacker_ids, candidate.enraged_targets))
+    all_attacker_ids = tuple(unit.unit_id for unit in available_attackers)
+    damage_by_id = {unit.unit_id: unit.sw for unit in available_attackers}
+
+    def priority(candidate: BuilderAttackCandidate) -> tuple:
+        if not candidate.attacker_ids:
+            return (0, 0, tuple(), candidate.enraged_targets)
+        if candidate.attacker_ids == all_attacker_ids:
+            return (1, 0, candidate.attacker_ids, candidate.enraged_targets)
+        pressure = sum(damage_by_id.get(attacker_id, 0) for attacker_id in candidate.attacker_ids)
+        return (2, -pressure, -len(candidate.attacker_ids), candidate.attacker_ids, candidate.enraged_targets)
+
+    return sorted(candidates.values(), key=priority)
 
 
 def _expand_enraged_targets(attacker_group, enemy_battlefield: list, *, heuristic: bool) -> list[BuilderAttackCandidate]:
@@ -1046,14 +1077,38 @@ def _apply_builder_stall_pressure(
 ) -> list[tuple[BuilderAttackCandidate, BuilderAttackScore]]:
     stalled_turns = max(0, int(getattr(engine, "builder_stalled_turns", 0)))
     congested_size = min(len(player.battlefield), len(enemy.battlefield))
+    full_economy_lock = (
+        congested_size >= BUILDER_CREATURE_CAP
+        and player.total_resources() >= BUILDER_MAX_RESOURCES
+        and enemy.total_resources() >= BUILDER_MAX_RESOURCES
+    )
+    if full_economy_lock:
+        # Creature deaths are only temporary progress once both players can
+        # rebuild a full-cost body every turn.  Preserve the longer no-player-
+        # damage clock so kill/rebuild loops do not reset urgency forever.
+        stalled_turns = max(
+            stalled_turns,
+            int(getattr(engine, "builder_player_damage_stalled_turns", stalled_turns)),
+        )
     if stalled_turns <= STALL_GRACE_TURNS or congested_size < STALL_MIN_BOARD_SIZE:
         return scored_candidates
 
     board_factor = 1.0 if congested_size >= BUILDER_CREATURE_CAP else 0.65
-    pressure = min(
+    initial_pressure = min(
         1.0,
         (stalled_turns - STALL_GRACE_TURNS) / max(1, STALL_RAMP_TURNS),
-    ) * board_factor
+    )
+    extended_pressure = 0.0
+    if full_economy_lock:
+        extended_stall_turns = max(
+            0,
+            stalled_turns - STALL_GRACE_TURNS - STALL_RAMP_TURNS,
+        )
+        extended_pressure = min(
+            STALL_MAX_PRESSURE - 1.0,
+            extended_stall_turns / max(1, STALL_EXTENDED_RAMP_TURNS),
+        )
+    pressure = (initial_pressure + extended_pressure) * board_factor
     no_attack_score = next(
         (score for candidate, score in scored_candidates if not candidate.attacker_ids),
         None,
@@ -1061,10 +1116,14 @@ def _apply_builder_stall_pressure(
     if no_attack_score is None:
         return scored_candidates
     baseline_counter_damage = no_attack_score.projected_counter_damage
+    baseline_best_candidate = max(scored_candidates, key=_attack_candidate_sort_key)[0]
+    preserve_existing_attack = bool(baseline_best_candidate.attacker_ids) and not full_economy_lock
 
     attack_adjustments: dict[BuilderAttackCandidate, float] = {}
     for candidate, score in scored_candidates:
         if not candidate.attacker_ids:
+            continue
+        if preserve_existing_attack and candidate != baseline_best_candidate:
             continue
         trade_progress = min(score.enemy_kill_value, score.own_death_risk)
         progress_value = (
@@ -1091,9 +1150,14 @@ def _apply_builder_stall_pressure(
         )
         if not safe_progress:
             continue
+        extended_pressure = max(0.0, pressure - 1.0)
+        extended_safe_progress_bonus = extended_pressure * STALL_EXTENDED_SAFE_PROGRESS_BONUS
+        progress_time_value = progress_value * (1.0 + extended_pressure)
+        attack_bonus_cap = STALL_ATTACK_MAX_BONUS if full_economy_lock else 5.0
         adjustment = pressure * (
-            min(STALL_ATTACK_MAX_BONUS, progress_value)
+            min(attack_bonus_cap, progress_time_value)
             - extra_counter_damage * STALL_COUNTER_EXPOSURE_PENALTY
+            + extended_safe_progress_bonus
         )
         if adjustment > 0.0:
             attack_adjustments[candidate] = adjustment
@@ -1643,10 +1707,15 @@ def _fallback_counterattack(
     defender = projection.players[projection.enemy_id]
     available_attackers = list(projection.available_attackers(counter_player))
     enemy_battlefield = list(defender.battlefield)
+    widest_block_upper_bound = estimate_block_assignment_upper_bound(
+        len(available_attackers),
+        len(list(projection.available_blockers(defender))),
+    )
     exact_attack = (
         not fast_mode
         and len(available_attackers) <= FULL_ATTACK_ENUMERATION_THRESHOLD
         and estimate_attack_candidate_upper_bound(available_attackers, enemy_battlefield) <= COUNTERATTACK_SEARCH_BUDGET.max_exact_attack_candidates
+        and widest_block_upper_bound <= COUNTERATTACK_SEARCH_BUDGET.max_exact_block_assignments
     )
     if fast_mode:
         candidates = _generate_fast_counter_candidates(available_attackers, enemy_battlefield)
@@ -1654,7 +1723,9 @@ def _fallback_counterattack(
         candidates = (
             _generate_exhaustive_attack_candidates(available_attackers, enemy_battlefield)
             if exact_attack
-            else _generate_structured_attack_candidates(available_attackers, enemy_battlefield)
+            else _generate_structured_attack_candidates(available_attackers, enemy_battlefield)[
+                : COUNTERATTACK_SEARCH_BUDGET.max_heuristic_attack_candidates
+            ]
         )
     best_candidate = BuilderAttackCandidate(attacker_ids=())
     best_score = BuilderAttackScore(
@@ -1676,8 +1747,15 @@ def _fallback_counterattack(
     best_opponent_followup_lethal = False
     best_opponent_followup_attackers: tuple[int, ...] = ()
     exact_blocks = True
+    search_complete = True
+    evaluated_any = False
     pair_cache: dict[tuple[int, int], tuple] = {}
     for current in candidates:
+        if evaluated_any and builder_search_should_stop():
+            search_complete = False
+            break
+        evaluated_any = True
+        count_builder_search_work("counter_attack_candidates_scored")
         block_metadata: dict = {}
         assignments = generate_builder_block_assignments(
             current,
@@ -1752,8 +1830,9 @@ def _fallback_counterattack(
         best_candidate.attacker_ids,
         best_score.chosen_block_assignment,
     )
+    search_exact = bool(exact_attack and exact_blocks and search_complete)
     if next_projection.own_life > 0:
-        if not fast_mode:
+        if not fast_mode and search_exact:
             followup = evaluate_best_builder_attack(
                 next_projection.players[next_projection.player_id],
                 next_projection,
@@ -1775,9 +1854,9 @@ def _fallback_counterattack(
             ) = _estimate_fast_followup_attack(next_projection)
     return BuilderCounterResult(
         score=best_score,
-        search_exact=bool(exact_attack and exact_blocks),
-        fallback_used=not (exact_attack and exact_blocks),
-        fallback_reason="" if exact_attack and exact_blocks else "fallback_search",
+        search_exact=search_exact,
+        fallback_used=not search_exact,
+        fallback_reason="" if search_exact else "fallback_search",
         main_action_kind=main_action_kind,
         main_action_stats=main_action_stats,
         attackers=tuple(best_candidate.attacker_ids),
