@@ -7,6 +7,8 @@ BUILDER_CREATURE_CAP = 5
 BUILDER_ABILITY_COST = 0
 BUILDER_HASTE_COST = 1
 BUILDER_ABILITIES_ENABLED = False
+BUILDER_CREATURE_ABILITIES_ENABLED = False
+BUILDER_BASE_STAT_VALUE = 1
 
 BUILDER_PRIMARY_ABILITY_NAMES = (
     "FLYING",
@@ -22,7 +24,7 @@ BUILDER_CREATURE_ABILITY_NAME_SET = frozenset(BUILDER_CREATURE_ABILITY_NAMES)
 
 
 def builder_creature_stat_cost(*, aw: int, vw: int, sw: int, lw: int) -> int:
-    return aw + vw + sw + max(0, lw - 1)
+    return sum(max(0, value - BUILDER_BASE_STAT_VALUE) for value in (aw, vw, sw, lw))
 
 
 def calculate_builder_creature_cost(*, aw: int, vw: int, sw: int, lw: int, has_haste: bool = False) -> int:
@@ -36,6 +38,8 @@ def _resolve_builder_ability(name: str):
 
 
 def get_builder_creature_abilities() -> tuple:
+    if not BUILDER_CREATURE_ABILITIES_ENABLED:
+        return ()
     return tuple(_resolve_builder_ability(name) for name in BUILDER_CREATURE_ABILITY_NAMES)
 
 
@@ -86,6 +90,10 @@ def normalize_builder_creature_abilities(abilities: Iterable) -> frozenset:
 
 def validate_builder_creature_abilities(abilities: Iterable) -> frozenset:
     normalized = normalize_builder_creature_abilities(abilities)
+    if not BUILDER_CREATURE_ABILITIES_ENABLED:
+        if normalized:
+            raise ValueError("Builder creature abilities are disabled in vanilla mode")
+        return normalized
     haste = _resolve_builder_ability("HASTE")
     primary = [ability for ability in normalized if is_valid_builder_primary_ability(ability)]
     if len(primary) != 1:
@@ -109,6 +117,10 @@ def coerce_builder_creature_ability(ability_or_abilities) -> object | None:
 
 
 def builder_creature_ability_set(primary_ability, *, has_haste: bool = False) -> frozenset:
+    if not BUILDER_CREATURE_ABILITIES_ENABLED:
+        if primary_ability is not None or has_haste:
+            raise ValueError("Builder creature abilities are disabled in vanilla mode")
+        return frozenset()
     if primary_ability is None:
         return frozenset()
     abilities = {validate_builder_primary_ability(primary_ability)}

@@ -6,6 +6,7 @@ from core.ai.builder import (
     build_builder_snapshot,
     can_legally_be_forced_to_block,
     estimate_builder_combat,
+    estimate_builder_combat_sequence,
     estimate_dice_win_probabilities,
     get_d6_sum_distribution,
     project_builder_combat_outcome,
@@ -182,6 +183,38 @@ class BuilderCombatEvalTests(unittest.TestCase):
             places=8,
         )
         self.assertAlmostEqual(estimate.defender_death_probability, estimate.attacker_win_probability, places=8)
+
+    def test_repeated_combat_carries_lost_life_into_the_next_encounter(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=1, sw=2, lw=2, abilities=frozenset(), cost=2)
+        )
+        defender = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=1, vw=0, sw=1, lw=5, abilities=frozenset(), cost=4)
+        )
+
+        sequence = estimate_builder_combat_sequence(attacker, defender, max_combats=4)
+
+        self.assertEqual(sequence.attacker_kill_probability, 1.0)
+        self.assertEqual(sequence.expected_encounters, 3.0)
+        self.assertEqual(sequence.expected_damage_to_defender, 5.0)
+
+    def test_repeated_combat_distinguishes_defense_from_a_life_sponge(self) -> None:
+        attacker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=6, vw=1, sw=5, lw=2, abilities=frozenset(), cost=10)
+        )
+        contesting_blocker = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=2, vw=7, sw=1, lw=1, abilities=frozenset(), cost=7)
+        )
+        life_sponge = build_candidate_combatant_view(
+            BuilderCreatureCandidate(aw=1, vw=2, sw=1, lw=7, abilities=frozenset(), cost=7)
+        )
+
+        contest = estimate_builder_combat_sequence(attacker, contesting_blocker, max_combats=4)
+        sponge = estimate_builder_combat_sequence(attacker, life_sponge, max_combats=4)
+
+        self.assertGreater(contest.defender_survival_probability, sponge.defender_survival_probability)
+        self.assertGreater(contest.defender_kill_probability, sponge.defender_kill_probability)
+        self.assertGreater(contest.expected_damage_to_attacker, sponge.expected_damage_to_attacker)
 
     def test_trample_expected_player_damage_matches_overflow(self) -> None:
         attacker = build_candidate_combatant_view(

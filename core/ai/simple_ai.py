@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from random import Random
 
-from core.builder_rules import BUILDER_ABILITIES_ENABLED
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, builder_creature_stat_cost
 from core.ai.builder import choose_builder_attackers as choose_builder_attackers_v2
 from core.ai.builder import choose_builder_creature_plan as choose_builder_creature_plan_v2
 from core.ai.builder import choose_builder_main_action as choose_builder_main_action_v2
@@ -78,9 +78,9 @@ class HeuristicStrategicAI:
         return "resource" if engine.can_builder_add_resource(player) else "pass"
 
     def choose_builder_runtime_creature_plan(self, player: PlayerState, engine) -> dict | None:
-        budget = max(1, player.available_resources())
+        budget = max(0, player.available_resources())
         enemy = engine.players[1 - player.player_id]
-        aw = vw = sw = 0
+        aw = vw = sw = 1
         lw = 1
         if player.life <= 4 or len(player.battlefield) < len(enemy.battlefield):
             for index in range(budget):
@@ -90,34 +90,27 @@ class HeuristicStrategicAI:
                     lw += 1
                 else:
                     sw += 1
-            aw = max(1, budget // 3)
-            if aw + vw + sw + (lw - 1) > budget:
-                vw = max(0, vw - 1)
         else:
-            aw = max(1, budget // 3)
-            sw = max(1, budget // 3)
-            remaining = budget - aw - sw
-            while remaining > 0:
+            for _ in range(budget):
                 if vw <= lw - 1:
                     vw += 1
+                elif aw <= sw:
+                    aw += 1
                 else:
-                    lw += 1
-                remaining -= 1
-        cost = aw + vw + sw + max(0, lw - 1)
+                    sw += 1
+        cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
         while cost > budget and lw > 1:
             lw -= 1
-            cost = aw + vw + sw + max(0, lw - 1)
-        while cost > budget and vw > 0:
+            cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
+        while cost > budget and vw > 1:
             vw -= 1
-            cost = aw + vw + sw + max(0, lw - 1)
+            cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
         while cost > budget and aw > 1:
             aw -= 1
-            cost = aw + vw + sw + max(0, lw - 1)
-        while cost > budget and sw > 0:
+            cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
+        while cost > budget and sw > 1:
             sw -= 1
-            cost = aw + vw + sw + max(0, lw - 1)
-        if cost <= 0:
-            return None
+            cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
         return {"aw": aw, "vw": vw, "sw": sw, "lw": lw, "cost": cost}
 
     def choose_builder_runtime_ability_action(self, player: PlayerState, engine) -> dict | None:

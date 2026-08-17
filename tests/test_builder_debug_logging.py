@@ -291,7 +291,7 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         plan_builder_turn(pass_engine.ai_player, pass_engine)
         self.assertIn("candidate=pass", "\n".join(pass_engine.log_messages))
 
-    def test_build_and_plan_logs_show_ability_and_readiness_fields(self) -> None:
+    def test_build_and_plan_logs_identify_vanilla_tapped_builds(self) -> None:
         self.set_debug(1, top_n=3, build_top_n=3)
 
         engine = self.make_plan_engine()
@@ -301,8 +301,10 @@ class BuilderDebugLoggingTests(unittest.TestCase):
         self.assertIn("ability=", logs)
         self.assertIn("ability_cost=0", logs)
         self.assertIn("haste_cost=0", logs)
-        self.assertIn("haste=true", logs)
-        self.assertIn("enters_tapped=false", logs)
+        self.assertIn("haste=false", logs)
+        self.assertNotIn("haste=true", logs)
+        self.assertIn("enters_tapped=true", logs)
+        self.assertNotIn("enters_tapped=false", logs)
 
     def test_gap_matches_winner_minus_runner_up(self) -> None:
         self.set_debug(1, top_n=2, build_top_n=2)

@@ -63,9 +63,9 @@ ABILITY_ART_KEYS = {
     Ability.LIFE_STEAL: "lifesteal",
 }
 
-# Haste is the paid secondary Builder ability. When another ability is present,
-# that ability defines the creature's artwork; Haste remains the fallback for
-# legacy or test creatures that have no primary ability.
+# When an ability-specific creature is rendered, its primary ability defines
+# the artwork. The Haste artwork is also the default for vanilla Builder
+# creatures, which have no abilities of their own.
 ABILITY_ART_ORDER = [ability for ability in ABILITY_NAME_ORDER if ability != Ability.HASTE] + [Ability.HASTE]
 
 
@@ -162,6 +162,12 @@ def get_card_art_key(self, source) -> str | None:
         art_key = ABILITY_ART_KEYS.get(ability)
         if art_key is not None and art_key in getattr(self, "card_art_images", {}):
             return art_key
+    if (
+        isinstance(template_id, str)
+        and (template_id.startswith("builder_creature_") or template_id == "builder_creature_preview")
+        and "haste" in getattr(self, "card_art_images", {})
+    ):
+        return "haste"
     return None
 
 

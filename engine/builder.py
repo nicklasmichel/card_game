@@ -4,19 +4,14 @@ from datetime import datetime
 
 from core.builder_rules import (
     BUILDER_ABILITIES_ENABLED,
-    BUILDER_CREATURE_ABILITIES,
     BUILDER_CREATURE_CAP,
-    BUILDER_HASTE_COST,
     BUILDER_MAX_RESOURCES,
     BUILDER_PRIMARY_ABILITIES,
     builder_creature_ability_set,
     builder_creature_stat_cost,
     calculate_builder_creature_cost,
     coerce_builder_creature_ability,
-    normalize_builder_creature_abilities,
     normalize_builder_creature_ability,
-    validate_builder_creature_abilities,
-    validate_builder_creature_ability,
     validate_builder_primary_ability,
 )
 from core.config import STARTING_LIFE
@@ -46,7 +41,6 @@ BUILDER_RESOURCE_TEMPLATE_ID = "builder_resource"
 BUILDER_PREVIEW_TEMPLATE_ID = "builder_creature_preview"
 BUILDER_ABILITY_PHASE_CARD_LIMIT = 1
 BUILDER_SHARED_ABILITY_COUNTS = 4
-BUILDER_CREATURE_ABILITY_OPTIONS = BUILDER_CREATURE_ABILITIES
 BUILDER_SHARED_ABILITY_SEQUENCE = (
     Ability.DEATHTOUCH,
     Ability.FLYING,
@@ -76,12 +70,6 @@ BUILDER_ABILITY_LABELS = {
     Ability.VIGILANT: "Vigilance",
     Ability.ENRAGED: "Provoke",
 }
-BUILDER_CREATURE_ABILITY_RULES_TEXT = {
-    Ability.HASTE: "Enters ready instead of tapped. It can attack immediately or stay ready to block next turn.",
-    Ability.FLYING: "Can only be blocked by creatures with Flying. It can still block creatures without Flying.",
-    Ability.VIGILANCE: "Does not tap when attacking. It still enters tapped when built.",
-    Ability.TRAMPLE: "If it wins a blocked attack, excess damage is dealt to the defending player.",
-}
 BUILDER_ABILITY_RULES_TEXT = {
     Ability.DEATHTOUCH: "Grant Deathtouch, +1 stat, or deal 1 damage to a creature.",
     Ability.FLYING: "Grant Flying, +1 stat, or deal 1 damage to a creature.",
@@ -91,20 +79,6 @@ BUILDER_ABILITY_RULES_TEXT = {
     Ability.VIGILANCE: "Grant Vigilance, +1 stat, or deal 1 damage to a creature.",
     Ability.PROVOKE: "Grant Provoke, +1 stat, or deal 1 damage to a creature.",
 }
-
-
-def get_builder_creature_ability_label(ability: Ability | None) -> str:
-    if ability is None:
-        return "-"
-    return BUILDER_ABILITY_LABELS[validate_builder_creature_ability(ability)]
-
-
-def get_builder_creature_abilities_label(abilities) -> str:
-    normalized = normalize_builder_creature_abilities(abilities)
-    ordered = [ability for ability in BUILDER_PRIMARY_ABILITIES if ability in normalized]
-    if Ability.HASTE in normalized:
-        ordered.append(Ability.HASTE)
-    return " + ".join(BUILDER_ABILITY_LABELS[ability] for ability in ordered) or "-"
 
 
 def builder_resource_template(self) -> CardTemplate:
@@ -315,7 +289,6 @@ def begin_builder_creature_build(self) -> bool:
         return False
     self.pending_builder_creature = PendingBuilderCreatureBuild(
         available_resources=self.active_player.available_resources(),
-        selected_primary_ability=Ability.FLYING,
     )
     self.phase = PHASE_BUILDER_CREATURE
     return True
@@ -353,34 +326,21 @@ def adjust_builder_creature_stat(self, stat_name: str, delta: int) -> None:
         setattr(pending, stat_name, original_value)
 
 
-def toggle_builder_creature_ability(self, ability: Ability) -> None:
-    pending = self.pending_builder_creature
-    if self.phase != PHASE_BUILDER_CREATURE or pending is None:
-        return
-    normalized = validate_builder_creature_ability(ability)
-    if normalized == Ability.HASTE:
-        if pending.has_haste or pending.spent_resources + BUILDER_HASTE_COST <= pending.available_resources:
-            pending.toggle_haste()
-        return
-    pending.choose_primary_ability(validate_builder_primary_ability(normalized))
+def toggle_builder_creature_ability(self, ability: Ability) -> bool:
+    # Vanilla builder mode intentionally has no route for granting abilities.
+    return False
 
 
 def builder_creature_build_is_valid(self, pending: PendingBuilderCreatureBuild | None = None) -> bool:
     current = self.pending_builder_creature if pending is None else pending
     if current is None:
         return False
-    if current.selected_primary_ability is None:
-        return False
-    try:
-        validate_builder_creature_abilities(current.selected_abilities)
-    except ValueError:
-        return False
     return (
         current.spent_resources == current.available_resources
         and current.lw >= 1
-        and current.aw >= 0
-        and current.vw >= 0
-        and current.sw >= 0
+        and current.aw >= 1
+        and current.vw >= 1
+        and current.sw >= 1
     )
 
 
@@ -527,15 +487,15 @@ def get_builder_preview_creature(self, player: PlayerState) -> BattlefieldCreatu
         lw=pending.lw,
         sw=pending.sw,
         element=Element.AIR,
-        abilities=pending.selected_abilities,
-        builder_ability=pending.selected_primary_ability,
+        abilities=frozenset(),
+        builder_ability=None,
         rules_text="",
         allow_zero_stats=True,
     )
     preview = BattlefieldCreature.from_card(CardInstance(-(player.player_id + 1), template))
     preview.current_hp = pending.lw
     preview.tapped = False
-    preview.summoning_sick = not pending.has_haste
+    preview.summoning_sick = True
     setattr(preview, "is_builder_preview", True)
     return preview
 
@@ -557,8 +517,6 @@ def confirm_builder_creature_build(self) -> bool:
         vw=pending.vw,
         sw=pending.sw,
         lw=pending.lw,
-        primary_ability=pending.selected_primary_ability,
-        has_haste=pending.has_haste,
     )
     self.builder_created_this_turn_ids.add(creature.unit_id)
     self.active_player.main_action_used_this_turn = True
@@ -566,8 +524,8 @@ def confirm_builder_creature_build(self) -> bool:
     if self.statistics is not None:
         self.statistics.register_builder_creature_played(
             self.active_player.player_id,
-            primary_ability=creature.builder_ability,
-            has_haste=creature.has_ability(Ability.HASTE),
+            primary_ability=None,
+            has_haste=False,
             turn_number=self.turn_number,
             aw=creature.aw,
             vw=creature.vw,
@@ -583,8 +541,7 @@ def confirm_builder_creature_build(self) -> bool:
         )
     self.log(
         f"{self.active_player.name} creates {creature.name} "
-        f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}"
-        f" / {get_builder_creature_abilities_label(creature.abilities)}) "
+        f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}) "
         f"for {spent} resource(s)."
     )
     finish_builder_main_action(self)

@@ -49,6 +49,25 @@ class BuilderCombatEstimate:
 
 
 @dataclass(frozen=True)
+class BuilderCombatSequenceEstimate:
+    """Expected result when the same pair can meet over several combats.
+
+    A single-combat estimate makes a large life pool look permanently healthy.
+    This finite-horizon estimate carries damage forward, so defense determines
+    how often damage is taken while life determines how long it can be taken.
+    """
+
+    attacker_kill_probability: float
+    defender_kill_probability: float
+    attacker_survival_probability: float
+    defender_survival_probability: float
+    expected_damage_to_defender: float
+    expected_damage_to_attacker: float
+    expected_player_damage: float
+    expected_encounters: float
+
+
+@dataclass(frozen=True)
 class BuilderProjectedCombatOutcome:
     """One legal representative branch for a probabilistic dice combat."""
 
@@ -285,6 +304,36 @@ def estimate_builder_combat(attacker, defender, die_sides: int = COMBAT_DIE_SIDE
     )
 
 
+def estimate_builder_combat_sequence(
+    attacker,
+    defender,
+    die_sides: int = COMBAT_DIE_SIDES,
+    *,
+    max_combats: int = 4,
+) -> BuilderCombatSequenceEstimate:
+    """Estimate repeated meetings while preserving each creature's lost life."""
+    if max_combats < 1:
+        raise ValueError("max_combats must be >= 1")
+    attacker_view = coerce_builder_combatant(attacker)
+    defender_view = coerce_builder_combatant(defender)
+    return _estimate_builder_combat_sequence_cached(
+        attacker_view.aw,
+        attacker_view.vw,
+        attacker_view.sw,
+        attacker_view.lw,
+        attacker_view.current_hp,
+        tuple(sorted(ability.value for ability in attacker_view.abilities)),
+        defender_view.aw,
+        defender_view.vw,
+        defender_view.sw,
+        defender_view.lw,
+        defender_view.current_hp,
+        tuple(sorted(ability.value for ability in defender_view.abilities)),
+        die_sides,
+        max_combats,
+    )
+
+
 def project_builder_combat_outcome(attacker, defender, die_sides: int = COMBAT_DIE_SIDES) -> BuilderProjectedCombatOutcome:
     """Project the most likely whole combat branch instead of mixing outcomes.
 
@@ -438,6 +487,189 @@ def _estimate_builder_combat_cached(
     )
 
 
+@lru_cache(maxsize=32768)
+def _estimate_builder_combat_sequence_cached(
+    attacker_aw: int,
+    attacker_vw: int,
+    attacker_sw: int,
+    attacker_lw: int,
+    attacker_current_hp: int,
+    attacker_abilities: tuple[str, ...],
+    defender_aw: int,
+    defender_vw: int,
+    defender_sw: int,
+    defender_lw: int,
+    defender_current_hp: int,
+    defender_abilities: tuple[str, ...],
+    die_sides: int,
+    combats_remaining: int,
+) -> BuilderCombatSequenceEstimate:
+    if combats_remaining <= 0:
+        return BuilderCombatSequenceEstimate(
+            attacker_kill_probability=0.0,
+            defender_kill_probability=0.0,
+            attacker_survival_probability=1.0,
+            defender_survival_probability=1.0,
+            expected_damage_to_defender=0.0,
+            expected_damage_to_attacker=0.0,
+            expected_player_damage=0.0,
+            expected_encounters=0.0,
+        )
+
+    estimate = _estimate_builder_combat_cached(
+        attacker_aw,
+        attacker_vw,
+        attacker_sw,
+        attacker_lw,
+        attacker_current_hp,
+        attacker_abilities,
+        defender_aw,
+        defender_vw,
+        defender_sw,
+        defender_lw,
+        defender_current_hp,
+        defender_abilities,
+        die_sides,
+    )
+    attacker_ability_set = frozenset(Ability(name) for name in attacker_abilities)
+    defender_ability_set = frozenset(Ability(name) for name in defender_abilities)
+
+    attacker_win_defender_hp = max(0, defender_current_hp - attacker_sw)
+    attacker_win_player_damage = (
+        max(0, attacker_sw - defender_current_hp)
+        if Ability.TRAMPLE in attacker_ability_set
+        else 0
+    )
+    attacker_win_damage = min(attacker_sw, max(0, defender_current_hp))
+    attacker_win_hp = attacker_current_hp
+    if Ability.LIFE_STEAL in attacker_ability_set:
+        attacker_win_hp = min(
+            attacker_lw,
+            attacker_current_hp + attacker_win_damage + attacker_win_player_damage,
+        )
+
+    if attacker_win_defender_hp <= 0:
+        attacker_win_followup = BuilderCombatSequenceEstimate(
+            attacker_kill_probability=1.0,
+            defender_kill_probability=0.0,
+            attacker_survival_probability=1.0,
+            defender_survival_probability=0.0,
+            expected_damage_to_defender=float(attacker_win_damage),
+            expected_damage_to_attacker=0.0,
+            expected_player_damage=float(attacker_win_player_damage),
+            expected_encounters=1.0,
+        )
+    else:
+        continuation = _estimate_builder_combat_sequence_cached(
+            attacker_aw,
+            attacker_vw,
+            attacker_sw,
+            attacker_lw,
+            attacker_win_hp,
+            attacker_abilities,
+            defender_aw,
+            defender_vw,
+            defender_sw,
+            defender_lw,
+            attacker_win_defender_hp,
+            defender_abilities,
+            die_sides,
+            combats_remaining - 1,
+        )
+        attacker_win_followup = BuilderCombatSequenceEstimate(
+            attacker_kill_probability=continuation.attacker_kill_probability,
+            defender_kill_probability=continuation.defender_kill_probability,
+            attacker_survival_probability=continuation.attacker_survival_probability,
+            defender_survival_probability=continuation.defender_survival_probability,
+            expected_damage_to_defender=attacker_win_damage + continuation.expected_damage_to_defender,
+            expected_damage_to_attacker=continuation.expected_damage_to_attacker,
+            expected_player_damage=attacker_win_player_damage + continuation.expected_player_damage,
+            expected_encounters=1.0 + continuation.expected_encounters,
+        )
+
+    defender_win_attacker_hp = max(0, attacker_current_hp - defender_sw)
+    defender_win_damage = min(defender_sw, max(0, attacker_current_hp))
+    defender_win_hp = defender_current_hp
+    if Ability.LIFE_STEAL in defender_ability_set:
+        defender_win_hp = min(defender_lw, defender_current_hp + defender_win_damage)
+
+    if defender_win_attacker_hp <= 0:
+        defender_win_followup = BuilderCombatSequenceEstimate(
+            attacker_kill_probability=0.0,
+            defender_kill_probability=1.0,
+            attacker_survival_probability=0.0,
+            defender_survival_probability=1.0,
+            expected_damage_to_defender=0.0,
+            expected_damage_to_attacker=float(defender_win_damage),
+            expected_player_damage=0.0,
+            expected_encounters=1.0,
+        )
+    else:
+        continuation = _estimate_builder_combat_sequence_cached(
+            attacker_aw,
+            attacker_vw,
+            attacker_sw,
+            attacker_lw,
+            defender_win_attacker_hp,
+            attacker_abilities,
+            defender_aw,
+            defender_vw,
+            defender_sw,
+            defender_lw,
+            defender_win_hp,
+            defender_abilities,
+            die_sides,
+            combats_remaining - 1,
+        )
+        defender_win_followup = BuilderCombatSequenceEstimate(
+            attacker_kill_probability=continuation.attacker_kill_probability,
+            defender_kill_probability=continuation.defender_kill_probability,
+            attacker_survival_probability=continuation.attacker_survival_probability,
+            defender_survival_probability=continuation.defender_survival_probability,
+            expected_damage_to_defender=continuation.expected_damage_to_defender,
+            expected_damage_to_attacker=defender_win_damage + continuation.expected_damage_to_attacker,
+            expected_player_damage=continuation.expected_player_damage,
+            expected_encounters=1.0 + continuation.expected_encounters,
+        )
+
+    attacker_probability = estimate.attacker_win_probability
+    defender_probability = estimate.defender_win_probability
+    return BuilderCombatSequenceEstimate(
+        attacker_kill_probability=(
+            attacker_probability * attacker_win_followup.attacker_kill_probability
+            + defender_probability * defender_win_followup.attacker_kill_probability
+        ),
+        defender_kill_probability=(
+            attacker_probability * attacker_win_followup.defender_kill_probability
+            + defender_probability * defender_win_followup.defender_kill_probability
+        ),
+        attacker_survival_probability=(
+            attacker_probability * attacker_win_followup.attacker_survival_probability
+            + defender_probability * defender_win_followup.attacker_survival_probability
+        ),
+        defender_survival_probability=(
+            attacker_probability * attacker_win_followup.defender_survival_probability
+            + defender_probability * defender_win_followup.defender_survival_probability
+        ),
+        expected_damage_to_defender=(
+            attacker_probability * attacker_win_followup.expected_damage_to_defender
+            + defender_probability * defender_win_followup.expected_damage_to_defender
+        ),
+        expected_damage_to_attacker=(
+            attacker_probability * attacker_win_followup.expected_damage_to_attacker
+            + defender_probability * defender_win_followup.expected_damage_to_attacker
+        ),
+        expected_player_damage=(
+            attacker_probability * attacker_win_followup.expected_player_damage
+            + defender_probability * defender_win_followup.expected_player_damage
+        ),
+        expected_encounters=(
+            attacker_probability * attacker_win_followup.expected_encounters
+            + defender_probability * defender_win_followup.expected_encounters
+        ),
+    )
+
+
 @lru_cache(maxsize=8192)
 def _summarize_builder_combat_matchup_cached(
     attacker_aw: int,
@@ -499,9 +731,30 @@ def _summarize_builder_combat_matchup_cached(
     if attacker_view.has_ability(Ability.TRAMPLE) and attacker_view.sw > defender_view.current_hp:
         damage_delivery_probability = max(damage_delivery_probability, estimate.attacker_win_probability)
     immediate_prevented_damage = max(0.0, float(attacker_view.sw) - estimate.expected_player_damage)
-    repeated_block_value = estimate.defender_survival_probability * (
-        immediate_prevented_damage
-        + estimate.attacker_death_probability * max(1.0, attacker_view.sw + attacker_view.aw * 0.35)
+    sequence = _estimate_builder_combat_sequence_cached(
+        attacker_aw,
+        attacker_vw,
+        attacker_sw,
+        attacker_lw,
+        attacker_current_hp,
+        attacker_abilities,
+        defender_aw,
+        defender_vw,
+        defender_sw,
+        defender_lw,
+        defender_current_hp,
+        defender_abilities,
+        die_sides,
+        4,
+    )
+    # Reusability is the chance that this blocker remains after the matchup,
+    # plus the chance that it permanently removes the threat. Counting every
+    # extra round against the *same* attacker would perversely reward dealing
+    # too little damage and letting that threat attack again.
+    repeated_block_value = (
+        sequence.defender_survival_probability * immediate_prevented_damage
+        + sequence.defender_kill_probability
+        * max(1.0, attacker_view.sw + attacker_view.aw * 0.35)
     )
     return BuilderCombatMatchup(
         attacker_win_probability=estimate.attacker_win_probability,

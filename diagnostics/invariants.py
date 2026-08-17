@@ -86,9 +86,9 @@ def collect_game_invariant_violations(engine) -> list[str]:
         for creature in player.battlefield:
             unit_owner[creature.unit_id] = player
             object_ids.append((creature.unit_id, f"player {player.player_id} creature {creature.name}"))
-            if min(creature.aw, creature.vw, creature.sw) < 0:
+            if min(creature.aw, creature.vw, creature.sw) < 1:
                 violations.append(
-                    f"creature {creature.unit_id} has negative combat stats {creature.aw}/{creature.vw}/{creature.sw}"
+                    f"creature {creature.unit_id} has stats below the builder minimum {creature.aw}/{creature.vw}/{creature.sw}"
                 )
             if creature.lw < 1:
                 violations.append(f"creature {creature.unit_id} has invalid maximum life {creature.lw}")
@@ -103,17 +103,15 @@ def collect_game_invariant_violations(engine) -> list[str]:
                     f"creature {creature.unit_id} has invalid builder abilities {sorted(ability.name for ability in creature.abilities)!r}"
                 )
             else:
-                primary = next(ability for ability in validated_abilities if ability != Ability.HASTE)
-                if creature.builder_ability != primary:
+                if validated_abilities or creature.builder_ability is not None:
                     violations.append(
-                        f"creature {creature.unit_id} primary ability does not match its ability set"
+                        f"creature {creature.unit_id} is not vanilla"
                     )
             expected_cost = calculate_builder_creature_cost(
                 aw=creature.aw,
                 vw=creature.vw,
                 sw=creature.sw,
                 lw=creature.lw,
-                has_haste=Ability.HASTE in creature.abilities,
             )
             if creature.cost.resources != expected_cost:
                 violations.append(
@@ -225,11 +223,8 @@ def collect_prepared_action_violations(engine, action: object) -> list[str]:
             else:
                 try:
                     abilities = frozenset(plan.get("abilities", ()))
-                    if not abilities:
-                        abilities = builder_creature_ability_set(
-                            plan.get("ability"),
-                            has_haste=bool(plan.get("haste", False)),
-                        )
+                    if plan.get("ability") is not None or bool(plan.get("haste", False)):
+                        raise ValueError("vanilla creature plan contains an ability")
                     validate_builder_creature_abilities(abilities)
                 except (TypeError, ValueError):
                     violations.append(f"creature plan has invalid abilities {plan.get('abilities')!r}")
@@ -239,9 +234,8 @@ def collect_prepared_action_violations(engine, action: object) -> list[str]:
                     vw=vw,
                     sw=sw,
                     lw=lw,
-                    has_haste=Ability.HASTE in abilities,
                 )
-                if min(aw, vw, sw) < 0 or lw < 1:
+                if min(aw, vw, sw, lw) < 1:
                     violations.append(f"creature plan has invalid stats {aw}/{vw}/{sw}/{lw}")
                 if cost != expected_cost:
                     violations.append(f"creature plan cost {cost} does not match expected cost {expected_cost}")

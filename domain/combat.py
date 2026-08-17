@@ -46,6 +46,7 @@ class PendingDiceBattle:
     blocker_owner: int
     attacker_snapshot: CombatUnitSnapshot
     blocker_snapshot: CombatUnitSnapshot
+    combat_id: int = 0
     attacker_rolls: List[int] = field(default_factory=list)
     blocker_rolls: List[int] = field(default_factory=list)
     attack_sum: int = 0

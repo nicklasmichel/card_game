@@ -90,6 +90,7 @@ LOOKAHEAD_COUNTER_BEAM_WIDTH = 3
 ADVERSARIAL_NO_BLOCK_BEAM_WIDTH = 3
 ADVERSARIAL_BLOCK_RESPONSE_BEAM_WIDTH = 3
 PRUNED_LOOKAHEAD_SCORE = -1_000_000.0
+HEURISTIC_LOST_BLOCK_CONFIDENCE = 0.5
 _COUNTER_MAIN_ACTION_CACHE: dict[tuple, tuple[tuple[int, str, object], ...]] = {}
 
 
@@ -506,11 +507,13 @@ def score_builder_attack_candidate(
             evaluate_next_main=False,
         )
         concrete_lost_block_value = max(0.0, score.projected_counter_damage - baseline_counter.score.player_damage)
-        if concrete_lost_block_value > 0.0:
+        effective_lost_block_value = max(score.lost_block_value, concrete_lost_block_value)
+        additional_lost_block_value = max(0.0, effective_lost_block_value - score.lost_block_value)
+        if additional_lost_block_value > 0.0:
             score = replace(
                 score,
-                lost_block_value=round(concrete_lost_block_value, 4),
-                total=round(score.total - concrete_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value, 4),
+                lost_block_value=round(effective_lost_block_value, 4),
+                total=round(score.total - additional_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value, 4),
             )
     return score
 
@@ -667,7 +670,13 @@ def _apply_enemy_followup_pressure(
         concrete_lost_block_value = max(0.0, counter_score.player_damage - baseline_damage)
         if counter_score.guaranteed_player_damage >= player.life > 0 and baseline_counter.score.guaranteed_player_damage < player.life:
             concrete_lost_block_value += max(0.0, player.life - baseline_damage)
-    lost_block_penalty = concrete_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
+    # The assignment evaluator already estimates the defensive value lost when
+    # a non-vigilant creature attacks.  Counter search can refine that value,
+    # but a tied/fallback projection must not erase it (as happened when a
+    # required flying blocker attacked in turn 18 of the reference game).
+    heuristic_lost_block_value = base_score.lost_block_value * HEURISTIC_LOST_BLOCK_CONFIDENCE
+    effective_lost_block_value = max(heuristic_lost_block_value, concrete_lost_block_value)
+    lost_block_penalty = effective_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
     counter_damage_penalty = counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
     counter_lethal_penalty = counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
     adjusted_total -= lost_block_penalty
@@ -684,7 +693,7 @@ def _apply_enemy_followup_pressure(
     ) + (
         (
             "lost_block",
-            round(concrete_lost_block_value, 4),
+            round(effective_lost_block_value, 4),
             round(-BUILDER_AI_WEIGHTS.lost_block_value, 4),
             round(-lost_block_penalty, 4),
         ),
@@ -709,7 +718,7 @@ def _apply_enemy_followup_pressure(
     )
     return replace(
         base_score,
-        lost_block_value=round(concrete_lost_block_value, 4),
+        lost_block_value=round(effective_lost_block_value, 4),
         projected_counter_damage=round(counter_score.player_damage, 4),
         projected_counter_kill_value=round(counter_score.enemy_kill_value, 4),
         counter_lethal_risk=round(counter_score.lethal_probability, 4),

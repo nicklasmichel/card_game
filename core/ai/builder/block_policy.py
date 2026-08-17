@@ -244,7 +244,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     )
     known_unavoidable_next_damage = max(0.0, horizon_report.cumulative_unavoidable_damage - expected_player_damage_taken)
     baseline_known_next_damage = max(0.0, baseline_horizon_report.cumulative_unavoidable_damage - damage_without_blocks)
-    reference_life = max(float(getattr(config, "STARTING_LIFE", 12)), float(life_total))
+    reference_life = max(float(config.STARTING_LIFE), float(life_total))
     high_life_threshold = max(7.0, reference_life * 0.67)
     safe_chip_damage = (
         not baseline_guaranteed_lethal

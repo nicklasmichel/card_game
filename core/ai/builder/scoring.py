@@ -12,6 +12,7 @@ from .combat_eval import (
     can_legally_block,
     coerce_builder_combatant,
     estimate_builder_combat,
+    estimate_builder_combat_sequence,
     estimate_unblocked_attack,
     summarize_builder_combat_matchup,
 )
@@ -175,12 +176,11 @@ def score_builder_creature_candidate(
 
 
 def _score_raw_stats(candidate: BuilderCreatureCandidate) -> float:
-    bought_hp = max(0, candidate.lw - 1)
     return (
         candidate.aw * RAW_STAT_WEIGHTS["aw"]
         + candidate.vw * RAW_STAT_WEIGHTS["vw"]
         + candidate.sw * RAW_STAT_WEIGHTS["sw"]
-        + bought_hp * RAW_STAT_WEIGHTS["hp"]
+        + candidate.lw * RAW_STAT_WEIGHTS["hp"]
     )
 
 
@@ -272,7 +272,11 @@ def _score_board_fit(candidate: BuilderCreatureCandidate, snapshot: BuilderStrat
 
 
 def _score_survivability(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:
-    score = candidate.vw * 0.4 + max(0, candidate.lw - 1) * 0.55
+    # Against a known board the exact matchup model already values every life
+    # breakpoint. Keep a smaller generic life premium here so those same points
+    # are not counted twice, especially on low-defense damage sponges.
+    life_weight = 0.32 if snapshot.enemy_has_board else 0.55
+    score = candidate.vw * 0.4 + max(0, candidate.lw - 1) * life_weight
     if Ability.VIGILANT in candidate.abilities:
         score += 0.22 + candidate.vw * 0.08
     if Ability.LIFE_STEAL in candidate.abilities and candidate.sw > 0:
@@ -457,6 +461,7 @@ def _evaluate_offensive_matchups(candidate_view, enemy_blockers: list, *, prefer
 
 def _offensive_matchup_summary(candidate_view, blocker_view, *, die_sides: int) -> dict[str, float]:
     estimate = estimate_builder_combat(candidate_view, blocker_view, die_sides)
+    sequence = estimate_builder_combat_sequence(candidate_view, blocker_view, die_sides, max_combats=4)
     matchup = summarize_builder_combat_matchup(candidate_view, blocker_view, die_sides)
     blocker_value = estimate_creature_board_value(blocker_view)
     attacker_value = estimate_creature_board_value(candidate_view)
@@ -475,16 +480,26 @@ def _offensive_matchup_summary(candidate_view, blocker_view, *, die_sides: int) 
     score -= matchup.stranded_damage * 0.95
     score -= matchup.overkill_damage * 0.22
     score -= estimate.attacker_death_probability * attacker_value * 0.08
+    # Damage and life are coupled: damage that does not kill this turn can still
+    # matter, but only if the attacker survives enough future contests to finish
+    # the blocker. This prevents SW 1 from being treated like SW 4 merely because
+    # both currently deal some expected damage.
+    future_creature_damage = max(0.0, sequence.expected_damage_to_defender - delivered_creature_damage)
+    future_kill_probability = max(0.0, sequence.attacker_kill_probability - estimate.defender_death_probability)
+    future_death_probability = max(0.0, sequence.defender_kill_probability - estimate.attacker_death_probability)
+    score += future_creature_damage * EXPECTED_CREATURE_DAMAGE_WEIGHT * 0.55
+    score += future_kill_probability * KILL_PROBABILITY_WEIGHT * 0.9
+    score -= future_death_probability * DEATH_PROBABILITY_PENALTY * 0.7
     if candidate_view.aw <= 1 and not candidate_view.has_ability(Ability.FLYING):
         score -= max(0.0, 0.65 - matchup.attack_access_probability) * max(1.0, float(candidate_view.sw))
     return {
         "score": score,
         "expected_player_damage": estimate.expected_player_damage,
         "expected_heal": estimate.expected_attacker_heal,
-        "kill_pressure": estimate.defender_death_probability * KILL_PROBABILITY_WEIGHT,
-        "death_risk": -(estimate.attacker_death_probability * DEATH_PROBABILITY_PENALTY),
+        "kill_pressure": sequence.attacker_kill_probability * KILL_PROBABILITY_WEIGHT,
+        "death_risk": -(sequence.defender_kill_probability * DEATH_PROBABILITY_PENALTY),
         "attack_access_probability": matchup.attack_access_probability,
-        "attacker_kill_probability": matchup.attacker_kill_probability,
+        "attacker_kill_probability": sequence.attacker_kill_probability,
         "damage_delivery_probability": matchup.damage_delivery_probability,
         "stranded_damage": matchup.stranded_damage,
         "overkill_damage": matchup.overkill_damage,
@@ -527,12 +542,13 @@ def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list, *, die_s
     summaries = []
     for enemy in legal_attackers:
         estimate = estimate_builder_combat(enemy, candidate_view, die_sides)
+        sequence = estimate_builder_combat_sequence(enemy, candidate_view, die_sides, max_combats=4)
         matchup = summarize_builder_combat_matchup(enemy, candidate_view, die_sides)
         prevented_damage = matchup.immediate_prevented_damage
-        kill_probability = matchup.blocker_kill_probability
-        survive_probability = matchup.blocker_survival_probability
+        kill_probability = sequence.defender_kill_probability
+        survive_probability = sequence.defender_survival_probability
         block_win_probability = matchup.block_win_probability
-        delivered_kill_damage = matchup.expected_damage_to_attacker
+        delivered_kill_damage = sequence.expected_damage_to_attacker
         overkill_damage = matchup.overkill_damage
         repeat_block_value = matchup.repeated_block_value
         unresolved_threat = (1.0 - kill_probability) * (enemy.sw * 1.1 + enemy.aw * 0.35)
@@ -550,7 +566,7 @@ def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list, *, die_s
             + survive_probability * (DEFENSIVE_SURVIVAL_WEIGHT + 0.75)
             + repeat_block_value * 0.9
             + life_breakpoint_bonus
-            - estimate.defender_death_probability * DEFENSIVE_DEATH_PENALTY
+            - sequence.attacker_kill_probability * DEFENSIVE_DEATH_PENALTY
             - overkill_damage * 0.18
             - unresolved_threat
             - brittle_chump_penalty
@@ -559,7 +575,7 @@ def _evaluate_defensive_matchups(candidate_view, enemy_attackers: list, *, die_s
             {
                 "score": score,
                 "kill_pressure": kill_probability * DEFENSIVE_KILL_WEIGHT,
-                "death_risk": -(estimate.defender_death_probability * DEFENSIVE_DEATH_PENALTY),
+                "death_risk": -(sequence.attacker_kill_probability * DEFENSIVE_DEATH_PENALTY),
                 "repeated_block_value": repeat_block_value,
                 "weight": max(1.0, enemy.sw + enemy.aw * 0.35),
                 "block_win_probability": block_win_probability,
@@ -643,7 +659,11 @@ def _evaluate_marginal_defense(candidate_view, enemy_attackers: list, own_blocke
     with_candidate_damage = _optimal_enemy_damage(enemy_attackers, own_blockers + [candidate_view])
     marginal_prevented = max(0.0, baseline_damage - with_candidate_damage)
     defensive = _evaluate_defensive_matchups(candidate_view, enemy_attackers, die_sides=die_sides)
-    if marginal_prevented <= 0.0 and defensive["repeated_block_value"] <= 0.0:
+    if (
+        marginal_prevented <= 0.0
+        and defensive["repeated_block_value"] <= 0.0
+        and defensive["kill_pressure"] <= 0.0
+    ):
         return {
             "score": 0.0,
             "kill_pressure": 0.0,
@@ -659,7 +679,7 @@ def _evaluate_marginal_defense(candidate_view, enemy_attackers: list, own_blocke
     redundancy_scale = 1.0 if marginal_prevented > 0.0 or not own_blockers else 0.45
     score = marginal_prevented * (DEFENSIVE_PREVENTED_DAMAGE_WEIGHT + 0.35)
     score += max(0.0, defensive["kill_pressure"]) * 1.35 * redundancy_scale
-    score += max(0.0, defensive["death_risk"]) * 0.7 * redundancy_scale
+    score += defensive["death_risk"] * 0.7 * redundancy_scale
     score += defensive["repeated_block_value"] * 1.1 * redundancy_scale
     score += defensive["life_breakpoint"] * 0.8 * redundancy_scale
     return {

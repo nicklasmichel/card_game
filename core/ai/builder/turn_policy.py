@@ -224,12 +224,6 @@ def build_builder_plan_dict(candidate) -> dict:
         "vw": candidate.vw,
         "sw": candidate.sw,
         "lw": candidate.lw,
-        "ability": candidate.builder_ability,
-        "ability_label": None if candidate.builder_ability is None else candidate.builder_ability.value,
-        "ability_cost": 0,
-        "haste": candidate.has_haste,
-        "haste_cost": candidate.haste_cost,
-        "abilities": tuple(sorted(ability.value for ability in candidate.abilities)),
         "cost": candidate.cost,
         "profile": candidate.generation_reason or "planned",
         "candidate_signature": candidate.key,
@@ -1584,20 +1578,27 @@ def _score_flying_offense_value(snapshot, projection, predicted_attack, projecte
 
 
 def _score_flying_coverage_value(snapshot, projection, predicted_attack, projected_candidate, horizon: BuilderHorizonReport) -> float:
-    value = 0.0
-    coverage_quality = 1.0
-    flying_candidate = projected_candidate is not None and projected_candidate.candidate.has_ability(Ability.FLYING)
-    if flying_candidate:
-        candidate = projected_candidate.candidate
-        static = projected_candidate.static_score
-        coverage_quality = (
-            max(static.block_win_probability, static.blocker_survival_probability)
-            if candidate.vw > 0
+    if projected_candidate is None or not projected_candidate.candidate.has_ability(Ability.FLYING):
+        # A line that still has no answer to flying damage keeps the existing
+        # coverage-gap penalty.  It must never receive the positive prevention
+        # bonus merely because some other creature in the projection can block.
+        return (
+            -horizon.second_attack_damage * 0.4
+            if horizon.coverage_ready_turn is None and horizon.second_attack_damage > 0.0
             else 0.0
         )
+
+    value = 0.0
+    candidate = projected_candidate.candidate
+    static = projected_candidate.static_score
+    coverage_quality = (
+        max(static.block_win_probability, static.blocker_survival_probability)
+        if candidate.vw > 0
+        else 0.0
+    )
     if horizon.coverage_prevents_repeated_lethal:
         value += REPEATED_LETHAL_PREVENTION_BONUS * coverage_quality
-        if flying_candidate and coverage_quality > 0.0:
+        if coverage_quality > 0.0:
             # Once flying coverage exists, rank the body by whether it can keep
             # providing that coverage.  Damage is only a small tie-breaker; it
             # must not turn a fragile one-shot chump into the preferred answer.
@@ -1618,11 +1619,10 @@ def _score_flying_coverage_value(snapshot, projection, predicted_attack, project
     value += prevented_second_damage * 1.6 * coverage_quality
     if horizon.coverage_ready_turn is None and horizon.second_attack_damage > 0.0:
         value -= horizon.second_attack_damage * 0.4
-    if flying_candidate:
-        if horizon.second_attack_damage <= 0.0 and not horizon.coverage_prevents_repeated_lethal:
-            value *= 0.35
-        elif horizon.coverage_ready_turn == 1 and coverage_quality > 0.0:
-            value += 0.45 * coverage_quality
+    if horizon.second_attack_damage <= 0.0 and not horizon.coverage_prevents_repeated_lethal:
+        value *= 0.35
+    elif horizon.coverage_ready_turn == 1 and coverage_quality > 0.0:
+        value += 0.45 * coverage_quality
     return value
 
 
@@ -1635,7 +1635,8 @@ def _base_survival_pressure(snapshot) -> float:
     )
     if not snapshot.own_has_board and snapshot.enemy_has_board:
         pressure += 2.4
-    pressure += max(0.0, 8 - snapshot.own_life) * 0.8
+    low_life_threshold = config.STARTING_LIFE * (2.0 / 3.0)
+    pressure += max(0.0, low_life_threshold - snapshot.own_life) * 0.8
     return pressure
 
 
@@ -1810,7 +1811,7 @@ def _score_role_novelty(snapshot, projection, predicted_attack, projected_candid
     if candidate.has_haste and predicted_attack.score.player_damage <= 0.0 and candidate.sw == 0:
         novelty -= 1.4
         if (
-            snapshot.own_life >= 10
+            snapshot.own_life >= config.STARTING_LIFE * (5.0 / 6.0)
             and predicted_attack.score.counter_lethal_risk <= 0.0
             and predicted_attack.score.projected_counter_damage < max(2.0, snapshot.own_life - 4.0)
         ):

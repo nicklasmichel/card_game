@@ -25,7 +25,7 @@ class GameInvariantTests(unittest.TestCase):
         vw: int = 1,
         sw: int = 1,
         lw: int = 2,
-        ability: Ability = Ability.HASTE,
+        ability: Ability | None = None,
         ready: bool = True,
     ):
         creature = self.engine.create_builder_creature(
@@ -34,7 +34,7 @@ class GameInvariantTests(unittest.TestCase):
             vw=vw,
             sw=sw,
             lw=lw,
-            ability=ability,
+            abilities=frozenset({ability}) if ability is not None else frozenset(),
         )
         self.assertIsNotNone(creature)
         creature.tapped = not ready
@@ -100,7 +100,7 @@ class GameInvariantTests(unittest.TestCase):
         violations = "\n".join(collect_game_invariant_violations(self.engine))
 
         self.assertIn("invalid current life", violations)
-        self.assertIn("negative combat stats", violations)
+        self.assertIn("stats below the builder minimum", violations)
         self.assertIn("duplicate object id", violations)
 
     def test_prepared_creature_action_must_have_legal_cost_and_ability(self) -> None:
@@ -112,7 +112,7 @@ class GameInvariantTests(unittest.TestCase):
                 "sw": 1,
                 "lw": 1,
                 "cost": 99,
-                "ability": None,
+                "ability": Ability.FLYING,
             },
         }
 

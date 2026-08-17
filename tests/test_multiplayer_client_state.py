@@ -4,7 +4,6 @@ import unittest
 
 from core.game_logic import GameEngine
 from core.models import (
-    Ability,
     CardCost,
     CardInstance,
     CardTemplate,
@@ -66,14 +65,13 @@ class ClientGameViewTests(unittest.TestCase):
         self.assertEqual(view.log_messages, engine.public_log_messages)
         self.assertEqual(view.public_log_messages, engine.public_log_messages)
 
-    def test_pending_builder_paid_haste_round_trips_to_remote_client(self) -> None:
+    def test_pending_vanilla_builder_stats_round_trip_to_remote_client(self) -> None:
         engine = GameEngine(auto_start=False, match_mode=MatchMode.PVP)
         engine.active_player_index = 1
         engine.pending_builder_creature = PendingBuilderCreatureBuild(
             available_resources=5,
-            sw=4,
-            selected_primary_ability=Ability.TRAMPLE,
-            has_haste=True,
+            sw=5,
+            lw=2,
         )
         view = ClientGameView(local_player_id=1)
 
@@ -81,10 +79,10 @@ class ClientGameViewTests(unittest.TestCase):
 
         pending = view.pending_builder_creature
         self.assertIsNotNone(pending)
-        self.assertEqual(pending.selected_primary_ability, Ability.TRAMPLE)
-        self.assertTrue(pending.has_haste)
+        self.assertEqual((pending.aw, pending.vw, pending.sw, pending.lw), (1, 1, 5, 2))
         self.assertEqual(pending.spent_resources, 5)
-        self.assertEqual(pending.selected_abilities, frozenset({Ability.TRAMPLE, Ability.HASTE}))
+        self.assertEqual(pending.ability_cost, 0)
+        self.assertEqual(pending.selected_abilities, frozenset())
 
 
 if __name__ == "__main__":

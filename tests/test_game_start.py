@@ -23,7 +23,7 @@ class GameStartTests(unittest.TestCase):
     def test_new_game_starts_builder_players_at_starting_life(self) -> None:
         engine = GameEngine()
 
-        self.assertEqual(STARTING_LIFE, 12)
+        self.assertEqual(STARTING_LIFE, 15)
         self.assertEqual(engine.human_player.life, STARTING_LIFE)
         self.assertEqual(engine.ai_player.life, STARTING_LIFE)
 

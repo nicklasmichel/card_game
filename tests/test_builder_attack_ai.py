@@ -137,6 +137,83 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertEqual(_estimate_block_value(body, self.engine.human_player, self.engine), 0.0)
 
+    def test_attack_score_keeps_and_penalizes_flying_block_value_when_counter_projection_ties(self) -> None:
+        attacker = self.make_builder_creature(
+            1,
+            aw=2,
+            vw=3,
+            sw=1,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING, Ability.HASTE),
+        )
+        self.make_builder_creature(
+            0,
+            aw=1,
+            vw=1,
+            sw=3,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING, Ability.HASTE),
+        )
+        self.make_builder_creature(
+            0,
+            aw=1,
+            vw=1,
+            sw=5,
+            lw=1,
+            ready=True,
+            abilities=(Ability.FLYING, Ability.HASTE),
+        )
+
+        score = score_builder_attack_candidate(
+            BuilderAttackCandidate(attacker_ids=(attacker.unit_id,)),
+            self.engine.ai_player,
+            self.engine,
+        )
+        lost_block = next(row for row in score.debug_contributions if row[0] == "lost_block")
+
+        self.assertGreater(score.lost_block_value, 0.0)
+        self.assertLess(lost_block[2], 0.0)
+        self.assertLess(lost_block[3], 0.0)
+
+    def test_turn_18_flying_coverage_body_stays_back(self) -> None:
+        self.engine.ai_player.life = 4
+        self.engine.human_player.life = 12
+        self.set_builder_resources(self.engine.human_player, 5)
+        self.make_builder_creature(
+            1, aw=1, vw=3, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE)
+        )
+        self.make_builder_creature(
+            1, aw=3, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.VIGILANT, Ability.HASTE)
+        )
+        coverage_body = self.make_builder_creature(
+            1, aw=2, vw=3, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE)
+        )
+        self.make_builder_creature(
+            1, aw=2, vw=3, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE)
+        )
+        self.make_builder_creature(
+            0, aw=1, vw=1, sw=3, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE)
+        )
+        self.make_builder_creature(
+            0, aw=1, vw=3, sw=1, lw=3, ready=True, abilities=(Ability.VIGILANT,)
+        )
+        self.make_builder_creature(
+            0, aw=1, vw=1, sw=5, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE)
+        )
+
+        candidate, score, scored = choose_builder_attack_candidate(self.engine.ai_player, self.engine)
+        coverage_attack_score = next(
+            current
+            for current_candidate, current in scored
+            if current_candidate.attacker_ids == (coverage_body.unit_id,)
+        )
+
+        self.assertEqual(candidate.attacker_ids, (), [(current.attacker_ids, value.total) for current, value in scored[:5]])
+        self.assertGreater(coverage_attack_score.lost_block_value, 0.0)
+        self.assertLess(coverage_attack_score.total, score.total)
+
     def test_bad_trade_prefers_no_attack(self) -> None:
         self.make_builder_creature(1, aw=4, vw=1, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.TRAMPLE))
         self.make_builder_creature(0, aw=1, vw=4, sw=4, lw=6, ready=True, abilities=(Ability.FLYING,))
@@ -413,7 +490,7 @@ class BuilderAttackAITests(unittest.TestCase):
         )
         self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
 
-    def test_main_action_build_detects_fifth_haste_attack_as_immediate_lethal(self) -> None:
+    def test_main_action_build_does_not_add_a_fifth_immediate_attacker(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 3)
         self.engine.active_player_index = self.engine.ai_player.player_id
         self.engine.phase = PHASE_MAIN_1
@@ -428,10 +505,11 @@ class BuilderAttackAITests(unittest.TestCase):
 
         self.assertEqual(decision.action_candidate.action_kind, "creature")
         self.assertIsNotNone(decision.action_candidate.creature_candidate)
-        self.assertTrue(decision.action_candidate.creature_candidate.has_haste)
+        self.assertFalse(decision.action_candidate.creature_candidate.has_haste)
+        self.assertEqual(decision.action_candidate.creature_candidate.abilities, frozenset())
         self.assertIsNotNone(predicted)
-        self.assertGreaterEqual(predicted.score.guaranteed_player_damage, 4.0)
-        self.assertIn(predicted.candidate.attacker_ids[-1], predicted.candidate.attacker_ids)
+        self.assertEqual(predicted.score.guaranteed_player_damage, 0.0)
+        self.assertFalse(any(attacker_id < 0 for attacker_id in predicted.candidate.attacker_ids))
 
     def test_attack_phase_reuses_lethal_plan_consistently(self) -> None:
         self.set_builder_resources(self.engine.ai_player, self.engine.BUILDER_MAX_RESOURCES)
@@ -526,15 +604,15 @@ class BuilderAttackAITests(unittest.TestCase):
         self.assertEqual(first.projected_counter_damage, second.projected_counter_damage)
         self.assertGreaterEqual(first.projected_counter_damage, 2.0)
 
-    def test_counter_followup_considers_enemy_haste_build(self) -> None:
+    def test_counter_followup_cannot_use_enemy_build_as_immediate_attacker(self) -> None:
         self.set_builder_resources(self.engine.human_player, 2)
 
         score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
 
-        self.assertEqual(score.projected_counter_main_action, "build_haste")
-        self.assertGreater(score.projected_counter_damage, 0.0)
+        self.assertEqual(score.projected_counter_main_action, "resource")
+        self.assertEqual(score.projected_counter_damage, 0.0)
 
-    def test_counter_followup_haste_projection_includes_new_attacker_with_existing_board(self) -> None:
+    def test_counter_followup_uses_only_existing_attackers_with_vanilla_builds(self) -> None:
         self.set_builder_resources(self.engine.human_player, 5)
         self.engine.ai_player.life = 6
         self.make_builder_creature(1, aw=0, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.HASTE,))
@@ -543,9 +621,9 @@ class BuilderAttackAITests(unittest.TestCase):
 
         score = score_builder_attack_candidate(BuilderAttackCandidate(attacker_ids=()), self.engine.ai_player, self.engine)
 
-        self.assertEqual(score.projected_counter_main_action, "build_terminal")
-        self.assertEqual(len(score.projected_counter_attackers), 5)
-        self.assertGreaterEqual(score.projected_counter_damage, 9.0)
+        self.assertEqual(score.projected_counter_main_action, "resource")
+        self.assertEqual(len(score.projected_counter_attackers), 4)
+        self.assertGreaterEqual(score.projected_counter_damage, 8.0)
         self.assertGreaterEqual(score.counter_lethal_risk, 1.0)
 
     def test_opponent_can_choose_block_that_worsens_ai_counter_position(self) -> None:

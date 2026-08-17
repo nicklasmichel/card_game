@@ -191,13 +191,21 @@ class MultiplayerLoopbackTests(unittest.TestCase):
             )
         )
         self.client.submit_action("builder_sw_up")
-        self.client.submit_action("builder_select_ability_haste")
+        self.client.submit_action("builder_sw_up")
         self.client.submit_action("builder_confirm_creature")
         self.assertTrue(
             self.pump_client_until(
-                lambda: self.client.state.phase == PHASE_DECLARE_ATTACKERS
+                lambda: self.client.state.active_player.player_id == 0
                 and len(self.client.state.human_player.battlefield) == 1
             )
+        )
+        self.host.submit_action("builder_add_resource")
+        self.assertTrue(
+            self.pump_client_until(lambda: self.client.state.active_player.player_id == 1)
+        )
+        self.client.submit_action("builder_add_resource")
+        self.assertTrue(
+            self.pump_client_until(lambda: self.client.state.phase == PHASE_DECLARE_ATTACKERS)
         )
         attacker_id = self.client.state.human_player.battlefield[0].unit_id
 

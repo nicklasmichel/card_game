@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +29,7 @@ class GameStatistics:
     mutual_destructions: int = 0
     combats_without_destruction: int = 0
     current_turns: int = 0
-    current_pending_combat: PendingCombatStats | None = None
+    pending_combats: Dict[int, PendingCombatStats] = field(default_factory=dict)
     creature_records: List[CreatureCombatRecord] = field(default_factory=list)
     builder_creature_records: List[BuilderCreatureBuildRecord] = field(default_factory=list)
     winner: str = ""
@@ -73,18 +74,19 @@ class GameStatistics:
         stat_cost: int,
         total_cost: int,
     ) -> None:
-        ability_name = getattr(primary_ability, "name", str(primary_ability)).upper()
+        ability_name = "NONE" if primary_ability is None else getattr(primary_ability, "name", str(primary_ability)).upper()
         primary_counter = {
             "FLYING": "builder_flying_creatures_played",
             "VIGILANCE": "builder_vigilance_creatures_played",
             "VIGILANT": "builder_vigilance_creatures_played",
             "TRAMPLE": "builder_trample_creatures_played",
         }.get(ability_name)
-        if primary_counter is None:
+        if primary_counter is None and ability_name != "NONE":
             raise ValueError(f"Unsupported builder primary ability: {primary_ability!r}")
         self.register_creature_played(player_id)
         counters = self.player_stats[player_id]
-        setattr(counters, primary_counter, getattr(counters, primary_counter) + 1)
+        if primary_counter is not None:
+            setattr(counters, primary_counter, getattr(counters, primary_counter) + 1)
         counters.builder_haste_creatures_played += int(has_haste)
         counters.builder_stat_points_spent += max(0, int(stat_cost))
         counters.builder_resources_spent += max(0, int(total_cost))
@@ -176,7 +178,7 @@ class GameStatistics:
         blocker_hp_before: int,
     ) -> None:
         self.creature_combats += 1
-        self.current_pending_combat = PendingCombatStats(
+        self.pending_combats[combat_id] = PendingCombatStats(
             combat_id=combat_id,
             attacker_owner=attacker_owner,
             blocker_owner=blocker_owner,
@@ -190,18 +192,20 @@ class GameStatistics:
             blocker_hp_before=blocker_hp_before,
         )
 
-    def register_dice_comparison(self, attacker_damage: int, blocker_damage: int) -> None:
-        if self.current_pending_combat is None:
+    def register_dice_comparison(self, combat_id: int, attacker_damage: int, blocker_damage: int) -> None:
+        pending = self.pending_combats.get(combat_id)
+        if pending is None:
             return
-        self.current_pending_combat.dice_comparisons += 1
-        self.current_pending_combat.attacker_damage_dealt += attacker_damage
-        self.current_pending_combat.blocker_damage_dealt += blocker_damage
+        pending.dice_comparisons += 1
+        pending.attacker_damage_dealt += attacker_damage
+        pending.blocker_damage_dealt += blocker_damage
         self.total_dice_comparisons += 1
-        self.player_stats[self.current_pending_combat.attacker_owner].creature_damage_dealt += attacker_damage
-        self.player_stats[self.current_pending_combat.blocker_owner].creature_damage_dealt += blocker_damage
+        self.player_stats[pending.attacker_owner].creature_damage_dealt += attacker_damage
+        self.player_stats[pending.blocker_owner].creature_damage_dealt += blocker_damage
 
     def finish_creature_combat(
         self,
+        combat_id: int,
         attacker_owner: int,
         blocker_owner: int,
         attacker_creature_name: str,
@@ -213,11 +217,15 @@ class GameStatistics:
         attacker_hp_after: int,
         blocker_hp_after: int,
     ) -> None:
-        if self.current_pending_combat is None:
+        pending = self.pending_combats.pop(combat_id, None)
+        if pending is None:
             return
-        pending = self.current_pending_combat
-        attacker_damage_taken = pending.attacker_hp_before - max(attacker_hp_after, 0)
-        blocker_damage_taken = pending.blocker_hp_before - max(blocker_hp_after, 0)
+        # Damage is recorded at resolution time and is therefore exact even
+        # when several battles are displayed/applied as one batch. Deriving it
+        # from shared final HP double-counted damage and could become negative
+        # after healing.
+        attacker_damage_taken = pending.blocker_damage_dealt
+        blocker_damage_taken = pending.attacker_damage_dealt
         attacker_destroyed = attacker_hp_after <= 0
         blocker_destroyed = blocker_hp_after <= 0
         if attacker_destroyed and blocker_destroyed:
@@ -263,7 +271,6 @@ class GameStatistics:
                 dice_comparisons=pending.dice_comparisons,
             ),
         ])
-        self.current_pending_combat = None
 
     def finalize_game(
         self,
@@ -339,12 +346,83 @@ class GameStatistics:
 
     def append_game_result(self, row: Dict[str, str]) -> None:
         fieldnames = list(row.keys())
-        write_header = not self.results_path.exists()
-        with self.results_path.open("a", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames)
-            if write_header:
+        if not self.results_path.exists() or self.results_path.stat().st_size == 0:
+            with self.results_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
                 writer.writeheader()
-            writer.writerow(row)
+                writer.writerow(row)
+            return
+
+        with self.results_path.open(newline="", encoding="utf-8-sig") as handle:
+            raw_rows = list(csv.reader(handle))
+        existing_header = raw_rows[0] if raw_rows else []
+        existing_rows = raw_rows[1:]
+        schema_is_current = (
+            existing_header[: len(fieldnames)] == fieldnames
+            and all(len(values) == len(existing_header) for values in existing_rows)
+        )
+        if schema_is_current:
+            with self.results_path.open("a", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=existing_header)
+                writer.writerow(row)
+            return
+
+        self._migrate_and_append_game_results(existing_header, existing_rows, row)
+
+    def _migrate_and_append_game_results(
+        self,
+        existing_header: list[str],
+        existing_rows: list[list[str]],
+        row: Dict[str, str],
+    ) -> None:
+        current_fields = list(row.keys())
+        schema_43 = current_fields[:11] + current_fields[11:41] + current_fields[-2:]
+        schema_57 = current_fields[:-2] + [
+            "human_verbotene_glut_cards_drawn",
+            "ai_verbotene_glut_cards_drawn",
+        ] + current_fields[-2:]
+        schemas_by_width = {
+            len(existing_header): existing_header,
+            43: schema_43,
+            len(current_fields): current_fields,
+            57: schema_57,
+        }
+        migrated_fields = list(current_fields)
+        for schema in (existing_header, schema_43, schema_57):
+            for name in schema:
+                if name not in migrated_fields:
+                    migrated_fields.append(name)
+
+        aliases = {
+            "human_units_played": "human_creatures_played",
+            "ai_units_played": "ai_creatures_played",
+            "unit_combats": "creature_combats",
+            "human_units_destroyed": "human_creatures_destroyed",
+            "ai_units_destroyed": "ai_creatures_destroyed",
+            "human_unit_damage_dealt": "human_creature_damage_dealt",
+            "ai_unit_damage_dealt": "ai_creature_damage_dealt",
+        }
+        migrated_rows: list[dict[str, str]] = []
+        for values in existing_rows:
+            schema = schemas_by_width.get(len(values))
+            if schema is None:
+                schema = existing_header[: len(values)]
+            migrated = dict(zip(schema, values))
+            for old_name, current_name in aliases.items():
+                if old_name in migrated and current_name not in migrated:
+                    migrated[current_name] = migrated[old_name]
+            migrated_rows.append(migrated)
+        migrated_rows.append(dict(row))
+
+        backup_path = self.results_path.with_suffix(self.results_path.suffix + ".pre-schema-migration.bak")
+        if not backup_path.exists():
+            shutil.copy2(self.results_path, backup_path)
+        temporary_path = self.results_path.with_suffix(self.results_path.suffix + ".schema-migration.tmp")
+        with temporary_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=migrated_fields)
+            writer.writeheader()
+            writer.writerows(migrated_rows)
+        temporary_path.replace(self.results_path)
 
     def append_creature_results(self) -> None:
         fieldnames = [

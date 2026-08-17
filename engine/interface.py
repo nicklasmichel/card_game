@@ -4,16 +4,8 @@ from dataclasses import replace
 from threading import Event, Thread
 from typing import List
 
-from core.builder_rules import (
-    BUILDER_ABILITIES_ENABLED,
-    BUILDER_CREATURE_ABILITIES,
-    BUILDER_HASTE_COST,
-    builder_creature_ability_set,
-    builder_creature_stat_cost,
-    calculate_builder_creature_cost,
-    validate_builder_creature_abilities,
-)
-from engine.builder import BUILDER_ABILITY_LABELS, get_builder_creature_abilities_label
+from core.builder_rules import BUILDER_ABILITIES_ENABLED, builder_creature_stat_cost, calculate_builder_creature_cost
+from engine.builder import BUILDER_ABILITY_LABELS
 from core.ai.builder import build_builder_runtime_fingerprint, choose_builder_blocks, materialize_builder_turn_decision
 from core.ai.builder.attack_policy import log_builder_attack_decision
 from core.ai.builder.debug import log_builder_runtime_action
@@ -73,7 +65,6 @@ def _format_builder_creature_plan(plan: dict) -> str:
         f"Atk {int(plan.get('aw', 0))} / Def {int(plan.get('vw', 0))} / "
         f"Dmg {int(plan.get('sw', 0))} / Life {int(plan.get('lw', 1))}"
     )
-    text += f" / {get_builder_creature_abilities_label(plan.get('abilities', ()))}"
     return text
 
 
@@ -115,10 +106,6 @@ def _compute_prepared_ai_action(self, *, cancel_event=None) -> dict | None:
                     "vw": candidate.vw,
                     "sw": candidate.sw,
                     "lw": candidate.lw,
-                    "ability": candidate.builder_ability,
-                    "abilities": candidate.abilities,
-                    "haste": candidate.has_haste,
-                    "haste_cost": candidate.haste_cost,
                     "cost": candidate.cost,
                     "candidate_signature": getattr(candidate, "key", candidate.signature),
                 }
@@ -441,18 +428,15 @@ def execute_prepared_ai_action(self) -> None:
             vw = int(plan.get("vw", 0))
             sw = int(plan.get("sw", 0))
             lw = int(plan.get("lw", 1))
-            has_haste = bool(plan.get("haste", False))
-            abilities = frozenset(plan.get("abilities", ())) or builder_creature_ability_set(
-                plan.get("ability"),
-                has_haste=has_haste,
-            )
-            validate_builder_creature_abilities(abilities)
+            if min(aw, vw, sw, lw) < 1:
+                return
+            if plan.get("ability") is not None or plan.get("abilities") or bool(plan.get("haste", False)):
+                return
             expected_cost = calculate_builder_creature_cost(
                 aw=aw,
                 vw=vw,
                 sw=sw,
                 lw=lw,
-                has_haste=has_haste,
             )
             cost = int(plan.get("cost", -1))
         except (TypeError, ValueError):
@@ -467,8 +451,6 @@ def execute_prepared_ai_action(self) -> None:
                     vw=vw,
                     sw=sw,
                     lw=lw,
-                    primary_ability=plan.get("ability"),
-                    has_haste=has_haste,
                 )
         if creature is not None:
             self.builder_created_this_turn_ids.add(creature.unit_id)
@@ -476,8 +458,8 @@ def execute_prepared_ai_action(self) -> None:
             if self.statistics is not None:
                 self.statistics.register_builder_creature_played(
                     self.active_player.player_id,
-                    primary_ability=creature.builder_ability,
-                    has_haste=creature.has_ability(Ability.HASTE),
+                    primary_ability=None,
+                    has_haste=False,
                     turn_number=self.turn_number,
                     aw=creature.aw,
                     vw=creature.vw,
@@ -493,8 +475,7 @@ def execute_prepared_ai_action(self) -> None:
                 )
             self.log(
                 f"{self.active_player.name} creates {creature.name} "
-                f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}"
-                f" / {get_builder_creature_abilities_label(creature.abilities)}) "
+                f"(A {creature.aw} / D {creature.vw} / DMG {creature.sw} / Life {creature.lw}) "
                 f"for {cost} resource(s)."
             )
             self.finish_builder_main_action()
@@ -743,13 +724,6 @@ def persist_game_results_once(self) -> None:
         f"Turns: {row['turns_played']}",
         f"Life: Player 1 {row['human_life_end']} | Player 2 {row['ai_life_end']}",
         f"Creatures played: Player 1 {row['human_creatures_played']} | Player 2 {row['ai_creatures_played']}",
-        (
-            "Haste builds: "
-            f"Player 1 {self.statistics.player_stats[0].builder_haste_creatures_played}/"
-            f"{self.statistics.player_stats[0].creatures_played} | "
-            f"Player 2 {self.statistics.player_stats[1].builder_haste_creatures_played}/"
-            f"{self.statistics.player_stats[1].creatures_played}"
-        ),
         f"Creature combats: {row['creature_combats']}",
         f"Creatures destroyed: Player 1 {row['human_creatures_destroyed']} | Player 2 {row['ai_creatures_destroyed']}",
         f"Player damage: Player 1 {row['human_player_damage_dealt']} | Player 2 {row['ai_player_damage_dealt']}",
@@ -770,7 +744,7 @@ def current_prompt(self) -> str:
     if self.pending_ai_action is not None:
         return self.pending_ai_action.get("description", "Player 2 action is waiting for confirmation.")
     if self.phase == PHASE_BUILDER_CREATURE:
-        return "Distribute ready resources across stats, choose one free ability, and optionally buy Haste for 1 resource."
+        return "Distribute all ready resources across the creature's stats."
     if self.phase == PHASE_BUILDER_ABILITY:
         if not BUILDER_ABILITIES_ENABLED:
             return "Attack or end the turn."
@@ -824,10 +798,6 @@ def get_button_specs(self) -> List[ButtonSpec]:
             ButtonSpec("+1 HP", plus_enabled, "builder_lw_up"),
             ButtonSpec("-1 HP", pending.lw > pending.base_lw, "builder_lw_down"),
         ]
-        for ability in BUILDER_CREATURE_ABILITIES:
-            enabled = ability != Ability.HASTE or pending.has_haste or spent + BUILDER_HASTE_COST <= pending.available_resources
-            label = f"{BUILDER_ABILITY_LABELS[ability]} ({BUILDER_HASTE_COST})" if ability == Ability.HASTE else BUILDER_ABILITY_LABELS[ability]
-            buttons.append(ButtonSpec(label, enabled, f"builder_select_ability_{ability.name.lower()}"))
         buttons.extend(
             [
                 ButtonSpec("Create", self.builder_creature_build_is_valid(), "builder_confirm_creature"),

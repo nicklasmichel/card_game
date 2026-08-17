@@ -177,12 +177,6 @@ def _deserialize_builder_creature(data: dict[str, Any] | None) -> PendingBuilder
         sw=data["sw"],
         lw=data["lw"],
         available_resources=data["available_resources"],
-        selected_primary_ability=(
-            Ability[data["selected_primary_ability"]]
-            if data["selected_primary_ability"]
-            else None
-        ),
-        has_haste=data["has_haste"],
     )
 
 
@@ -225,6 +219,7 @@ def _deserialize_dice_battle(data: dict[str, Any] | None) -> PendingDiceBattle |
         blocker_owner=data["blocker_owner"],
         attacker_snapshot=_deserialize_combat_unit(data["attacker_snapshot"]),
         blocker_snapshot=_deserialize_combat_unit(data["blocker_snapshot"]),
+        combat_id=data.get("combat_id", 0),
         attacker_rolls=list(data["attacker_rolls"]),
         blocker_rolls=list(data["blocker_rolls"]),
         attack_sum=data["attack_sum"],

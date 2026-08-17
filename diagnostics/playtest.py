@@ -14,8 +14,8 @@ GAME_END_PREFIX = "[GAME END] "
 LEGACY_GAME_START_PREFIX = "New game started in builder mode."
 BUILD_PATTERN = re.compile(
     r"^(?P<player>.+?) creates (?P<creature>.+?) "
-    r"\(A (?P<aw>\d+) / D (?P<vw>\d+) / DMG (?P<sw>\d+) / Life (?P<lw>\d+) / "
-    r"(?P<abilities>.+?)\) for (?P<cost>\d+) resource\(s\)\.$"
+    r"\(A (?P<aw>\d+) / D (?P<vw>\d+) / DMG (?P<sw>\d+) / Life (?P<lw>\d+)"
+    r"(?: / (?P<abilities>.+?))?\) for (?P<cost>\d+) resource\(s\)\.$"
 )
 TURN_PATTERN = re.compile(r"^Turn (?P<turn>\d+):")
 
@@ -173,9 +173,9 @@ def _parse_build(line: str, *, turn: int) -> PlaytestBuild | None:
     if match is None:
         return None
     values = match.groupdict()
-    abilities = tuple(part.strip() for part in values["abilities"].split("+") if part.strip())
+    abilities = tuple(part.strip() for part in (values["abilities"] or "").split("+") if part.strip())
     has_haste = any(ability.casefold() == "haste" for ability in abilities)
-    primary = next((ability for ability in abilities if ability.casefold() != "haste"), "Unknown")
+    primary = next((ability for ability in abilities if ability.casefold() != "haste"), "NONE")
     aw, vw, sw, lw = (int(values[name]) for name in ("aw", "vw", "sw", "lw"))
     stat_cost = builder_creature_stat_cost(aw=aw, vw=vw, sw=sw, lw=lw)
     return PlaytestBuild(

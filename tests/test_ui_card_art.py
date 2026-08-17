@@ -47,6 +47,23 @@ class UICardArtTests(unittest.TestCase):
 
         self.assertEqual(get_card_art_key(self.renderer, creature), "haste")
 
+    def test_vanilla_builder_creature_uses_haste_art_as_default(self) -> None:
+        creature = self.source()
+
+        self.assertEqual(get_card_art_key(self.renderer, creature), "haste")
+
+    def test_builder_preview_uses_haste_art_as_default(self) -> None:
+        preview = type(
+            "Source",
+            (),
+            {
+                "template_id": "builder_creature_preview",
+                "abilities": frozenset(),
+            },
+        )()
+
+        self.assertEqual(get_card_art_key(self.renderer, preview), "haste")
+
     def test_haste_display_name_is_capitalized(self) -> None:
         self.assertEqual(ABILITY_DISPLAY_NAMES[Ability.HASTE], "Haste")
 

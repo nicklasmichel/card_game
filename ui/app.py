@@ -74,6 +74,8 @@ from ui.layout import (
     draw_life_bar,
     draw_buttons,
     draw_combat_links,
+    draw_combat_pair_marker,
+    draw_direct_attack_marker,
     draw_creatures,
     draw_enemy_area,
     draw_hand,
@@ -89,6 +91,9 @@ from ui.layout import (
     draw_side_panel,
     format_target_ref,
     get_creature_screen_positions,
+    get_combat_formation_positions,
+    get_visible_combat_creature_ids,
+    combat_formation_active,
     get_life_bar_rect,
     get_playfield_sections,
     get_side_panel_layout,
@@ -181,7 +186,12 @@ class GodaoApp:
     draw_enemy_area = draw_enemy_area
     draw_player_area = draw_player_area
     draw_combat_links = draw_combat_links
+    draw_combat_pair_marker = draw_combat_pair_marker
+    draw_direct_attack_marker = draw_direct_attack_marker
     get_creature_screen_positions = get_creature_screen_positions
+    get_combat_formation_positions = get_combat_formation_positions
+    get_visible_combat_creature_ids = get_visible_combat_creature_ids
+    combat_formation_active = combat_formation_active
     get_playfield_sections = get_playfield_sections
     draw_polyline = draw_polyline
     draw_arrowhead = draw_arrowhead

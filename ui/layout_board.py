@@ -6,7 +6,7 @@ import pygame
 
 from core.builder_rules import BUILDER_CREATURE_CAP
 from core.config import STARTING_LIFE
-from core.models import PHASE_BUILDER_CREATURE
+from core.models import PHASE_BUILDER_CREATURE, PHASE_DECLARE_ATTACKERS, PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE
 from ui.player_labels import get_player_display_name
 from ui.render_interaction import get_resource_background_segment_rects
 from ui.style import HIGHLIGHT, LIFE_BAR_HEIGHT_RATIO, TEXT_COLOR
@@ -156,6 +156,73 @@ def draw_player_area(self) -> None:
     self.summoner_rects[self.engine.human_player.player_id] = self.draw_life_bar(self.engine.human_player, creatures_rect)
 
 
+def combat_formation_active(self) -> bool:
+    return self.engine.phase in {PHASE_DECLARE_BLOCKERS, PHASE_DICE_BATTLE} and bool(
+        self.engine.selected_attackers or self.engine.block_assignments
+    )
+
+
+def get_visible_combat_creature_ids(self, creatures, target_key: str) -> set[int]:
+    all_ids = {creature.unit_id for creature in creatures}
+    if not self.combat_formation_active():
+        return all_ids
+
+    player = self.engine.human_player if target_key == "player_1_creatures" else self.engine.ai_player
+    if player.player_id == self.engine.active_player.player_id:
+        return all_ids.intersection(self.engine.selected_attackers or self.engine.block_assignments.keys())
+
+    # Defenders must remain visible and clickable until block selection is confirmed.
+    if self.engine.phase == PHASE_DECLARE_BLOCKERS:
+        return all_ids
+    blocker_ids = {blocker_id for blocker_id in self.engine.block_assignments.values() if blocker_id is not None}
+    return all_ids.intersection(blocker_ids)
+
+
+def get_combat_formation_positions(
+    self, creatures, target_key: str, start_x: int, start_y: int, lane_width: int, lane_height: int
+) -> Dict[int, pygame.Rect]:
+    """Keep attackers in place and align assigned blockers with them."""
+    if not self.combat_formation_active():
+        return {}
+
+    attacker_ids = list(self.engine.selected_attackers or self.engine.block_assignments.keys())
+    positions = self.get_creature_screen_positions(
+        creatures,
+        target_key == "player_1_creatures",
+        start_x,
+        start_y,
+        lane_width,
+        lane_height,
+    )
+    player = self.engine.human_player if target_key == "player_1_creatures" else self.engine.ai_player
+    if player.player_id == self.engine.active_player.player_id:
+        return positions
+
+    attacker_positions = self.get_creature_screen_positions(
+        self.engine.active_player.battlefield,
+        self.engine.active_player.player_id == self.engine.human_player.player_id,
+        start_x,
+        start_y,
+        lane_width,
+        lane_height,
+    )
+    creature_by_id = {creature.unit_id: creature for creature in creatures}
+    for attacker_id in attacker_ids:
+        blocker_id = self.engine.block_assignments.get(attacker_id)
+        blocker_rect = positions.get(blocker_id)
+        attacker_rect = attacker_positions.get(attacker_id)
+        blocker = creature_by_id.get(blocker_id)
+        if blocker_rect is None or attacker_rect is None or blocker is None:
+            continue
+        positions[blocker_id] = pygame.Rect(
+            attacker_rect.centerx - blocker_rect.width // 2,
+            blocker_rect.y,
+            blocker_rect.width,
+            blocker_rect.height,
+        )
+    return positions
+
+
 def draw_combat_links(self) -> None:
     if not self.engine.selected_attackers and not self.engine.block_assignments:
         return
@@ -194,36 +261,46 @@ def draw_combat_links(self) -> None:
         attacker_selected = attacker_id == self.engine.selected_attack_target_id
         if blocker_id is None:
             summoner_color = HIGHLIGHT if attacker_selected else (206, 186, 96)
-            self.draw_polyline(
-                start=(
-                    attacker_rect.centerx,
-                    attacker_rect.bottom if attacker_rect.centery < defender_summoner_rect.centery else attacker_rect.top,
-                ),
-                end=(
-                    defender_summoner_rect.centerx,
-                    defender_summoner_rect.top if defender_summoner_rect.centery > attacker_rect.centery else defender_summoner_rect.bottom,
-                ),
-                color=summoner_color,
-                via_y=(
-                    (attacker_rect.bottom + defender_summoner_rect.top) // 2
-                    if attacker_rect.centery < defender_summoner_rect.centery
-                    else (attacker_rect.top + defender_summoner_rect.bottom) // 2
-                ),
-                width=self.scale_ui(3),
+            start = (
+                attacker_rect.centerx,
+                attacker_rect.bottom if attacker_rect.centery < defender_summoner_rect.centery else attacker_rect.top,
             )
+            attacks_downward = attacker_rect.centery < defender_summoner_rect.centery
+            end = (
+                max(defender_summoner_rect.left, min(start[0], defender_summoner_rect.right - 1)),
+                defender_summoner_rect.top if attacks_downward else defender_summoner_rect.bottom,
+            )
+            self.draw_direct_attack_marker(start, end, summoner_color, attacker_selected)
             continue
         blocker_rect = self.creature_rects.get(blocker_id) or player_positions.get(blocker_id) or enemy_positions.get(blocker_id)
         if blocker_rect is None:
             continue
         blocker_selected = blocker_id == self.engine.selected_blocker_id
-        blocker_color = HIGHLIGHT if attacker_selected else (102, 188, 112)
-        self.draw_polyline(
+        blocker_color = HIGHLIGHT if attacker_selected or blocker_selected else (102, 188, 112)
+        self.draw_combat_pair_marker(
             start=(attacker_rect.centerx, attacker_rect.bottom if attacker_rect.centery < blocker_rect.centery else attacker_rect.top),
             end=(blocker_rect.centerx, blocker_rect.top if blocker_rect.centery > attacker_rect.centery else blocker_rect.bottom),
             color=blocker_color,
-            via_y=(attacker_rect.bottom + blocker_rect.top) // 2 if attacker_rect.centery < blocker_rect.centery else (attacker_rect.top + blocker_rect.bottom) // 2,
-            width=self.scale_ui(3 if blocker_selected else 2),
+            selected=attacker_selected or blocker_selected,
         )
+
+
+def draw_combat_pair_marker(self, start: tuple[int, int], end: tuple[int, int], color, selected: bool = False) -> None:
+    width = self.scale_ui(5 if selected else 3)
+    pygame.draw.line(self.screen, color, start, end, width)
+    center = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
+    radius = self.scale_ui(14 if selected else 12)
+    pygame.draw.circle(self.screen, (36, 41, 48), center, radius)
+    pygame.draw.circle(self.screen, color, center, radius, self.scale_ui(3))
+    blade = max(self.scale_ui(5), radius // 2)
+    pygame.draw.line(self.screen, color, (center[0] - blade, center[1] - blade), (center[0] + blade, center[1] + blade), self.scale_ui(2))
+    pygame.draw.line(self.screen, color, (center[0] + blade, center[1] - blade), (center[0] - blade, center[1] + blade), self.scale_ui(2))
+
+
+def draw_direct_attack_marker(self, start: tuple[int, int], end: tuple[int, int], color, selected: bool = False) -> None:
+    width = self.scale_ui(5 if selected else 4)
+    pygame.draw.line(self.screen, color, start, end, width)
+    self.draw_arrowhead(start, end, color, width)
 
 
 def get_creature_screen_positions(
@@ -367,21 +444,19 @@ def draw_polyline(self, start: tuple[int, int], end: tuple[int, int], color, via
 
 
 def draw_arrowhead(self, from_point: tuple[int, int], to_point: tuple[int, int], color, width: int) -> None:
-    dx = to_point[0] - from_point[0]
-    dy = to_point[1] - from_point[1]
-    if dx == 0 and dy == 0:
+    direction = pygame.Vector2(to_point) - pygame.Vector2(from_point)
+    if direction.length_squared() == 0:
         return
-    arrow_size = 10 + width
-    if abs(dx) > abs(dy):
-        if dx > 0:
-            points = [to_point, (to_point[0] - arrow_size, to_point[1] - arrow_size // 2), (to_point[0] - arrow_size, to_point[1] + arrow_size // 2)]
-        else:
-            points = [to_point, (to_point[0] + arrow_size, to_point[1] - arrow_size // 2), (to_point[0] + arrow_size, to_point[1] + arrow_size // 2)]
-    else:
-        if dy > 0:
-            points = [to_point, (to_point[0] - arrow_size // 2, to_point[1] - arrow_size), (to_point[0] + arrow_size // 2, to_point[1] - arrow_size)]
-        else:
-            points = [to_point, (to_point[0] - arrow_size // 2, to_point[1] + arrow_size), (to_point[0] + arrow_size // 2, to_point[1] + arrow_size)]
+    direction = direction.normalize()
+    perpendicular = pygame.Vector2(-direction.y, direction.x)
+    tip = pygame.Vector2(to_point)
+    base = tip - direction * self.scale_ui(11)
+    half_width = self.scale_ui(6)
+    points = [
+        (round(tip.x), round(tip.y)),
+        (round(base.x + perpendicular.x * half_width), round(base.y + perpendicular.y * half_width)),
+        (round(base.x - perpendicular.x * half_width), round(base.y - perpendicular.y * half_width)),
+    ]
     pygame.draw.polygon(self.screen, color, points)
 
 
@@ -439,6 +514,35 @@ def draw_resources(self, resources, start_x: int, start_y: int, available_width:
 
 
 def draw_creatures(self, creatures, is_human: bool, target_key: str, start_x: int, start_y: int, lane_width: int, lane_height: int) -> None:
+    formation_positions = self.get_combat_formation_positions(
+        creatures, target_key, start_x, start_y, lane_width, lane_height
+    )
+    if formation_positions:
+        visible_ids = self.get_visible_combat_creature_ids(creatures, target_key)
+        for creature in creatures:
+            if creature.unit_id not in visible_ids:
+                continue
+            base_rect = formation_positions[creature.unit_id]
+            offset_x, offset_y = self.get_creature_animation_offset(creature.unit_id, base_rect)
+            selected = creature.unit_id in {
+                self.engine.selected_attack_target_id,
+                self.engine.selected_blocker_id,
+            } or creature.unit_id in self.engine.selected_attackers
+            rect = self.draw_creature_card(
+                creature,
+                is_human,
+                base_rect.x + offset_x,
+                base_rect.y + offset_y,
+                selected,
+                "",
+                creature.unit_id in self.engine.selected_attackers,
+            )
+            self.creature_rects[creature.unit_id] = rect.copy()
+            if self.last_preview_builder is not None:
+                self.preview_targets.append((rect, self.last_preview_builder, self.last_preview_info_builder))
+            self.click_targets[target_key].append((rect, creature.unit_id))
+        return
+
     base_column_gap = self.card_gap + self.scale_ui(70)
     column_step = self.card_height + base_column_gap
     columns = max(1, lane_width // column_step)

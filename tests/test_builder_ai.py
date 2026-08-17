@@ -97,29 +97,30 @@ class BuilderAITests(unittest.TestCase):
             vw=1,
             sw=2,
             lw=3,
-            abilities=frozenset({Ability.FLYING, Ability.HASTE}),
-            cost=8,
+            abilities=frozenset(),
+            cost=4,
         )
 
-        self.assertEqual(candidate_cost(aw=2, vw=1, sw=2, lw=3), 7)
-        self.assertEqual(candidate_cost(aw=2, vw=1, sw=2, lw=3, has_haste=True), 8)
+        self.assertEqual(candidate_cost(aw=2, vw=1, sw=2, lw=3), 4)
+        with self.assertRaises(ValueError):
+            candidate_cost(aw=2, vw=1, sw=2, lw=3, has_haste=True)
         self.assertTrue(is_legal_builder_candidate(candidate, 9))
 
     def test_candidate_legality_rejects_invalid_values_and_budget_overflow(self) -> None:
-        valid = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.FLYING}), cost=4)
-        overflow = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.FLYING}), cost=5)
-        invalid_life = BuilderCreatureCandidate(aw=0, vw=0, sw=0, lw=0, abilities=frozenset({Ability.FLYING}), cost=0)
-        invalid_cost = BuilderCreatureCandidate(aw=1, vw=0, sw=0, lw=1, abilities=frozenset({Ability.FLYING}), cost=0)
-        missing_ability = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset(), cost=4)
-        paid_haste = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.HASTE, Ability.FLYING}), cost=5)
-        multiple_primary_abilities = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.FLYING, Ability.TRAMPLE}), cost=4)
+        valid = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset(), cost=1)
+        overflow = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset(), cost=1)
+        invalid_life = BuilderCreatureCandidate(aw=0, vw=0, sw=0, lw=0, abilities=frozenset(), cost=0)
+        invalid_cost = BuilderCreatureCandidate(aw=1, vw=0, sw=0, lw=1, abilities=frozenset(), cost=0)
+        ability_candidate = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.FLYING}), cost=1)
+        paid_haste = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.HASTE, Ability.FLYING}), cost=2)
+        multiple_primary_abilities = BuilderCreatureCandidate(aw=1, vw=1, sw=1, lw=2, abilities=frozenset({Ability.FLYING, Ability.TRAMPLE}), cost=1)
 
         self.assertTrue(is_legal_builder_candidate(valid, 5))
-        self.assertFalse(is_legal_builder_candidate(overflow, 5))
+        self.assertFalse(is_legal_builder_candidate(overflow, 0))
         self.assertFalse(is_legal_builder_candidate(invalid_life, 5))
         self.assertFalse(is_legal_builder_candidate(invalid_cost, 5))
-        self.assertFalse(is_legal_builder_candidate(missing_ability, 5))
-        self.assertTrue(is_legal_builder_candidate(paid_haste, 5))
+        self.assertFalse(is_legal_builder_candidate(ability_candidate, 5))
+        self.assertFalse(is_legal_builder_candidate(paid_haste, 5))
         self.assertFalse(is_legal_builder_candidate(multiple_primary_abilities, 5))
 
     def test_candidate_generation_is_exhaustive_and_legal_for_small_budgets(self) -> None:
@@ -129,6 +130,7 @@ class BuilderAITests(unittest.TestCase):
             self.assertGreater(len(candidates), 3)
             self.assertEqual(len(candidates), len({candidate.key for candidate in candidates}))
             self.assertTrue(all(is_legal_builder_candidate(candidate, budget) for candidate in candidates))
+            self.assertTrue(all(min(candidate.signature) >= 1 for candidate in candidates))
 
     def test_candidate_generation_for_large_budgets_contains_varied_exact_budget_builds(self) -> None:
         self.make_builder_creature(0, aw=1, vw=1, sw=1, lw=2, abilities=(Ability.FLYING,), ready=True)
@@ -139,13 +141,9 @@ class BuilderAITests(unittest.TestCase):
         self.assertTrue(any(candidate.vw >= 4 for candidate in candidates))
         self.assertTrue(any(candidate.sw >= 4 for candidate in candidates))
         self.assertTrue(any(candidate.lw >= 5 for candidate in candidates))
-        self.assertTrue(all(len(candidate.abilities) in {1, 2} for candidate in candidates))
-        self.assertTrue(all(len(candidate.abilities) == 2 for candidate in candidates if candidate.has_haste))
-        self.assertTrue(all(len(candidate.abilities) == 1 for candidate in candidates if not candidate.has_haste))
-        self.assertTrue(any(candidate.has_haste for candidate in candidates))
-        self.assertTrue(any(candidate.has_ability(Ability.FLYING) for candidate in candidates))
-        self.assertTrue(any(candidate.has_ability(Ability.VIGILANCE) for candidate in candidates))
-        self.assertTrue(any(candidate.has_ability(Ability.TRAMPLE) for candidate in candidates))
+        self.assertTrue(all(candidate.abilities == frozenset() for candidate in candidates))
+        self.assertTrue(all(candidate.builder_ability is None for candidate in candidates))
+        self.assertTrue(all(not candidate.has_haste for candidate in candidates))
         self.assertTrue(all(candidate.cost == 10 for candidate in candidates))
 
     def test_scoring_rewards_relevant_vanilla_stats_and_penalizes_bad_shells(self) -> None:
@@ -200,7 +198,10 @@ class BuilderAITests(unittest.TestCase):
         self.assertEqual(plan["vw"], best_candidate.vw)
         self.assertEqual(plan["sw"], best_candidate.sw)
         self.assertEqual(plan["lw"], best_candidate.lw)
-        self.assertEqual(set(plan["abilities"]), {ability.value for ability in best_candidate.abilities})
+        self.assertNotIn("ability", plan)
+        self.assertNotIn("abilities", plan)
+        self.assertNotIn("haste", plan)
+        self.assertEqual(best_candidate.abilities, frozenset())
         recomputed_best = max(
             (
                 score_builder_creature_candidate(candidate, snapshot, available_resources=6).total,

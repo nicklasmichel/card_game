@@ -489,7 +489,7 @@ def _builder_build_sample(engine, action: dict) -> BuilderBuildSample | None:
     primary = plan.get("ability")
     primary_name = getattr(primary, "name", str(primary)).upper() if primary is not None else ""
     if primary_name in {"", "NONE"}:
-        primary_name = next((name for name in sorted(ability_names) if name != "HASTE"), "UNKNOWN")
+        primary_name = next((name for name in sorted(ability_names) if name != "HASTE"), "NONE")
     if primary_name == "VIGILANT":
         primary_name = "VIGILANCE"
     has_haste = bool(plan.get("haste", False)) or "HASTE" in ability_names

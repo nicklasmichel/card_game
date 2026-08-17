@@ -87,6 +87,7 @@ def create_pending_dice_battle(self, attacker_id: int, blocker_id: int):
         blocker_owner=blocker_owner.player_id,
         attacker_snapshot=make_combat_unit_snapshot(self, attacker),
         blocker_snapshot=make_combat_unit_snapshot(self, blocker),
+        combat_id=self.combat_id_counter,
     )
     _resolve_battle_rounds(self, battle, attacker, blocker, apply_result=False)
     return battle
@@ -231,9 +232,17 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
     apply_life_steal_healing(self, winner, actual_creature_damage + (battle.trample_damage if battle.winner == "attacker" else 0))
     if self.statistics is not None:
         if battle.winner == "attacker":
-            self.statistics.register_dice_comparison(attacker_damage=damage, blocker_damage=0)
+            self.statistics.register_dice_comparison(
+                combat_id=battle.combat_id,
+                attacker_damage=actual_creature_damage,
+                blocker_damage=0,
+            )
         else:
-            self.statistics.register_dice_comparison(attacker_damage=0, blocker_damage=damage)
+            self.statistics.register_dice_comparison(
+                combat_id=battle.combat_id,
+                attacker_damage=0,
+                blocker_damage=actual_creature_damage,
+            )
     _record_battle_post_state(self, battle, attacker, blocker)
     battle.resolution_log = _build_battle_resolution_log(self, battle, damage)
     if batched:
@@ -243,6 +252,7 @@ def _apply_battle_result(self, battle: PendingDiceBattle, attacker: BattlefieldC
     self.cleanup_destroyed_units(log_destruction=False)
     if self.statistics is not None:
         self.statistics.finish_creature_combat(
+            combat_id=battle.combat_id,
             attacker_owner=battle.attacker_owner,
             blocker_owner=battle.blocker_owner,
             attacker_creature_name=attacker.name,
@@ -270,6 +280,7 @@ def end_dice_battle(self) -> None:
     for battle in battles:
         if self.statistics is not None:
             self.statistics.finish_creature_combat(
+                combat_id=battle.combat_id,
                 attacker_owner=battle.attacker_owner,
                 blocker_owner=battle.blocker_owner,
                 attacker_creature_name=battle.attacker_snapshot.name,
