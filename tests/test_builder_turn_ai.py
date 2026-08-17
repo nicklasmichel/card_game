@@ -725,6 +725,26 @@ class BuilderTurnAITests(unittest.TestCase):
         )
         self.assertGreater(first_zero_defense_haste, 0)
 
+    def test_normal_shortlist_starts_with_static_leader_not_damage_glass_cannon(self) -> None:
+        self.set_builder_resources(self.engine.ai_player, 7)
+        self.set_builder_resources(self.engine.human_player, 9)
+        self.engine.ai_player.life = 8
+        self.make_builder_creature(0, aw=0, vw=1, sw=1, lw=2, ready=True, abilities=(Ability.FLYING, Ability.HASTE))
+        self.make_builder_creature(1, aw=0, vw=3, sw=1, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE))
+        self.make_builder_creature(1, aw=0, vw=3, sw=2, lw=1, ready=True, abilities=(Ability.FLYING, Ability.HASTE))
+
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        projected, _, _ = _build_projected_candidates(self.engine.ai_player, self.engine, snapshot)
+        shortlisted = _shortlist_projected_candidates(projected, snapshot)
+        static_best = max(projected, key=lambda current: (current.static_score.total, current.candidate.key))
+
+        self.assertEqual(shortlisted[0].candidate.key, static_best.candidate.key)
+        self.assertFalse(
+            shortlisted[0].candidate.aw == 0
+            and shortlisted[0].candidate.vw == 0
+            and shortlisted[0].candidate.sw >= 4
+        )
+
     def test_earlier_pressure_state_prefers_immediate_haste_response(self) -> None:
         self.set_builder_resources(self.engine.ai_player, 4)
         self.set_builder_resources(self.engine.human_player, 4)
@@ -759,7 +779,10 @@ class BuilderTurnAITests(unittest.TestCase):
             decision.predicted_attack_decision.score.projected_counter_main_action,
             {"resource", "build_terminal"},
         )
-        self.assertGreaterEqual(len(decision.predicted_attack_decision.score.projected_counter_attackers), 4)
+        self.assertGreaterEqual(
+            decision.predicted_attack_decision.score.projected_counter_damage,
+            self.engine.ai_player.life,
+        )
         self.assertIn("forced_loss_all_actions=true", logs)
 
     def test_resource_can_beat_bad_early_build(self) -> None:

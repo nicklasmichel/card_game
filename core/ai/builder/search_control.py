@@ -21,11 +21,17 @@ class BuilderSearchControl:
         if self.cancel_event is not None and bool(getattr(self.cancel_event, "is_set", lambda: False)()):
             self.stop_reason = "cancelled"
             return True
-        effective_deadline = self.deadline
-        if deadline is not None:
-            effective_deadline = deadline if effective_deadline is None else min(effective_deadline, deadline)
-        if effective_deadline is not None and monotonic() >= effective_deadline:
+        now = monotonic()
+        if self.deadline is not None and now >= self.deadline:
             self.stop_reason = "deadline"
+            return True
+        # Callers use shorter local deadlines to bound one expensive branch
+        # (for example a horizon or frontier calculation).  Reaching such a
+        # branch budget must return control to the outer search without marking
+        # the entire turn as exhausted.  Previously the local timeout became a
+        # sticky global stop reason, so a resource evaluation could prevent every
+        # creature candidate from being considered despite ample turn time.
+        if deadline is not None and now >= deadline:
             return True
         return False
 

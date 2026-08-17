@@ -140,6 +140,68 @@ class BuilderBlockAITests(unittest.TestCase):
         no_block_score = score_builder_block_candidate(BuilderBlockCandidate(assignments=tuple()), self.engine.human_player, self.engine)
         self.assertGreater(no_block_score.total, block_score.total)
 
+    def test_full_life_ai_takes_chip_damage_instead_of_sacrificing_creature(self) -> None:
+        attacker = self.make_builder_creature(
+            1,
+            aw=0,
+            vw=1,
+            sw=1,
+            lw=1,
+            ready=True,
+            abilities=(Ability.VIGILANCE, Ability.HASTE),
+        )
+        self.make_builder_creature(
+            0,
+            aw=0,
+            vw=0,
+            sw=2,
+            lw=1,
+            ready=True,
+            abilities=(Ability.VIGILANCE, Ability.HASTE),
+        )
+        self.engine.human_player.life = 12
+        self.set_attackers(attacker)
+
+        assignments = choose_builder_blocks(self.engine.human_player, self.engine)
+
+        self.assertIsNone(assignments[attacker.unit_id])
+
+    def test_lethal_attack_prefers_larger_survival_buffer_over_preserving_blocker(self) -> None:
+        first = self.make_builder_creature(
+            1,
+            aw=3,
+            vw=0,
+            sw=6,
+            lw=2,
+            ready=True,
+            abilities=(Ability.TRAMPLE,),
+        )
+        second = self.make_builder_creature(
+            1,
+            aw=3,
+            vw=0,
+            sw=6,
+            lw=1,
+            ready=True,
+            abilities=(Ability.TRAMPLE, Ability.HASTE),
+        )
+        for stats in ((0, 1, 1, 2), (0, 0, 6, 1), (1, 2, 1, 3)):
+            self.make_builder_creature(
+                0,
+                aw=stats[0],
+                vw=stats[1],
+                sw=stats[2],
+                lw=stats[3],
+                ready=True,
+                abilities=(Ability.FLYING, Ability.HASTE),
+            )
+        self.engine.human_player.life = 12
+        self.set_attackers(first, second)
+
+        assignments = choose_builder_blocks(self.engine.human_player, self.engine)
+
+        self.assertEqual(sum(blocker_id is not None for blocker_id in assignments.values()), 2)
+
     def test_good_trade_is_preferred_over_no_block(self) -> None:
         attacker = self.make_builder_creature(1, aw=1, vw=1, sw=3, lw=2, ready=True, abilities=(Ability.TRAMPLE, Ability.LIFE_STEAL))
         blocker = self.make_builder_creature(0, aw=4, vw=4, sw=3, lw=2, ready=True)

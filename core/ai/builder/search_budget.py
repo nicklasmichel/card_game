@@ -22,9 +22,12 @@ FINAL_DECISION_SEARCH_BUDGET = BuilderSearchBudget(
 
 
 TURN_LOOKAHEAD_SEARCH_BUDGET = BuilderSearchBudget(
-    max_exact_attack_candidates=16,
-    max_exact_block_assignments=96,
-    max_heuristic_attack_candidates=8,
-    max_heuristic_block_responses=6,
+    # Main-action comparison runs this search many times.  A smaller tactical
+    # sample is sufficient here because the chosen action is re-evaluated once
+    # with FINAL_DECISION_SEARCH_BUDGET before execution.
+    max_exact_attack_candidates=12,
+    max_exact_block_assignments=48,
+    max_heuristic_attack_candidates=6,
+    max_heuristic_block_responses=4,
     mode_name="lookahead",
 )

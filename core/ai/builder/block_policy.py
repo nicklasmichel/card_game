@@ -52,6 +52,9 @@ FLYING_BLOCKER_PRESERVATION_WEIGHT = 0.22
 CAP_SLOT_RELEASE_WEIGHT = 0.6
 NEXT_ATTACK_LETHAL_PENALTY = 180.0
 NEXT_ATTACK_BUFFER_WEIGHT = 0.45
+SAFE_CHIP_DAMAGE_SCALE = 0.28
+CAUTIOUS_DAMAGE_SCALE = 0.65
+LETHAL_SURVIVAL_BUFFER_WEIGHT = 1.0
 
 
 @dataclass(frozen=True)
@@ -241,6 +244,21 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     )
     known_unavoidable_next_damage = max(0.0, horizon_report.cumulative_unavoidable_damage - expected_player_damage_taken)
     baseline_known_next_damage = max(0.0, baseline_horizon_report.cumulative_unavoidable_damage - damage_without_blocks)
+    reference_life = max(float(getattr(config, "STARTING_LIFE", 12)), float(life_total))
+    high_life_threshold = max(7.0, reference_life * 0.67)
+    safe_chip_damage = (
+        not baseline_guaranteed_lethal
+        and baseline_lethal_probability <= 0.0
+        and life_total >= high_life_threshold
+        and damage_without_blocks <= max(2.0, life_total * 0.25)
+        and baseline_known_next_damage < max(1.0, life_total - damage_without_blocks - 3.0)
+    )
+    if safe_chip_damage:
+        player_damage_scale = SAFE_CHIP_DAMAGE_SCALE
+    elif life_total >= high_life_threshold and not baseline_guaranteed_lethal:
+        player_damage_scale = CAUTIOUS_DAMAGE_SCALE
+    else:
+        player_damage_scale = 1.0
     board_preservation = (
         (enemy_kill_value - own_death_value) * BOARD_PRESERVATION_WEIGHT
         + flying_scarcity_bonus
@@ -264,12 +282,18 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     next_attack_lethal_prevention += max(0.0, baseline_known_next_damage - known_unavoidable_next_damage) * NEXT_ATTACK_BUFFER_WEIGHT
     life_buffer_after_combat = max(0.0, life_after_combat - known_unavoidable_next_damage)
     next_attack_lethal_prevention += life_buffer_after_combat * 0.12
+    if baseline_guaranteed_lethal and not guaranteed_lethal:
+        # Once every surviving line has received the large lethal-prevention
+        # bonus, prefer the line that leaves a real life buffer.  Without this,
+        # preserving a mediocre blocker could beat two blocks that leave several
+        # additional life, as happened in the turn-32 playtest regression.
+        next_attack_lethal_prevention += life_after_combat * LETHAL_SURVIVAL_BUFFER_WEIGHT
 
     lethal_prevention = immediate_lethal_prevention + next_attack_lethal_prevention
 
     total = (
-        prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT
-        - expected_player_damage_taken * PLAYER_DAMAGE_TAKEN_PENALTY
+        prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT * player_damage_scale
+        - expected_player_damage_taken * PLAYER_DAMAGE_TAKEN_PENALTY * player_damage_scale
         + enemy_creature_damage * ENEMY_CREATURE_DAMAGE_WEIGHT
         - own_creature_damage * OWN_CREATURE_DAMAGE_PENALTY
         + enemy_kill_value * ENEMY_KILL_VALUE_WEIGHT
@@ -284,8 +308,18 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     debug_contributions = (
         ("life_before_combat", life_total, 1.0, life_total),
         ("life_after_combat", life_after_combat, 1.0, life_after_combat),
-        ("prevented_player_damage", prevented_player_damage, PREVENTED_PLAYER_DAMAGE_WEIGHT, prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT),
-        ("player_damage_taken", expected_player_damage_taken, -PLAYER_DAMAGE_TAKEN_PENALTY, -expected_player_damage_taken * PLAYER_DAMAGE_TAKEN_PENALTY),
+        (
+            "prevented_player_damage",
+            prevented_player_damage,
+            PREVENTED_PLAYER_DAMAGE_WEIGHT * player_damage_scale,
+            prevented_player_damage * PREVENTED_PLAYER_DAMAGE_WEIGHT * player_damage_scale,
+        ),
+        (
+            "player_damage_taken",
+            expected_player_damage_taken,
+            -PLAYER_DAMAGE_TAKEN_PENALTY * player_damage_scale,
+            -expected_player_damage_taken * PLAYER_DAMAGE_TAKEN_PENALTY * player_damage_scale,
+        ),
         ("known_unavoidable_next_damage", known_unavoidable_next_damage, -1.0, -known_unavoidable_next_damage),
         ("enemy_creature_damage", enemy_creature_damage, ENEMY_CREATURE_DAMAGE_WEIGHT, enemy_creature_damage * ENEMY_CREATURE_DAMAGE_WEIGHT),
         ("own_creature_damage", own_creature_damage, -OWN_CREATURE_DAMAGE_PENALTY, -own_creature_damage * OWN_CREATURE_DAMAGE_PENALTY),

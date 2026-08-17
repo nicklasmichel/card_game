@@ -101,7 +101,9 @@ FRONTIER_SCORING_SECONDS = 1.5
 # turn deadline on repeated attack/block projections. The selected action still
 # retains the normal attack search; only its comparative future preview is
 # bounded more tightly.
-ACTION_HORIZON_SECONDS = 0.5
+ACTION_HORIZON_SECONDS = 0.35
+MAIN_PHASE_SEARCH_LIMIT_SECONDS = 10.0
+FINAL_ATTACK_RESERVE_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -126,7 +128,12 @@ def plan_builder_turn(player, engine, *, cancel_event=None) -> BuilderTurnDecisi
     if cached is not None and _decision_matches_runtime(cached, engine.phase, runtime_signature):
         return cached
 
-    time_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
+    configured_limit = max(1.0, float(getattr(config, "AI_THINKING_TIME_LIMIT_SECONDS", 25.0)))
+    time_limit = (
+        min(configured_limit, MAIN_PHASE_SEARCH_LIMIT_SECONDS)
+        if engine.phase == PHASE_MAIN_1 and not player.main_action_used_this_turn
+        else configured_limit
+    )
     deadline = monotonic() + time_limit
 
     with builder_search_scope(deadline=deadline, cancel_event=cancel_event) as search_control:
@@ -330,6 +337,10 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
     if builder_debug_verbose():
         log_builder_state(engine, player, decision="main", snapshot=snapshot)
     base_projection = build_current_turn_projection(player, engine)
+    comparison_deadline = min(
+        deadline,
+        max(monotonic() + 1.0, deadline - FINAL_ATTACK_RESERVE_SECONDS),
+    )
     attack_cache: dict[tuple, BuilderAttackDecision] = {}
     horizon_cache: dict[tuple, BuilderHorizonReport] = {}
     baseline_attack = _evaluate_attack_cached(base_projection, attack_cache)
@@ -369,13 +380,13 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
         player,
         engine,
         snapshot,
-        deadline=min(deadline, monotonic() + ROOT_BUILD_SCORING_SECONDS),
+        deadline=min(comparison_deadline, monotonic() + ROOT_BUILD_SCORING_SECONDS),
     )
     shortlisted = _shortlist_projected_candidates(static_candidates, snapshot)
     frontier_context = _build_frontier_context(
         snapshot,
         base_projection,
-        deadline=min(deadline, monotonic() + FRONTIER_SCORING_SECONDS),
+        deadline=min(comparison_deadline, monotonic() + FRONTIER_SCORING_SECONDS),
     )
 
     decisions: list[BuilderTurnDecision] = []
@@ -400,7 +411,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                     frontier_context=frontier_context,
                     engine=engine,
                     player=player,
-                    deadline=deadline,
+                    deadline=comparison_deadline,
                 )
             )
             current_decision = decisions[-1]
@@ -411,7 +422,7 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                 _debug_build_candidates(engine, player, snapshot, build_debug, shortlisted, current_decision)
                 _debug_turn_decision(engine, player, runtime_signature, snapshot, baseline_attack, [current_decision], fallback_used)
                 return current_decision
-            if decisions and builder_search_should_stop(deadline):
+            if decisions and builder_search_should_stop(comparison_deadline):
                 break
             continue
         decisions.extend(
@@ -428,10 +439,10 @@ def _plan_builder_full_turn(player, engine, runtime_signature: tuple, *, deadlin
                 source_signature=runtime_signature,
                 fallback_used=fallback_used,
                 frontier_context=frontier_context,
-                deadline=deadline,
+                deadline=comparison_deadline,
             )
         )
-        if decisions and builder_search_should_stop(deadline):
+        if decisions and builder_search_should_stop(comparison_deadline):
             break
     decisions.sort(key=_turn_decision_sort_key, reverse=True)
     decision = _finalize_selected_attack_plan(base_projection, decisions[0])
@@ -1191,9 +1202,9 @@ def _attack_cache_key(projection) -> tuple:
 
 def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedCandidate], snapshot) -> list[BuilderProjectedCandidate]:
     ready_resources = snapshot.own_ready_resources
-    limit = 16 if ready_resources <= 4 else 20
+    limit = 10 if ready_resources <= 4 else 12
     if snapshot.enemy_potential_attacker_count >= 3 or snapshot.enemy_creature_count >= 4:
-        limit += 4
+        limit += 2
     if len(projected_candidates) <= limit:
         return projected_candidates
     selected: dict[tuple, BuilderProjectedCandidate] = {}
@@ -1209,6 +1220,15 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
                 )
 
     by_future = sorted(projected_candidates, key=_projected_candidate_sort_key, reverse=True)
+    by_static = sorted(
+        projected_candidates,
+        key=lambda projected: (
+            projected.static_score.total,
+            projected.future_value,
+            projected.candidate.key,
+        ),
+        reverse=True,
+    )
     by_damage = sorted(projected_candidates, key=lambda projected: (projected.candidate.sw, projected.future_value, projected.candidate.key), reverse=True)
     by_attack = sorted(projected_candidates, key=lambda projected: (projected.candidate.aw, projected.future_value, projected.candidate.key), reverse=True)
     by_defense = sorted(
@@ -1423,6 +1443,12 @@ def _shortlist_projected_candidates(projected_candidates: list[BuilderProjectedC
     if must_answer_now:
         take(by_immediate_blocker, 4, "mandatory_emergency_haste_blocker")
         take(by_highest_haste_defense, 2, "mandatory_emergency_haste_defense")
+    # Static/future leaders are reliable incumbents when the tactical search is
+    # truncated.  They must enter the shortlist before narrow damage profiles;
+    # otherwise a deadline can leave the AI with a 0-Attack glass cannon even
+    # though a substantially stronger balanced body was already scored.
+    take(by_static, 3 if ready_resources <= 4 else 4, "static_priority")
+    take(by_future, 2 if ready_resources <= 4 else 3, "future_priority")
     take(by_haste_damage, 2, "mandatory_haste_damage")
     take(by_flying_damage, 2 if snapshot.enemy_flying_count > 0 else 1, "mandatory_flying_damage")
     take(by_terminal, 3, "mandatory_terminal")
