@@ -154,6 +154,7 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
     inefficient_trample_trade_penalty = 0.0
     flying_scarcity_bonus = 0.0
     slot_release_value = 0.0
+    no_blocker_death_probability = 1.0
 
     own_flying_blockers = [blocker for blocker in blockers if blocker.has_ability(Ability.FLYING)]
     enemy_flying_threats = [
@@ -190,11 +191,10 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
         blocker_value = estimate_creature_board_value(blocker)
         enemy_kill_value += estimate.attacker_death_probability * attacker_value
         own_death_value += estimate.defender_death_probability * blocker_value
+        no_blocker_death_probability *= 1.0 - estimate.defender_death_probability
         own_lifesteal_value += estimate.expected_defender_heal
         enemy_lifesteal_value += estimate.expected_attacker_heal
         current_distributions.append(player_damage_distribution_for_combat(attacker, estimate))
-        if cap_context.at_cap and blocker.unit_id == cap_context.weakest_unit_id:
-            slot_release_value += estimate.defender_death_probability * cap_context.cap_pressure * CAP_SLOT_RELEASE_WEIGHT
         if attacker.has_ability(Ability.TRAMPLE):
             prevented_here = max(0.0, float(attacker.sw) - estimate.expected_player_damage)
             prevention_ratio = prevented_here / max(1.0, float(attacker.sw))
@@ -212,6 +212,14 @@ def score_builder_block_candidate(candidate: BuilderBlockCandidate, defending_pl
             and len(enemy_flying_threats) >= 2
         ):
             flying_scarcity_bonus += (1.0 - estimate.defender_death_probability) * FLYING_BLOCKER_PRESERVATION_WEIGHT
+
+    if cap_context.at_cap:
+        # One casualty is sufficient to open the only build slot usable next
+        # turn. Summing a reward for individual deaths made multi-block lines
+        # prefer losing an extra creature, even though a second empty slot has
+        # no immediate value with one main action per turn.
+        probability_any_blocker_dies = 1.0 - no_blocker_death_probability
+        slot_release_value = probability_any_blocker_dies * cap_context.cap_pressure * CAP_SLOT_RELEASE_WEIGHT
 
     total_damage_distribution = convolve_damage_distributions(current_distributions)
     baseline_distribution = convolve_damage_distributions(baseline_distributions)

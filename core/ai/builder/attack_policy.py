@@ -65,8 +65,9 @@ NO_ATTACK_PRESSURE_WEIGHT = 0.24
 SUICIDE_ATTACK_SCORE_PENALTY = 5.0
 LOW_IMPACT_ATTACK_PENALTY = 1.35
 CAP_SLOT_RELEASE_WEIGHT = 0.7
-CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT = 0.9
-CAP_UNBLOCKED_PRESSURE_BONUS = 0.22
+# One turn of discount from the immediate player-damage weight (2.2).
+NEXT_OWN_ATTACK_DAMAGE_WEIGHT = 1.1
+NEXT_OWN_ATTACK_LETHAL_BONUS = 24.0
 STALL_GRACE_TURNS = 6
 STALL_RAMP_TURNS = 10
 STALL_MIN_BOARD_SIZE = 4
@@ -91,6 +92,7 @@ ADVERSARIAL_NO_BLOCK_BEAM_WIDTH = 3
 ADVERSARIAL_BLOCK_RESPONSE_BEAM_WIDTH = 3
 PRUNED_LOOKAHEAD_SCORE = -1_000_000.0
 HEURISTIC_LOST_BLOCK_CONFIDENCE = 0.5
+RESIDUAL_BLOCK_COVERAGE_CONFIDENCE = 0.15
 _COUNTER_MAIN_ACTION_CACHE: dict[tuple, tuple[tuple[int, str, object], ...]] = {}
 
 
@@ -124,6 +126,9 @@ class BuilderAttackScore:
     projected_counter_main_stats: str = "-"
     projected_counter_attackers: tuple[int, ...] = ()
     projected_counter_legal_blockers: tuple[tuple[int, tuple[int, ...]], ...] = ()
+    projected_next_attack_damage: float = 0.0
+    projected_next_attack_lethal: bool = False
+    projected_next_attackers: tuple[int, ...] = ()
     lethal_probability: float = 0.0
     guaranteed_player_damage: float = 0.0
     chosen_block_assignment: tuple[tuple[int, int], ...] = ()
@@ -152,6 +157,9 @@ class BuilderCounterResult:
     next_main_value: float = 0.0
     next_main_action: str = "pass"
     next_main_stats: str = "-"
+    opponent_followup_damage: float = 0.0
+    opponent_followup_lethal: bool = False
+    opponent_followup_attackers: tuple[int, ...] = ()
 
 
 def evaluate_best_builder_attack(
@@ -507,13 +515,17 @@ def score_builder_attack_candidate(
             evaluate_next_main=False,
         )
         concrete_lost_block_value = max(0.0, score.projected_counter_damage - baseline_counter.score.player_damage)
-        effective_lost_block_value = max(score.lost_block_value, concrete_lost_block_value)
-        additional_lost_block_value = max(0.0, effective_lost_block_value - score.lost_block_value)
-        if additional_lost_block_value > 0.0:
+        effective_lost_block_value = max(
+            concrete_lost_block_value,
+            score.lost_block_value * RESIDUAL_BLOCK_COVERAGE_CONFIDENCE,
+            _estimate_mandatory_coverage_loss(candidate, player, enemy),
+        )
+        lost_block_delta = effective_lost_block_value - score.lost_block_value
+        if abs(lost_block_delta) > 0.0001:
             score = replace(
                 score,
                 lost_block_value=round(effective_lost_block_value, 4),
-                total=round(score.total - additional_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value, 4),
+                total=round(score.total - lost_block_delta * BUILDER_AI_WEIGHTS.lost_block_value, 4),
             )
     return score
 
@@ -674,14 +686,27 @@ def _apply_enemy_followup_pressure(
     # a non-vigilant creature attacks.  Counter search can refine that value,
     # but a tied/fallback projection must not erase it (as happened when a
     # required flying blocker attacked in turn 18 of the reference game).
-    heuristic_lost_block_value = base_score.lost_block_value * HEURISTIC_LOST_BLOCK_CONFIDENCE
+    heuristic_confidence = (
+        RESIDUAL_BLOCK_COVERAGE_CONFIDENCE
+        if baseline_counter is not None
+        else HEURISTIC_LOST_BLOCK_CONFIDENCE
+    )
+    heuristic_lost_block_value = base_score.lost_block_value * heuristic_confidence
+    heuristic_lost_block_value = max(
+        heuristic_lost_block_value,
+        _estimate_mandatory_coverage_loss(candidate, player, enemy),
+    )
     effective_lost_block_value = max(heuristic_lost_block_value, concrete_lost_block_value)
     lost_block_penalty = effective_lost_block_value * BUILDER_AI_WEIGHTS.lost_block_value
     counter_damage_penalty = counter_score.player_damage * BUILDER_AI_WEIGHTS.expected_counter_damage
     counter_lethal_penalty = counter_score.lethal_probability * BUILDER_AI_WEIGHTS.enemy_lethal_probability
+    next_attack_damage_bonus = counter_result.opponent_followup_damage * NEXT_OWN_ATTACK_DAMAGE_WEIGHT
+    next_attack_lethal_bonus = NEXT_OWN_ATTACK_LETHAL_BONUS if counter_result.opponent_followup_lethal else 0.0
+    next_attack_bonus = next_attack_damage_bonus + next_attack_lethal_bonus
     adjusted_total -= lost_block_penalty
     adjusted_total -= counter_damage_penalty
     adjusted_total -= counter_lethal_penalty
+    adjusted_total += next_attack_bonus
     lethal_penalty = 0.0
     if counter_score.guaranteed_player_damage >= player.life > 0:
         lethal_penalty = BUILDER_AI_WEIGHTS.enemy_lethal_penalty
@@ -689,7 +714,14 @@ def _apply_enemy_followup_pressure(
     debug_contributions = tuple(
         current
         for current in base_score.debug_contributions
-        if current[0] not in {"lost_block", "counter_damage", "counter_lethal", "enemy_lethal_penalty"}
+        if current[0] not in {
+            "lost_block",
+            "counter_damage",
+            "counter_lethal",
+            "enemy_lethal_penalty",
+            "next_attack",
+            "next_attack_lethal",
+        }
     ) + (
         (
             "lost_block",
@@ -715,6 +747,18 @@ def _apply_enemy_followup_pressure(
             round(-lethal_penalty, 4),
             round(-lethal_penalty, 4),
         ),
+        (
+            "next_attack",
+            round(counter_result.opponent_followup_damage, 4),
+            round(NEXT_OWN_ATTACK_DAMAGE_WEIGHT, 4),
+            round(next_attack_damage_bonus, 4),
+        ),
+        (
+            "next_attack_lethal",
+            round(1.0 if counter_result.opponent_followup_lethal else 0.0, 4),
+            round(NEXT_OWN_ATTACK_LETHAL_BONUS, 4),
+            round(next_attack_lethal_bonus, 4),
+        ),
     )
     return replace(
         base_score,
@@ -729,6 +773,9 @@ def _apply_enemy_followup_pressure(
         projected_counter_main_stats=counter_result.main_action_stats,
         projected_counter_attackers=counter_result.attackers,
         projected_counter_legal_blockers=counter_result.legal_blockers,
+        projected_next_attack_damage=round(counter_result.opponent_followup_damage, 4),
+        projected_next_attack_lethal=counter_result.opponent_followup_lethal,
+        projected_next_attackers=counter_result.opponent_followup_attackers,
         total=round(adjusted_total, 4),
         debug_contributions=debug_contributions,
     )
@@ -759,6 +806,7 @@ def evaluate_attack_assignment(
     board_position_value = 0.0
     vigilance_value = 0.0
     slot_release_value = 0.0
+    no_attacker_death_probability = 1.0
     damage_distributions: list[dict[int, float]] = []
     lost_block_value = 0.0
 
@@ -770,8 +818,6 @@ def evaluate_attack_assignment(
             player_damage += unblocked.player_damage
             lifesteal_value += unblocked.attacker_heal * LIFESTEAL_WEIGHT
             damage_distributions.append({int(unblocked.player_damage): 1.0})
-            if cap_context is not None and cap_context.at_cap and attacker.unit_id == cap_context.weakest_unit_id:
-                slot_release_value += min(cap_context.cap_pressure, unblocked.player_damage * CAP_UNBLOCKED_PRESSURE_BONUS)
         else:
             blocker = engine.get_unit_by_id(blocker_id)
             if blocker is None:
@@ -793,16 +839,13 @@ def evaluate_attack_assignment(
             enemy_kill_value += estimate.defender_death_probability * blocker_value
             own_death_risk += estimate.attacker_death_probability * attacker_value
             effective_own_death_penalty += estimate.attacker_death_probability * attacker_value
+            no_attacker_death_probability *= 1.0 - estimate.attacker_death_probability
             lifesteal_value += (estimate.expected_attacker_heal - estimate.expected_defender_heal) * LIFESTEAL_WEIGHT
             board_position_value += (
                 estimate.defender_death_probability * blocker_value
                 - estimate.attacker_death_probability * attacker_value
             ) * 0.12
             damage_distributions.append(damage_distribution)
-            if cap_context is not None and cap_context.at_cap and attacker.unit_id == cap_context.weakest_unit_id:
-                replacement_relief = estimate.attacker_death_probability * cap_context.cap_pressure
-                slot_release_value += replacement_relief * CAP_SLOT_RELEASE_WEIGHT
-                effective_own_death_penalty -= replacement_relief * CAP_WEAK_UNIT_DEATH_RELIEF_WEIGHT
         if attacker.has_ability(Ability.VIGILANT):
             vigilance_value += VIGILANCE_PRESERVATION_WEIGHT * enemy_potential_attackers
         else:
@@ -812,6 +855,10 @@ def evaluate_attack_assignment(
                 if block_value_cache is not None:
                     block_value_cache[attacker.unit_id] = cached_block_value
             lost_block_value += cached_block_value
+
+    if cap_context is not None and cap_context.at_cap:
+        probability_any_attacker_dies = 1.0 - no_attacker_death_probability
+        slot_release_value = probability_any_attacker_dies * cap_context.cap_pressure * CAP_SLOT_RELEASE_WEIGHT
 
     effective_own_death_penalty = max(0.0, effective_own_death_penalty or own_death_risk)
 
@@ -1306,6 +1353,7 @@ def _build_counterattack_projection(
     blockers = {unit.unit_id: unit for unit in enemy.battlefield}
     post_hp: dict[int, int] = {}
     removed_ids: set[int] = set()
+    initial_player_damage = 0.0
 
     for attacker_id, blocker_id in block_assignment:
         attacker = attackers.get(attacker_id)
@@ -1313,6 +1361,7 @@ def _build_counterattack_projection(
         if attacker is None or blocker is None:
             continue
         outcome = project_builder_combat_outcome(attacker, blocker, combat_die_sides)
+        initial_player_damage += outcome.player_damage
         if not outcome.attacker_survives:
             removed_ids.add(attacker_id)
         else:
@@ -1329,6 +1378,7 @@ def _build_counterattack_projection(
         if attacker is None:
             continue
         unblocked = estimate_unblocked_attack(attacker)
+        initial_player_damage += unblocked.player_damage
         healed_hp = min(int(attacker.lw), int(attacker.current_hp) + int(round(unblocked.attacker_heal)))
         post_hp[attacker_id] = healed_hp
 
@@ -1381,7 +1431,7 @@ def _build_counterattack_projection(
         enemy_id=player.player_id,
         action_kind="projected_counterattack",
         combat_die_sides=int(combat_die_sides),
-        own_life=enemy.life,
+        own_life=max(0.0, float(enemy.life) - initial_player_damage),
         enemy_life=player.life,
         own_total_resources=enemy.total_resources(),
         own_ready_resources=enemy.total_resources(),
@@ -1395,7 +1445,7 @@ def _build_counterattack_projection(
         state_signature=_counter_projection_signature(
             enemy.player_id,
             player.player_id,
-            enemy.life,
+            max(0.0, float(enemy.life) - initial_player_damage),
             player.life,
             enemy.total_resources(),
             enemy.total_resources(),
@@ -1622,6 +1672,9 @@ def _fallback_counterattack(
     best_next_main_value = 0.0
     best_next_main_action = "pass"
     best_next_main_stats = "-"
+    best_opponent_followup_damage = 0.0
+    best_opponent_followup_lethal = False
+    best_opponent_followup_attackers: tuple[int, ...] = ()
     exact_blocks = True
     pair_cache: dict[tuple[int, int], tuple] = {}
     for current in candidates:
@@ -1694,6 +1747,32 @@ def _fallback_counterattack(
             best_next_main_value = next_main_value
             best_next_main_action = next_main_action
             best_next_main_stats = next_main_stats
+    next_projection = project_attack_to_next_turn(
+        projection,
+        best_candidate.attacker_ids,
+        best_score.chosen_block_assignment,
+    )
+    if next_projection.own_life > 0:
+        if not fast_mode:
+            followup = evaluate_best_builder_attack(
+                next_projection.players[next_projection.player_id],
+                next_projection,
+                search_budget=COUNTERATTACK_SEARCH_BUDGET,
+                include_counterattack=False,
+                debug_output=False,
+            )
+            best_opponent_followup_damage = followup.score.guaranteed_player_damage
+            best_opponent_followup_lethal = (
+                next_projection.enemy_life > 0
+                and best_opponent_followup_damage >= next_projection.enemy_life
+            )
+            best_opponent_followup_attackers = tuple(followup.candidate.attacker_ids)
+        else:
+            (
+                best_opponent_followup_damage,
+                best_opponent_followup_lethal,
+                best_opponent_followup_attackers,
+            ) = _estimate_fast_followup_attack(next_projection)
     return BuilderCounterResult(
         score=best_score,
         search_exact=bool(exact_attack and exact_blocks),
@@ -1706,7 +1785,76 @@ def _fallback_counterattack(
         next_main_value=best_next_main_value,
         next_main_action=best_next_main_action,
         next_main_stats=best_next_main_stats,
+        opponent_followup_damage=best_opponent_followup_damage,
+        opponent_followup_lethal=best_opponent_followup_lethal,
+        opponent_followup_attackers=best_opponent_followup_attackers,
     )
+
+
+def _estimate_fast_followup_attack(projection: BuilderTurnProjection) -> tuple[float, bool, tuple[int, ...]]:
+    """Cheaply keep pruned attack lines on the same two-turn score horizon."""
+    player = projection.players[projection.player_id]
+    enemy = projection.players[projection.enemy_id]
+    candidates = _generate_fast_counter_candidates(
+        list(projection.available_attackers(player)),
+        list(enemy.battlefield),
+    )
+    scored: list[tuple[BuilderAttackCandidate, BuilderAttackScore]] = []
+    pair_cache: dict[tuple[int, int], tuple] = {}
+    for candidate in candidates:
+        assignments = generate_builder_block_assignments(
+            candidate,
+            player,
+            enemy,
+            projection,
+            search_budget=COUNTERATTACK_SEARCH_BUDGET,
+        )
+        response_scores = [
+            evaluate_attack_assignment(
+                candidate,
+                assignment,
+                player,
+                enemy,
+                projection,
+                pair_cache=pair_cache,
+                block_value_cache=None,
+                cap_context=None,
+            )
+            for assignment in assignments
+        ]
+        if response_scores:
+            scored.append((candidate, min(response_scores, key=_adversarial_block_response_sort_key)))
+    if not scored:
+        return 0.0, False, ()
+    candidate, score = max(scored, key=_attack_candidate_sort_key)
+    damage = score.guaranteed_player_damage
+    lethal = projection.enemy_life > 0 and damage >= projection.enemy_life
+    return damage, lethal, tuple(candidate.attacker_ids)
+
+
+def _estimate_mandatory_coverage_loss(candidate: BuilderAttackCandidate, player, enemy) -> float:
+    """Value only the attackers that are uniquely required as legal blockers."""
+    attacking_ids = set(candidate.attacker_ids)
+    held_blockers = [
+        blocker
+        for blocker in player.battlefield
+        if blocker.unit_id not in attacking_ids and blocker.is_ready()
+    ]
+    coverage_loss = 0.0
+    for attacker in player.battlefield:
+        if attacker.unit_id not in attacking_ids:
+            continue
+        if attacker.has_ability(Ability.VIGILANT) or attacker.has_ability(Ability.VIGILANCE):
+            continue
+        uniquely_covered = any(
+            can_legally_block(threat, attacker, require_ready=False)
+            and not any(can_legally_block(threat, held, require_ready=True) for held in held_blockers)
+            for threat in enemy.battlefield
+            if threat.sw > 0
+        )
+        if uniquely_covered:
+            coverage_loss += _estimate_block_value(attacker, enemy, None) * HEURISTIC_LOST_BLOCK_CONFIDENCE
+    return coverage_loss
 
 
 def _generate_fast_counter_candidates(available_attackers: list, enemy_battlefield: list) -> list[BuilderAttackCandidate]:
@@ -1926,6 +2074,9 @@ def _debug_attack_decision(engine, player, decision: BuilderAttackDecision) -> N
                 ("projected_enemy_main_stats", score.projected_counter_main_stats),
                 ("projected_enemy_attackers", list(score.projected_counter_attackers)),
                 ("projected_legal_blockers", [f"{attacker_id}:{list(blockers)}" for attacker_id, blockers in score.projected_counter_legal_blockers]),
+                ("projected_next_attack_damage", score.projected_next_attack_damage),
+                ("projected_next_attack_lethal", score.projected_next_attack_lethal),
+                ("projected_next_attackers", list(score.projected_next_attackers)),
                 ("board_position_value", score.board_position_value),
                 ("response_policy", "adversarial_worst_for_attacker"),
                 ("best_response", list(score.chosen_block_assignment)),

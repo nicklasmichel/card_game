@@ -349,6 +349,22 @@ class BuilderBlockAITests(unittest.TestCase):
         self.assertEqual(assignments[a1.unit_id], b1.unit_id)
         self.assertEqual(assignments[a2.unit_id], b2.unit_id)
 
+    def test_full_board_slot_value_does_not_reward_a_second_unnecessary_blocker_death(self) -> None:
+        low_damage_attacker = self.make_builder_creature(1, aw=5, vw=1, sw=1, lw=3, ready=True)
+        high_damage_attacker = self.make_builder_creature(1, aw=5, vw=1, sw=3, lw=5, ready=True)
+        durable_blocker = self.make_builder_creature(0, aw=1, vw=3, sw=1, lw=3, ready=True, current_hp=3)
+        fragile_blockers = [
+            self.make_builder_creature(0, aw=2, vw=4, sw=2, lw=1, ready=True, current_hp=1)
+            for _ in range(4)
+        ]
+        self.engine.human_player.resources = [self.make_builder_resource() for _ in range(9)]
+        self.set_attackers(low_damage_attacker, high_damage_attacker)
+
+        assignments = choose_builder_blocks(self.engine.human_player, self.engine)
+
+        self.assertEqual(assignments[low_damage_attacker.unit_id], durable_blocker.unit_id)
+        self.assertIn(assignments[high_damage_attacker.unit_id], {blocker.unit_id for blocker in fragile_blockers})
+
     def test_block_decision_is_deterministic(self) -> None:
         a1 = self.make_builder_creature(1, aw=2, vw=1, sw=4, lw=3, ready=True)
         a2 = self.make_builder_creature(1, aw=2, vw=1, sw=2, lw=2, ready=True, abilities=(Ability.FLYING,))

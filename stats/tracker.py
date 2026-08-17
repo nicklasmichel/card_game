@@ -232,10 +232,10 @@ class GameStatistics:
             self.mutual_destructions += 1
         if not attacker_destroyed and not blocker_destroyed:
             self.combats_without_destruction += 1
-        if attacker_destroyed:
-            self.player_stats[attacker_owner].creatures_destroyed += 1
-        if blocker_destroyed:
-            self.player_stats[blocker_owner].creatures_destroyed += 1
+        # The engine records each creature removal exactly once in
+        # destroy_creature_immediately. Combat records still retain their death
+        # flags here, but must not increment the game-level removal counters a
+        # second time.
         timestamp = datetime.now().isoformat(timespec="seconds")
         self.creature_records.extend([
             CreatureCombatRecord(

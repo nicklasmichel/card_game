@@ -143,6 +143,42 @@ class BuilderStatisticsTests(unittest.TestCase):
             self.assertTrue(all(record.damage_taken >= 0 for record in records.values()))
             self.assertEqual(statistics.pending_combats, {})
 
+    def test_combat_finish_does_not_double_count_engine_owned_creature_removal(self) -> None:
+        with TemporaryDirectory() as directory_name:
+            statistics = self.make_statistics(Path(directory_name))
+            statistics.start_creature_combat(
+                combat_id=201,
+                attacker_owner=0,
+                blocker_owner=1,
+                attacker_creature_name="Attacker",
+                blocker_creature_name="Blocker",
+                attacker_aw=3,
+                attacker_vw=2,
+                blocker_aw=2,
+                blocker_vw=3,
+                attacker_hp_before=3,
+                blocker_hp_before=1,
+            )
+            statistics.register_dice_comparison(combat_id=201, attacker_damage=1, blocker_damage=0)
+            # destroy_creature_immediately already recorded this removal.
+            statistics.player_stats[1].creatures_destroyed = 1
+
+            statistics.finish_creature_combat(
+                combat_id=201,
+                attacker_owner=0,
+                blocker_owner=1,
+                attacker_creature_name="Attacker",
+                blocker_creature_name="Blocker",
+                attacker_aw=3,
+                attacker_vw=2,
+                blocker_aw=2,
+                blocker_vw=3,
+                attacker_hp_after=3,
+                blocker_hp_after=0,
+            )
+
+            self.assertEqual(statistics.player_stats[1].creatures_destroyed, 1)
+
     def test_game_result_schema_migration_preserves_mixed_historical_rows(self) -> None:
         with TemporaryDirectory() as directory_name:
             root = Path(directory_name)

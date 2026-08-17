@@ -127,6 +127,7 @@ def score_builder_creature_candidate(
     abilities = _score_abilities(candidate, snapshot)
     synergy = _score_synergy(candidate, snapshot)
     board_fit = _score_board_fit(candidate, snapshot)
+    board_fit += _score_defensive_coverage_breakpoint(candidate, enemy_creatures, own_creatures, snapshot.combat_die_sides)
     survivability = _score_survivability(candidate, snapshot)
     matchup = _score_candidate_matchups(candidate, snapshot, enemy_creatures, own_creatures)
     unused_resources = _score_unused_resources(candidate, available_resources)
@@ -182,6 +183,45 @@ def _score_raw_stats(candidate: BuilderCreatureCandidate) -> float:
         + candidate.sw * RAW_STAT_WEIGHTS["sw"]
         + candidate.lw * RAW_STAT_WEIGHTS["hp"]
     )
+
+
+def _score_defensive_coverage_breakpoint(
+    candidate: BuilderCreatureCandidate,
+    enemy_creatures: list,
+    own_creatures: list,
+    die_sides: int,
+) -> float:
+    """Reward a blocker only for coverage that the current board does not have."""
+    if not enemy_creatures:
+        return 0.0
+    candidate_view = build_candidate_combatant_view(candidate, ready=True)
+    existing_views = [coerce_builder_combatant(creature, ready=True) for creature in own_creatures]
+    improvements: list[float] = []
+    for enemy_creature in enemy_creatures:
+        threat = coerce_builder_combatant(enemy_creature, ready=True)
+        if threat.sw <= 0 or not can_legally_block(threat, candidate_view, require_ready=True):
+            continue
+        candidate_estimate = estimate_builder_combat(threat, candidate_view, die_sides)
+        existing_win_probability = max(
+            (
+                estimate_builder_combat(threat, blocker, die_sides).defender_win_probability
+                for blocker in existing_views
+                if can_legally_block(threat, blocker, require_ready=True)
+            ),
+            default=0.0,
+        )
+        contest_improvement = max(
+            0.0,
+            candidate_estimate.defender_win_probability - existing_win_probability,
+        )
+        if contest_improvement <= 0.0:
+            continue
+        threat_weight = 1.0 + threat.sw * 0.3 + threat.aw * 0.12
+        improvements.append(contest_improvement * threat_weight * 1.8)
+    if not improvements:
+        return 0.0
+    improvements.sort(reverse=True)
+    return improvements[0] + sum(improvements[1:2]) * 0.35
 
 
 def _score_abilities(candidate: BuilderCreatureCandidate, snapshot: BuilderStrategicSnapshot) -> float:

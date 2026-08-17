@@ -13,6 +13,7 @@ from core.ai.builder import (
     score_builder_creature_candidate,
 )
 from core.ai.builder.combat_eval import build_candidate_combatant_view, summarize_builder_combat_matchup
+from core.ai.builder.turn_policy import extract_candidate_future_value
 from core.ai.builder.types import BuilderCreatureCandidate
 from core.game_logic import GameEngine
 from core.models import Ability
@@ -370,6 +371,37 @@ class BuilderCombatEvalTests(unittest.TestCase):
         )
 
         self.assertGreater(tough_score.matchup_defense, fragile_score.matchup_defense)
+
+    def test_missing_defense_breakpoint_beats_a_redundant_hybrid_in_future_value(self) -> None:
+        self.make_builder_creature(1, aw=1, vw=3, sw=1, lw=3, ready=True)
+        for _ in range(2):
+            self.make_builder_creature(1, aw=2, vw=4, sw=2, lw=1, ready=True)
+        for aw, vw, sw, lw in ((2, 2, 2, 2), (3, 1, 3, 2), (5, 1, 1, 3)):
+            self.make_builder_creature(0, aw=aw, vw=vw, sw=sw, lw=lw, ready=True)
+        snapshot = build_builder_snapshot(self.engine.ai_player, self.engine)
+        redundant_hybrid = BuilderCreatureCandidate(aw=2, vw=4, sw=2, lw=1, abilities=frozenset(), cost=5)
+        breakpoint_blocker = BuilderCreatureCandidate(aw=1, vw=6, sw=1, lw=1, abilities=frozenset(), cost=5)
+
+        hybrid_score = score_builder_creature_candidate(
+            redundant_hybrid,
+            snapshot,
+            available_resources=5,
+            enemy_creatures=list(self.engine.human_player.battlefield),
+            own_creatures=list(self.engine.ai_player.battlefield),
+        )
+        breakpoint_score = score_builder_creature_candidate(
+            breakpoint_blocker,
+            snapshot,
+            available_resources=5,
+            enemy_creatures=list(self.engine.human_player.battlefield),
+            own_creatures=list(self.engine.ai_player.battlefield),
+        )
+
+        self.assertGreater(breakpoint_score.board_fit, hybrid_score.board_fit)
+        self.assertGreater(
+            extract_candidate_future_value(breakpoint_score, breakpoint_blocker, snapshot),
+            extract_candidate_future_value(hybrid_score, redundant_hybrid, snapshot),
+        )
 
     def test_blocker_damage_above_enemy_life_does_not_change_attacker_kill_probability(self) -> None:
         attacker = build_candidate_combatant_view(
